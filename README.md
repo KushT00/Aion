@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AION — Intelligent Workflow Platform
 
-## Getting Started
+A modern SaaS platform where developers create, share, and sell intelligent workflow-based digital workers. Built with **Next.js 16**, **TypeScript**, **Tailwind CSS**, and **Supabase**.
 
-First, run the development server:
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| **Dashboard** | Stats cards, recent activity feed, quick actions |
+| **Workflow Builder** | Visual drag-and-drop canvas (React Flow) with 5 node types |
+| **Marketplace** | Browse, search, and discover community workflows |
+| **My Workflows** | Create, edit, publish, and manage your own workflows |
+| **Runs** | Execution history with status badges and expandable logs |
+| **Auth** | Supabase Auth with email/password + Google OAuth |
+| **Theming** | Light / Dark / System with localStorage persistence |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Node.js** 18+
+- **npm** 9+
+- A **Supabase** project (free tier works)
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Configure environment
+
+The `.env.local` file is already created with your Supabase credentials. Verify it contains:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### 3. Set up the database
+
+1. Open your **Supabase Dashboard** → **SQL Editor**
+2. Paste and run `supabase/schema.sql`
+3. (Optional) Paste and run `supabase/seed.sql` after replacing `YOUR_USER_ID`
+
+### 4. Configure Google OAuth (optional)
+
+1. In Supabase Dashboard → **Authentication** → **Providers** → Enable **Google**
+2. Add your Google OAuth Client ID and Secret
+3. Set the redirect URL to: `http://localhost:3000/auth/callback`
+
+### 5. Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) — you'll be redirected to the login page.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📁 Project Structure
 
-## Learn More
+```
+app/
+├── (auth)/           # Login, Signup, Forgot Password
+├── (dashboard)/      # Dashboard shell with sidebar
+│   ├── dashboard/    # Main dashboard page
+│   ├── workflows/    # My Workflows
+│   ├── builder/      # Visual Workflow Builder
+│   ├── marketplace/  # Community Marketplace
+│   ├── runs/         # Execution History
+│   ├── profile/      # User Profile
+│   └── settings/     # App Settings
+├── auth/callback/    # OAuth callback handler
+└── layout.tsx        # Root layout
 
-To learn more about Next.js, take a look at the following resources:
+components/
+├── layout/           # Sidebar, Topbar
+├── ui/               # Button, Card, Input, Badge, etc.
+├── theme-provider.tsx
+└── theme-toggle.tsx
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+hooks/                # useAuth, useWorkflows
+lib/
+├── supabase/         # Client, Server, Middleware helpers
+└── utils.ts          # cn(), formatDate, etc.
+types/                # TypeScript interfaces
+supabase/             # SQL schema + seed
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🛠 Tech Stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript (strict mode)
+- **Styling**: Tailwind CSS v4
+- **Backend**: Supabase (Auth, Database, Storage)
+- **Canvas**: React Flow (@xyflow/react)
+- **Animations**: Framer Motion
+- **Icons**: Lucide React
+- **Toasts**: react-hot-toast
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## 📄 License
+
+MIT
