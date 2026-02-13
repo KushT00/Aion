@@ -35,6 +35,8 @@ import {
     X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { WorkflowRunner, RunLog } from '@/lib/workflow/runner';
+import { WorkflowNode, WorkflowEdge, NodeType } from '@/types';
 
 // ─── Custom Node Component ──────────────────────────────────
 interface NodeData {
@@ -181,7 +183,13 @@ const paletteItems = [
 export default function BuilderPage() {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [executionLogs, setExecutionLogs] = useState<{ nodeId: string; status: string; timestamp: string; output?: any; error?: string }[]>([]);
+    const [showConsole, setShowConsole] = useState(false);
+
+    // Derive selected node from nodes state to ensure it's always up to date
+    const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
     const onConnect = useCallback(
         (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
@@ -189,19 +197,22 @@ export default function BuilderPage() {
     );
 
     const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-        setSelectedNode(node);
+        setSelectedNodeId(node.id);
     }, []);
 
     const addNode = useCallback(
         (type: string, label: string) => {
-            const id = `node-${Date.now()}`;
-            const newNode: Node = {
-                id,
-                type: 'custom',
-                position: { x: 250 + Math.random() * 200, y: 200 + Math.random() * 200 },
-                data: { label, type },
-            };
-            setNodes((nds) => [...nds, newNode]);
+            setNodes((nds) => {
+                const count = nds.filter(n => (n.data as any).type === type).length + 1;
+                const id = `${type.replace('_', '-')}-${count}`;
+                const newNode: Node = {
+                    id,
+                    type: 'custom',
+                    position: { x: 250 + Math.random() * 200, y: 200 + Math.random() * 200 },
+                    data: { label: `${label} ${count}`, type },
+                };
+                return [...nds, newNode];
+            });
         },
         [setNodes],
     );
@@ -210,6 +221,73 @@ export default function BuilderPage() {
         const workflowData = { nodes, edges };
         console.log('Saving workflow:', JSON.stringify(workflowData, null, 2));
         toast.success('Workflow saved successfully!');
+    };
+
+    const handleRun = async () => {
+        setIsExecuting(true);
+        setExecutionLogs([]);
+        setShowConsole(true);
+        toast.loading('Starting engine...', { id: 'exec' });
+
+        try {
+            // 1. Map ReactFlow state to engine types
+            const engineNodes: WorkflowNode[] = nodes.map(n => ({
+                id: n.id,
+                workflow_id: 'local',
+                type: (n.data as any).type as NodeType,
+                label: (n.data as any).label,
+                position_x: n.position.x,
+                position_y: n.position.y,
+                config: (n.data as any).config || {},
+                created_at: new Date().toISOString()
+            }));
+
+            const engineEdges: WorkflowEdge[] = edges.map(e => ({
+                id: e.id,
+                workflow_id: 'local',
+                source_node_id: e.source,
+                target_node_id: e.target,
+                label: null,
+                created_at: new Date().toISOString()
+            }));
+
+            // 2. Extract Trigger Data from Input Node
+            const inputNode = nodes.find(n => (n.data as any).type === 'input');
+            const triggerData = (inputNode?.data as any)?.config?.data || {};
+
+            // 3. Initialize Runner
+            const runner = new WorkflowRunner(engineNodes, engineEdges);
+
+            // 4. Execute with live log updates
+            toast.loading('Executing DAG...', { id: 'exec' });
+
+            await runner.execute(triggerData, (log: RunLog) => {
+                setExecutionLogs(prev => {
+                    const existing = prev.findIndex(l => l.nodeId === log.nodeId);
+                    const formattedLog = {
+                        nodeId: log.nodeId,
+                        status: log.status,
+                        timestamp: new Date(log.timestamp).toLocaleTimeString(),
+                        output: log.output,
+                        error: log.error
+                    };
+
+                    if (existing !== -1) {
+                        const newLogs = [...prev];
+                        newLogs[existing] = formattedLog;
+                        return newLogs;
+                    }
+                    return [...prev, formattedLog];
+                });
+            });
+
+            toast.success('Execution completed!', { id: 'exec' });
+        } catch (error: any) {
+            console.error('Execution Error:', error);
+            toast.error(`Error: ${error.message}`, { id: 'exec' });
+        } finally {
+            setIsExecuting(false);
+        }
     };
 
     return (
@@ -230,9 +308,14 @@ export default function BuilderPage() {
                     <Button variant="ghost" size="icon" title="Export">
                         <Download className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" size="sm">
-                        <Play className="w-4 h-4" />
-                        Run
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRun}
+                        disabled={isExecuting}
+                    >
+                        <Play className={cn("w-4 h-4", isExecuting && "animate-pulse text-primary-500")} />
+                        {isExecuting ? 'Running...' : 'Run'}
                     </Button>
                     <Button size="sm" onClick={handleSave}>
                         <Save className="w-4 h-4" />
@@ -300,7 +383,7 @@ export default function BuilderPage() {
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-semibold text-[var(--fg)]">Node Settings</h3>
                             <button
-                                onClick={() => setSelectedNode(null)}
+                                onClick={() => setSelectedNodeId(null)}
                                 className="p-1 rounded-lg text-[var(--muted-fg)] hover:bg-[var(--muted)] transition-colors"
                             >
                                 <X className="w-4 h-4" />
@@ -346,6 +429,222 @@ export default function BuilderPage() {
                                 </p>
                             </div>
 
+                            {/* Input Node Specialized Settings */}
+                            {(selectedNode.data as unknown as NodeData).type === 'input' && (
+                                <div className="pt-4 border-t border-[var(--border)]">
+                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                        Trigger Data (JSON)
+                                    </label>
+                                    <textarea
+                                        placeholder='{ "topic": "AI Future" }'
+                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] h-32 focus:outline-none"
+                                        value={JSON.stringify((selectedNode.data as any).config?.data || {}, null, 2)}
+                                        onChange={(e) => {
+                                            try {
+                                                const data = JSON.parse(e.target.value);
+                                                setNodes(nds => nds.map(n =>
+                                                    n.id === selectedNode.id
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data } } }
+                                                        : n
+                                                ));
+                                            } catch (err) { }
+                                        }}
+                                    />
+                                    <p className="text-[10px] text-[var(--muted-fg)] italic mt-1">
+                                        This data will be available as {"{{trigger.YOUR_KEY}}"}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="pt-4 border-t border-[var(--border)] space-y-4">
+                                <div>
+                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                        Integration
+                                    </label>
+                                    <select
+                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                        value={(selectedNode.data as any).config?.integrationId || ''}
+                                        onChange={(e) => {
+                                            const integrationId = e.target.value;
+                                            setNodes(nds => nds.map(n =>
+                                                n.id === selectedNode.id
+                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, integrationId, actionId: '' } } }
+                                                    : n
+                                            ));
+                                        }}
+                                    >
+                                        <option value="">Select Integration</option>
+                                        <option value="openai">OpenAI</option>
+                                        <option value="discord">Discord</option>
+                                        <option value="logic">Logic</option>
+                                    </select>
+                                </div>
+
+                                {(selectedNode.data as any).config?.integrationId && (
+                                    <div>
+                                        <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                            Action
+                                        </label>
+                                        <select
+                                            className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                            value={(selectedNode.data as any).config?.actionId || ''}
+                                            onChange={(e) => {
+                                                const actionId = e.target.value;
+                                                setNodes(nds => nds.map(n =>
+                                                    n.id === selectedNode.id
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, actionId } } }
+                                                        : n
+                                                ));
+                                            }}
+                                        >
+                                            <option value="">Select Action</option>
+                                            {(selectedNode.data as any).config?.integrationId === 'openai' && (
+                                                <option value="chat">Chat Completion</option>
+                                            )}
+                                            {(selectedNode.data as any).config?.integrationId === 'discord' && (
+                                                <option value="send_message">Send Message</option>
+                                            )}
+                                            {(selectedNode.data as any).config?.integrationId === 'logic' && (
+                                                <option value="log">Log to Console</option>
+                                            )}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {(selectedNode.data as any).config?.actionId && (
+                                    <div className="space-y-4">
+                                        {(selectedNode.data as any).config?.integrationId === 'openai' && (
+                                            <>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        OpenAI API Key
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        placeholder="sk-..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.apiKey || ''}
+                                                        onChange={(e) => {
+                                                            const apiKey = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, apiKey } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        System Prompt
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="You are a social media expert..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-20 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.systemPrompt || ''}
+                                                        onChange={(e) => {
+                                                            const systemPrompt = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, systemPrompt } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        User Prompt / Task
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="Write a tweet about {{trigger.topic}}..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-24 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.userPrompt || ''}
+                                                        onChange={(e) => {
+                                                            const userPrompt = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, userPrompt } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {(selectedNode.data as any).config?.integrationId === 'discord' && (
+                                            <>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Webhook URL
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="https://discord.com/api/webhooks/..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.webhookUrl || ''}
+                                                        onChange={(e) => {
+                                                            const webhookUrl = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, webhookUrl } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Message Content
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="Message: {{ai-1.text}} or {{Node Label.text}}"
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-24 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.content || ''}
+                                                        onChange={(e) => {
+                                                            const content = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, content } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* Fallback to JSON editor for other actions */}
+                                        {(selectedNode.data as any).config?.integrationId !== 'openai' && (selectedNode.data as any).config?.integrationId !== 'discord' && (
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                    Data / Payload
+                                                </label>
+                                                <textarea
+                                                    placeholder="Enter JSON or variable templates..."
+                                                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] h-32 focus:outline-none"
+                                                    value={JSON.stringify((selectedNode.data as any).config?.data || {}, null, 2)}
+                                                    onChange={(e) => {
+                                                        try {
+                                                            const data = JSON.parse(e.target.value);
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data } } }
+                                                                    : n
+                                                            ));
+                                                        } catch (err) { }
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                        <p className="text-[10px] text-[var(--muted-fg)] italic">
+                                            Tip: Use {"{{label.text}}"} or {"{{nodeId.text}}"} to reference previous steps.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="pt-4 border-t border-[var(--border)]">
                                 <Button
                                     variant="danger"
@@ -359,7 +658,7 @@ export default function BuilderPage() {
                                                     e.source !== selectedNode.id && e.target !== selectedNode.id,
                                             ),
                                         );
-                                        setSelectedNode(null);
+                                        setSelectedNodeId(null);
                                         toast.success('Node deleted');
                                     }}
                                 >
@@ -370,6 +669,51 @@ export default function BuilderPage() {
                     </div>
                 )}
             </div>
+
+            {/* Execution Console */}
+            {showConsole && (
+                <div className="h-64 border-t border-[var(--border)] bg-[var(--card)] flex flex-col animate-slide-up">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--muted)]">
+                        <div className="flex items-center gap-2">
+                            <div className={cn("w-2 h-2 rounded-full", isExecuting ? "bg-primary-500 animate-pulse" : "bg-emerald-500")} />
+                            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--fg)]">
+                                {isExecuting ? 'Execution Logs' : 'Run History'}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => setShowConsole(false)}
+                            className="p-1 rounded-lg text-[var(--muted-fg)] hover:bg-[var(--border)] transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-2">
+                        {executionLogs.length === 0 && (
+                            <p className="text-[var(--muted-fg)] italic">No logs yet. Click "Run" to start.</p>
+                        )}
+                        {executionLogs.map((log, i) => (
+                            <div key={i} className="flex gap-4 border-l-2 border-[var(--border)] pl-3 py-1">
+                                <span className="text-[var(--muted-fg)] min-w-[80px]">{log.timestamp}</span>
+                                <span className={cn(
+                                    "font-bold uppercase",
+                                    log.status === 'running' ? "text-primary-500" : "text-emerald-500"
+                                )}>
+                                    [{log.status}]
+                                </span>
+                                <span className="text-[var(--fg)]">
+                                    Node <span className="text-primary-400">{log.nodeId}</span>:
+                                    {log.status === 'running' ? ' Processing...' : ' Successful execution'}
+                                </span>
+                                {log.output && (
+                                    <span className="text-[var(--muted-fg)] opacity-60 ml-auto truncate max-w-xs">
+                                        {JSON.stringify(log.output)}
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
