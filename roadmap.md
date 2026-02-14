@@ -18,7 +18,7 @@ AION is a creator-centric marketplace for monetizable digital workers (workflows
 - [ ] **Tier 1 Integrations**:
     - **Communication**: Slack, Discord, Telegram.
     - **Productivity**: Notion, Airtable, Google Sheets.
-    - **AI**: OpenAI, Gemini, Groq, Cerebras.
+    - **AI**: Gemini, OpenAI, Groq, Cerebras.
 - [ ] **Trigger System**: Webhooks, Cron schedules, and manual triggers.
 
 ## Phase 3: Marketplace & Creator Monetization (Month 3)

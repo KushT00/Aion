@@ -6,8 +6,8 @@
 CREATE TABLE public.credentials (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL, -- e.g. "My OpenAI Key"
-  provider    TEXT NOT NULL, -- e.g. "openai"
+  name        TEXT NOT NULL, -- e.g. "My Gemini Key"
+  provider    TEXT NOT NULL, -- e.g. "gemini"
   encrypted_key TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
