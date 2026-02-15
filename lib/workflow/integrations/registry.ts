@@ -80,6 +80,68 @@ registry.register({
     ],
 });
 
+// Google Gemini
+registry.register({
+    id: "google_gemini",
+    name: "Google Gemini",
+    actions: [
+        {
+            id: "chat",
+            name: "Chat Completion",
+            description: "Ask Gemini a question",
+            execute: async (config) => {
+                const { apiKey, model, systemPrompt, userPrompt } = config;
+                if (!apiKey) throw new Error("Gemini API Key is required");
+
+                // Gemini API format
+                const selectedModel = model || "gemini-2.0-flash";
+
+                // Use v1 for 2.x/3.x models, v1beta for 1.x legacy models
+                const isLegacy = selectedModel.startsWith("gemini-1.");
+                const apiVersion = isLegacy ? "v1beta" : "v1";
+
+                const payload: any = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [{ text: userPrompt }],
+                        },
+                    ],
+                };
+
+                if (systemPrompt) {
+                    // v1 uses camelCase systemInstruction, v1beta uses snake_case system_instruction
+                    if (apiVersion === "v1") {
+                        payload.systemInstruction = {
+                            parts: [{ text: systemPrompt }],
+                        };
+                    } else {
+                        payload.system_instruction = {
+                            parts: [{ text: systemPrompt }],
+                        };
+                    }
+                }
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${selectedModel}:generateContent?key=${apiKey}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`Gemini Error: ${error.error?.message || response.statusText}`);
+                }
+
+                const data = await response.json();
+                return { text: data.candidates[0].content.parts[0].text };
+            },
+        },
+    ],
+});
+
 // Discord
 registry.register({
     id: "discord",
