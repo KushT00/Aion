@@ -478,6 +478,7 @@ export default function BuilderPage() {
                                         <option value="">Select Integration</option>
                                         <option value="openai">OpenAI</option>
                                         <option value="google_gemini">Google Gemini</option>
+                                        <option value="groq">Groq</option>
                                         <option value="discord">Discord</option>
                                         <option value="logic">Logic</option>
                                     </select>
@@ -505,6 +506,9 @@ export default function BuilderPage() {
                                                 <option value="chat">Chat Completion</option>
                                             )}
                                             {(selectedNode.data as any).config?.integrationId === 'google_gemini' && (
+                                                <option value="chat">Chat Completion</option>
+                                            )}
+                                            {(selectedNode.data as any).config?.integrationId === 'groq' && (
                                                 <option value="chat">Chat Completion</option>
                                             )}
                                             {(selectedNode.data as any).config?.integrationId === 'discord' && (
@@ -564,6 +568,92 @@ export default function BuilderPage() {
                                                     </label>
                                                     <textarea
                                                         placeholder="Write a tweet about {{trigger.topic}}..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-24 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.userPrompt || ''}
+                                                        onChange={(e) => {
+                                                            const userPrompt = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, userPrompt } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {(selectedNode.data as any).config?.integrationId === 'groq' && (
+                                            <>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Groq API Key
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        placeholder="gsk_..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.apiKey || ''}
+                                                        onChange={(e) => {
+                                                            const apiKey = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, apiKey } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Model
+                                                    </label>
+                                                    <select
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.model || 'llama-3.3-70b-versatile'}
+                                                        onChange={(e) => {
+                                                            const model = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, model } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    >
+                                                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile)</option>
+                                                        <option value="llama-3.1-8b-instant">Llama 3.1 8B (Instant)</option>
+                                                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                                                        <option value="gemma2-9b-it">Gemma 2 9B IT</option>
+                                                        <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                                                    </select>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        System Prompt
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="You are a helpful assistant..."
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-20 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.systemPrompt || ''}
+                                                        onChange={(e) => {
+                                                            const systemPrompt = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, systemPrompt } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        User Prompt / Task
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="Write a short greeting..."
                                                         className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-24 focus:outline-none"
                                                         value={(selectedNode.data as any).config?.data?.userPrompt || ''}
                                                         onChange={(e) => {
@@ -706,6 +796,7 @@ export default function BuilderPage() {
                                         {/* Fallback to JSON editor for other actions */}
                                         {(selectedNode.data as any).config?.integrationId !== 'openai' &&
                                             (selectedNode.data as any).config?.integrationId !== 'google_gemini' &&
+                                            (selectedNode.data as any).config?.integrationId !== 'groq' &&
                                             (selectedNode.data as any).config?.integrationId !== 'discord' && (
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">

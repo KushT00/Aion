@@ -104,23 +104,10 @@ registry.register({
                     contents: [
                         {
                             role: "user",
-                            parts: [{ text: userPrompt }],
+                            parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt }],
                         },
                     ],
                 };
-
-                if (systemPrompt) {
-                    // v1 uses camelCase systemInstruction, v1beta uses snake_case system_instruction
-                    if (apiVersion === "v1") {
-                        payload.systemInstruction = {
-                            parts: [{ text: systemPrompt }],
-                        };
-                    } else {
-                        payload.system_instruction = {
-                            parts: [{ text: systemPrompt }],
-                        };
-                    }
-                }
 
                 const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${selectedModel}:generateContent?key=${apiKey}`, {
                     method: "POST",
@@ -141,6 +128,74 @@ registry.register({
         },
     ],
 });
+
+ // Groq
+ registry.register({
+     id: "groq",
+     name: "Groq",
+     actions: [
+         {
+             id: "chat",
+             name: "Chat Completion",
+             description: "Ask Groq a question",
+             execute: async (config) => {
+                 const {
+                     apiKey,
+                     model,
+                     systemPrompt,
+                     userPrompt,
+                     temperature,
+                     maxTokens,
+                     topP,
+                 } = config;
+                 if (!apiKey) throw new Error("Groq API Key is required");
+
+                 const selectedModel = model || "llama-3.3-70b-versatile";
+
+                 const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+                 if (systemPrompt) messages.push({ role: "system", content: String(systemPrompt) });
+                 messages.push({ role: "user", content: String(userPrompt ?? "") });
+
+                 const payload: any = {
+                     model: selectedModel,
+                     messages,
+                 };
+                 if (temperature !== undefined && temperature !== null && temperature !== "") {
+                     payload.temperature = Number(temperature);
+                 }
+                 if (topP !== undefined && topP !== null && topP !== "") {
+                     payload.top_p = Number(topP);
+                 }
+                 if (maxTokens !== undefined && maxTokens !== null && maxTokens !== "") {
+                     payload.max_tokens = Number(maxTokens);
+                 }
+
+                 const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                     method: "POST",
+                     headers: {
+                         "Content-Type": "application/json",
+                         Authorization: `Bearer ${apiKey}`,
+                     },
+                     body: JSON.stringify(payload),
+                 });
+
+                 if (!response.ok) {
+                     let errorMessage = response.statusText;
+                     try {
+                         const error = await response.json();
+                         errorMessage = error.error?.message || errorMessage;
+                     } catch {
+                         // ignore JSON parse errors
+                     }
+                     throw new Error(`Groq Error: ${errorMessage}`);
+                 }
+
+                 const data = await response.json();
+                 return { text: data.choices?.[0]?.message?.content ?? "" };
+             },
+         },
+     ],
+ });
 
 // Discord
 registry.register({
