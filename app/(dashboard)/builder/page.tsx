@@ -1,6 +1,9 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import {
     ReactFlow,
     Background,
@@ -153,31 +156,8 @@ const nodeTypes: NodeTypes = {
 };
 
 // ─── Initial data ──────────────────────────────────────────
-const initialNodes: Node[] = [
-    {
-        id: '1',
-        type: 'custom',
-        position: { x: 300, y: 50 },
-        data: { label: 'Schedule', type: 'trigger', config: { integrationId: 'cron', actionId: 'schedule', data: { cron: '0 * * * *' } } },
-    },
-    {
-        id: '2',
-        type: 'custom',
-        position: { x: 300, y: 200 },
-        data: { label: 'Google Gemini', type: 'ai_action', config: { integrationId: 'google_gemini', actionId: 'chat' } },
-    },
-    {
-        id: '5',
-        type: 'custom',
-        position: { x: 300, y: 350 },
-        data: { label: 'Discord Output', type: 'social_action', config: { integrationId: 'discord', actionId: 'send_message' } },
-    },
-];
-
-const initialEdges: Edge[] = [
-    { id: 'e1-2', source: '1', target: '2', animated: true },
-    { id: 'e2-5', source: '2', target: '5', animated: true },
-];
+const initialNodes: Node[] = [];
+const initialEdges: Edge[] = [];
 
 // ─── Node Palette ──────────────────────────────────────────
 const paletteItems = [
@@ -236,7 +216,7 @@ function ModelSelector({ value, onChange, integrationId }: { value: string, onCh
     );
 }
 
-function AIConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+function AIConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
     const config = node.data.config || {};
     const data = config.data || {};
 
@@ -308,7 +288,7 @@ function AIConfiguration({ node, updateNode }: { node: any, updateNode: (data: a
     );
 }
 
-function CommunicationConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+function CommunicationConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
     const config = node.data.config || {};
     const data = config.data || {};
 
@@ -355,7 +335,7 @@ function CommunicationConfiguration({ node, updateNode }: { node: any, updateNod
     );
 }
 
-function APIConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+function APIConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
     const config = node.data.config || {};
     const data = config.data || {};
 
@@ -441,7 +421,7 @@ function APIConfiguration({ node, updateNode }: { node: any, updateNode: (data: 
     );
 }
 
-function TriggerConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
     const config = node.data.config || {};
     const data = config.data || {};
 
@@ -494,25 +474,121 @@ function TriggerConfiguration({ node, updateNode }: { node: any, updateNode: (da
                 </div>
             ) : (
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Webhook Endpoint</label>
-                    <div className="p-3 bg-[var(--muted)] rounded-lg border border-dashed border-[var(--border)] text-[10px] font-mono opacity-60">
-                        POST /api/webhooks/{node.id}
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Webhook Endpoint (Production)</label>
+                    <div className="relative group">
+                        <div className="p-3 bg-[var(--muted)] rounded-lg border border-dashed border-[var(--border)] text-[10px] font-mono break-all text-primary-600 dark:text-primary-400">
+                            {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/${workflowId || 'SAVE_FIRST'}/${node.id}` : ''}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                                const url = `${window.location.origin}/api/webhooks/${workflowId || 'SAVE_FIRST'}/${node.id}`;
+                                navigator.clipboard.writeText(url);
+                                toast.success('URL copied!');
+                            }}
+                        >
+                            <Upload className="w-3 h-3" />
+                        </Button>
                     </div>
-                    <p className="text-[10px] opacity-60 italic">Send a POST request to this endpoint to trigger the workflow.</p>
+                    <p className="text-[10px] opacity-60 italic">Send a POST request with any JSON body to this endpoint to trigger the workflow worker.</p>
                 </div>
             )}
         </div>
     );
 }
 
-// ─── Builder Page ──────────────────────────────────────────
 export default function BuilderPage() {
+    return (
+        <Suspense fallback={<div>Loading Builder...</div>}>
+            <BuilderContent />
+        </Suspense>
+    );
+}
+
+function BuilderContent() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const supabase = createClient();
+
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [workflowId, setWorkflowId] = useState<string | null>(searchParams.get('id'));
+    const [workflowName, setWorkflowName] = useState('Untitled Workflow');
     const [isExecuting, setIsExecuting] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [executionLogs, setExecutionLogs] = useState<{ nodeId: string; status: string; timestamp: string; output?: any; error?: string }[]>([]);
     const [showConsole, setShowConsole] = useState(false);
+
+    // Load workflow from Supabase
+    useEffect(() => {
+        if (!workflowId) {
+            // New Workflow: Load Template with Unique IDs
+            const id1 = crypto.randomUUID();
+            const id2 = crypto.randomUUID();
+            const id3 = crypto.randomUUID();
+
+            setNodes([
+                {
+                    id: id1,
+                    type: 'custom',
+                    position: { x: 300, y: 50 },
+                    data: { label: 'Schedule', type: 'trigger', config: { integrationId: 'cron', actionId: 'schedule', data: { cron: '0 * * * *' } } },
+                },
+                {
+                    id: id2,
+                    type: 'custom',
+                    position: { x: 300, y: 200 },
+                    data: { label: 'Google Gemini', type: 'ai_action', config: { integrationId: 'google_gemini', actionId: 'chat' } },
+                },
+                {
+                    id: id3,
+                    type: 'custom',
+                    position: { x: 300, y: 350 },
+                    data: { label: 'Discord Output', type: 'social_action', config: { integrationId: 'discord', actionId: 'send_message' } },
+                },
+            ]);
+            setEdges([
+                { id: crypto.randomUUID(), source: id1, target: id2, animated: true },
+                { id: crypto.randomUUID(), source: id2, target: id3, animated: true },
+            ]);
+            return;
+        }
+
+        const loadWorkflow = async () => {
+            const { data: wf } = await supabase.from('workflows').select('name').eq('id', workflowId).single();
+            if (wf) setWorkflowName(wf.name);
+
+            const { data: wfNodes } = await supabase.from('workflow_nodes').select('*').eq('workflow_id', workflowId);
+            const { data: wfEdges } = await supabase.from('workflow_edges').select('*').eq('workflow_id', workflowId);
+
+            if (wfNodes && wfNodes.length > 0) {
+                setNodes(wfNodes.map(n => ({
+                    id: n.id,
+                    type: 'custom',
+                    position: { x: n.position_x, y: n.position_y },
+                    data: {
+                        label: n.label,
+                        type: n.type,
+                        config: n.config
+                    }
+                })));
+            }
+            if (wfEdges) {
+                setEdges(wfEdges.map(e => ({
+                    id: e.id,
+                    source: e.source_node_id,
+                    target: e.target_node_id,
+                    animated: true,
+                    label: e.label
+                })));
+            }
+        };
+
+        loadWorkflow();
+    }, [workflowId, supabase, setNodes, setEdges]);
 
     // Derive selected node from nodes state to ensure it's always up to date
     const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
@@ -540,7 +616,7 @@ export default function BuilderPage() {
         (type: NodeType, label: string, integrationId?: string) => {
             setNodes((nds) => {
                 const count = nds.filter(n => (n.data as any).type === type).length + 1;
-                const id = `${type.replace('_', '-')}-${count}`;
+                const id = crypto.randomUUID();
                 const newNode: Node = {
                     id,
                     type: 'custom',
@@ -557,10 +633,73 @@ export default function BuilderPage() {
         [setNodes],
     );
 
-    const handleSave = () => {
-        const workflowData = { nodes, edges };
-        console.log('Saving workflow:', JSON.stringify(workflowData, null, 2));
-        toast.success('Workflow saved successfully!');
+    const handleSave = async () => {
+        setIsSaving(true);
+        const toastId = toast.loading('Saving workflow...');
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('User not authenticated');
+
+            let currentWfId = workflowId;
+
+            // 1. Create or Update Workflow metadata
+            if (!currentWfId) {
+                const { data: wf, error: wfErr } = await supabase
+                    .from('workflows')
+                    .insert({
+                        user_id: user.id,
+                        name: workflowName,
+                        status: 'draft'
+                    })
+                    .select()
+                    .single();
+
+                if (wfErr) throw wfErr;
+                currentWfId = wf.id;
+                setWorkflowId(currentWfId);
+                router.replace(`/builder?id=${currentWfId}`);
+            } else {
+                // Update Workflow metadata (name)
+                await supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId);
+            }
+
+            // 2. Sync Nodes (Upsert)
+            // For simplicity, we delete and re-insert for now to ensure consistency with ReactFlow state
+            await supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId);
+            const nodesToInsert = nodes.map(n => ({
+                id: n.id,
+                workflow_id: currentWfId,
+                type: (n.data as any).type,
+                label: (n.data as any).label,
+                position_x: n.position.x,
+                position_y: n.position.y,
+                config: (n.data as any).config || {}
+            }));
+
+            const { error: nodesErr } = await supabase.from('workflow_nodes').insert(nodesToInsert);
+            if (nodesErr) throw nodesErr;
+
+            // 3. Sync Edges
+            await supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId);
+            const edgesToInsert = edges.map(e => ({
+                workflow_id: currentWfId,
+                source_node_id: e.source,
+                target_node_id: e.target,
+                label: e.label || null
+            }));
+
+            const { error: edgesErr } = await supabase.from('workflow_edges').insert(edgesToInsert);
+            if (edgesErr) throw edgesErr;
+
+            toast.success('Workflow saved to cloud!', { id: toastId });
+        } catch (error: any) {
+            console.error('Save error details:', error);
+            const errorMessage = error.message || error.details || 'Unknown error';
+            toast.error(`Save failed: ${errorMessage}`, { id: toastId });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleRun = async () => {
@@ -636,6 +775,14 @@ export default function BuilderPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
                 <div className="flex items-center gap-2">
                     <h2 className="text-lg font-semibold text-[var(--fg)]">Workflow Builder</h2>
+                    <div className="w-px h-6 bg-[var(--border)] mx-2" />
+                    <input
+                        type="text"
+                        value={workflowName}
+                        onChange={(e) => setWorkflowName(e.target.value)}
+                        placeholder="Name your worker..."
+                        className="bg-transparent border-none text-sm font-medium text-[var(--muted-fg)] focus:text-[var(--fg)] outline-none w-64 px-2 py-1 rounded transition-colors"
+                    />
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" title="Undo">
@@ -657,9 +804,9 @@ export default function BuilderPage() {
                         <Play className={cn("w-4 h-4", isExecuting && "animate-pulse text-primary-500")} />
                         {isExecuting ? 'Running...' : 'Run'}
                     </Button>
-                    <Button size="sm" onClick={handleSave}>
-                        <Save className="w-4 h-4" />
-                        Save
+                    <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                        <Save className={cn("w-4 h-4", isSaving && "animate-spin")} />
+                        {isSaving ? 'Saving...' : 'Save'}
                     </Button>
                 </div>
             </div>
@@ -759,16 +906,16 @@ export default function BuilderPage() {
                             {/* Specialized Settings */}
                             <div className="pt-4 border-t border-[var(--border)]">
                                 {(selectedNode.data as any).type === 'trigger' && (
-                                    <TriggerConfiguration node={selectedNode} updateNode={updateNode} />
+                                    <TriggerConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                 )}
                                 {(selectedNode.data as any).type === 'ai_action' && (
-                                    <AIConfiguration node={selectedNode} updateNode={updateNode} />
+                                    <AIConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                 )}
                                 {selectedNode.data.type === 'social_action' && (
-                                    <CommunicationConfiguration node={selectedNode} updateNode={updateNode} />
+                                    <CommunicationConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                 )}
                                 {selectedNode.data.type === 'api_action' && (
-                                    <APIConfiguration node={selectedNode} updateNode={updateNode} />
+                                    <APIConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                 )}
                                 {selectedNode.data.type === 'logic_gate' && (
                                     <div className="space-y-4">
