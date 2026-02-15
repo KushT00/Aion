@@ -37,7 +37,12 @@ export class WorkflowRunner {
             return config.replace(/\{\{(.+?)\}\}/g, (_, path) => {
                 const [identifier, ...parts] = path.trim().split(".");
 
-                // 1. Try to find node by ID or Label
+                // 1. Resolve environmental variables
+                if (identifier === "env") {
+                    return this.context.env[parts[0]] || `{{${path}}}`;
+                }
+
+                // 2. Try to find node by ID or Label
                 let nodeResult = this.context.nodes[identifier];
                 if (!nodeResult) {
                     const nodeByLabel = this.nodes.find(n => n.label.toLowerCase() === identifier.toLowerCase());
@@ -46,7 +51,7 @@ export class WorkflowRunner {
 
                 let value = nodeResult || (identifier === "trigger" ? this.context.trigger : undefined);
 
-                // 2. Resolve parts, skip "output" if it's the first part of the result query
+                // 3. Resolve parts, skip "output" if it's the first part of the result query
                 const effectiveParts = parts[0]?.toLowerCase() === "output" ? parts.slice(1) : parts;
 
                 for (const part of effectiveParts) {
@@ -54,7 +59,7 @@ export class WorkflowRunner {
                     value = value[part];
                 }
 
-                return value !== undefined ? value : `{{${path}}}`;
+                return value !== undefined && value !== null ? (typeof value === 'object' ? JSON.stringify(value) : value) : `{{${path}}}`;
             });
         }
 

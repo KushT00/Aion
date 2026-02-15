@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { WorkflowRunner } from '@/lib/workflow/runner';
 import { WorkflowNode, WorkflowEdge } from '@/types';
 
@@ -8,7 +8,7 @@ export async function POST(
     context: { params: Promise<{ workflowId: string; nodeId: string }> }
 ) {
     const { workflowId, nodeId } = await context.params;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     try {
         // 1. Fetch the workflow and the specific trigger node
@@ -69,7 +69,7 @@ export async function POST(
         // Note: In a production environment, you should use a background job queue (e.g. Inngest, Upstash QStash)
         // For this implementation, we will perform the execution and update Supabase.
 
-        const runner = new WorkflowRunner(nodes, edges);
+        const runner = new WorkflowRunner(nodes, edges, process.env as Record<string, string>);
 
         // Use a non-blocking execution block
         (async () => {
