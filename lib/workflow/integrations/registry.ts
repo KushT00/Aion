@@ -11,6 +11,7 @@ export interface Integration {
     id: string;
     name: string;
     icon?: string;
+    category: 'ai' | 'communication' | 'logic' | 'utility' | 'trigger';
     actions: NodeAction[];
 }
 
@@ -33,6 +34,10 @@ class IntegrationRegistry {
     getAllIntegrations() {
         return Array.from(this.integrations.values());
     }
+
+    getIntegrationsByCategory(category: string) {
+        return this.getAllIntegrations().filter(i => i.category === category);
+    }
 }
 
 export const registry = new IntegrationRegistry();
@@ -43,6 +48,7 @@ export const registry = new IntegrationRegistry();
 registry.register({
     id: "gemini",
     name: "Google Gemini",
+    category: "ai",
     actions: [
         {
             id: "chat",
@@ -84,6 +90,7 @@ registry.register({
 registry.register({
     id: "google_gemini",
     name: "Google Gemini",
+    category: "ai",
     actions: [
         {
             id: "chat",
@@ -129,78 +136,121 @@ registry.register({
     ],
 });
 
- // Groq
- registry.register({
-     id: "groq",
-     name: "Groq",
-     actions: [
-         {
-             id: "chat",
-             name: "Chat Completion",
-             description: "Ask Groq a question",
-             execute: async (config) => {
-                 const {
-                     apiKey,
-                     model,
-                     systemPrompt,
-                     userPrompt,
-                     temperature,
-                     maxTokens,
-                     topP,
-                 } = config;
-                 if (!apiKey) throw new Error("Groq API Key is required");
+// OpenAI
+registry.register({
+    id: "openai",
+    name: "OpenAI",
+    category: "ai",
+    actions: [
+        {
+            id: "chat",
+            name: "Chat Completion",
+            description: "Ask OpenAI (GPT) a question",
+            execute: async (config) => {
+                const { apiKey, model, systemPrompt, userPrompt } = config;
+                if (!apiKey) throw new Error("OpenAI API Key is required");
 
-                 const selectedModel = model || "llama-3.3-70b-versatile";
+                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify({
+                        model: model || "gpt-4o",
+                        messages: [
+                            { role: "system", content: systemPrompt || "You are a helpful assistant." },
+                            { role: "user", content: userPrompt },
+                        ],
+                    }),
+                });
 
-                 const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
-                 if (systemPrompt) messages.push({ role: "system", content: String(systemPrompt) });
-                 messages.push({ role: "user", content: String(userPrompt ?? "") });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`OpenAI Error: ${error.error?.message || response.statusText}`);
+                }
 
-                 const payload: any = {
-                     model: selectedModel,
-                     messages,
-                 };
-                 if (temperature !== undefined && temperature !== null && temperature !== "") {
-                     payload.temperature = Number(temperature);
-                 }
-                 if (topP !== undefined && topP !== null && topP !== "") {
-                     payload.top_p = Number(topP);
-                 }
-                 if (maxTokens !== undefined && maxTokens !== null && maxTokens !== "") {
-                     payload.max_tokens = Number(maxTokens);
-                 }
+                const data = await response.json();
+                return { text: data.choices[0].message.content };
+            },
+        },
+    ],
+});
 
-                 const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                     method: "POST",
-                     headers: {
-                         "Content-Type": "application/json",
-                         Authorization: `Bearer ${apiKey}`,
-                     },
-                     body: JSON.stringify(payload),
-                 });
+// Groq
+registry.register({
+    id: "groq",
+    name: "Groq",
+    category: "ai",
+    actions: [
+        {
+            id: "chat",
+            name: "Chat Completion",
+            description: "Ask Groq a question",
+            execute: async (config) => {
+                const {
+                    apiKey,
+                    model,
+                    systemPrompt,
+                    userPrompt,
+                    temperature,
+                    maxTokens,
+                    topP,
+                } = config;
+                if (!apiKey) throw new Error("Groq API Key is required");
 
-                 if (!response.ok) {
-                     let errorMessage = response.statusText;
-                     try {
-                         const error = await response.json();
-                         errorMessage = error.error?.message || errorMessage;
-                     } catch {
-                         // ignore JSON parse errors
-                     }
-                     throw new Error(`Groq Error: ${errorMessage}`);
-                 }
+                const selectedModel = model || "llama-3.3-70b-versatile";
 
-                 const data = await response.json();
-                 return { text: data.choices?.[0]?.message?.content ?? "" };
-             },
-         },
-     ],
- });
+                const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+                if (systemPrompt) messages.push({ role: "system", content: String(systemPrompt) });
+                messages.push({ role: "user", content: String(userPrompt ?? "") });
+
+                const payload: any = {
+                    model: selectedModel,
+                    messages,
+                };
+                if (temperature !== undefined && temperature !== null && temperature !== "") {
+                    payload.temperature = Number(temperature);
+                }
+                if (topP !== undefined && topP !== null && topP !== "") {
+                    payload.top_p = Number(topP);
+                }
+                if (maxTokens !== undefined && maxTokens !== null && maxTokens !== "") {
+                    payload.max_tokens = Number(maxTokens);
+                }
+
+                const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    let errorMessage = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorMessage = error.error?.message || errorMessage;
+                    } catch {
+                        // ignore JSON parse errors
+                    }
+                    throw new Error(`Groq Error: ${errorMessage}`);
+                }
+
+                const data = await response.json();
+                return { text: data.choices?.[0]?.message?.content ?? "" };
+            },
+        },
+    ],
+});
 
 // Discord
 registry.register({
     id: "discord",
     name: "Discord",
+    category: "communication",
     actions: [
         {
             id: "send_message",
@@ -230,6 +280,7 @@ registry.register({
 registry.register({
     id: "logic",
     name: "Logic",
+    category: "logic",
     actions: [
         {
             id: "log",
@@ -238,6 +289,88 @@ registry.register({
             execute: async (config, input) => {
                 console.log("Workflow Log:", input);
                 return input;
+            },
+        },
+    ],
+});
+// Triggers
+registry.register({
+    id: "cron",
+    name: "Schedule (Cron)",
+    category: "trigger",
+    actions: [
+        {
+            id: "schedule",
+            name: "Run on Schedule",
+            description: "Triggers the workflow on a cron expression",
+            execute: async (config) => {
+                return { triggered_at: new Date().toISOString(), schedule: config.cron };
+            },
+        },
+    ],
+});
+
+registry.register({
+    id: "webhook",
+    name: "Webhook",
+    category: "trigger",
+    actions: [
+        {
+            id: "receive",
+            name: "On HTTP Request",
+            description: "Triggers the workflow when a POST request is received",
+            execute: async (config, input) => {
+                return input;
+            },
+        },
+    ],
+});
+
+// HTTP / API
+registry.register({
+    id: "api",
+    name: "HTTP Request",
+    category: "utility",
+    actions: [
+        {
+            id: "request",
+            name: "Network Request",
+            description: "Make an arbitrary HTTP request (GET, POST, etc.)",
+            execute: async (config) => {
+                const { url, method, headers, body } = config;
+                if (!url) throw new Error("URL is required");
+
+                const fetchOptions: any = {
+                    method: method || "GET",
+                    headers: headers || {},
+                };
+
+                if (["POST", "PUT", "PATCH"].includes(fetchOptions.method) && body) {
+                    fetchOptions.body = typeof body === "string" ? body : JSON.stringify(body);
+                    if (!fetchOptions.headers["Content-Type"]) {
+                        fetchOptions.headers["Content-Type"] = "application/json";
+                    }
+                }
+
+                const response = await fetch(url, fetchOptions);
+                const contentType = response.headers.get("content-type");
+
+                let responseData;
+                if (contentType && contentType.includes("application/json")) {
+                    responseData = await response.json();
+                } else {
+                    responseData = await response.text();
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP Error ${response.status}: ${typeof responseData === 'string' ? responseData : JSON.stringify(responseData)}`);
+                }
+
+                return {
+                    status: response.status,
+                    data: responseData,
+                    headers: Object.fromEntries(response.headers.entries())
+                };
             },
         },
     ],
