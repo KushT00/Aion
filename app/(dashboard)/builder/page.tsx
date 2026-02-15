@@ -437,9 +437,9 @@ export default function BuilderPage() {
                                     </label>
                                     <textarea
                                         placeholder='{ "topic": "AI Future" }'
-                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] h-32 focus:outline-none"
-                                        value={JSON.stringify((selectedNode.data as any).config?.data || {}, null, 2)}
-                                        onChange={(e) => {
+                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] h-32 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                                        defaultValue={JSON.stringify((selectedNode.data as any).config?.data || {}, null, 2)}
+                                        onBlur={(e) => {
                                             try {
                                                 const data = JSON.parse(e.target.value);
                                                 setNodes(nds => nds.map(n =>
@@ -447,11 +447,13 @@ export default function BuilderPage() {
                                                         ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data } } }
                                                         : n
                                                 ));
-                                            } catch (err) { }
+                                            } catch (err) {
+                                                toast.error('Invalid JSON format. Please check your syntax.');
+                                            }
                                         }}
                                     />
                                     <p className="text-[10px] text-[var(--muted-fg)] italic mt-1">
-                                        This data will be available as {"{{trigger.YOUR_KEY}}"}
+                                        This data will be available as {"{{trigger.YOUR_KEY}}"} • Type freely, JSON validates on blur
                                     </p>
                                 </div>
                             )}
@@ -499,7 +501,7 @@ export default function BuilderPage() {
                                             }}
                                         >
                                             <option value="">Select Action</option>
-                                            {(selectedNode.data as any).config?.integrationId === 'openai' && (
+                                            {(selectedNode.data as any).config?.integrationId === 'gemini' && (
                                                 <option value="chat">Chat Completion</option>
                                             )}
                                             {(selectedNode.data as any).config?.integrationId === 'google_gemini' && (
@@ -517,11 +519,11 @@ export default function BuilderPage() {
 
                                 {(selectedNode.data as any).config?.actionId && (
                                     <div className="space-y-4">
-                                        {(selectedNode.data as any).config?.integrationId === 'openai' && (
+                                        {(selectedNode.data as any).config?.integrationId === 'gemini' && (
                                             <>
                                                 <div>
                                                     <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
-                                                        OpenAI API Key
+                                                        Gemini API Key
                                                     </label>
                                                     <input
                                                         type="password"

@@ -39,41 +39,42 @@ export const registry = new IntegrationRegistry();
 
 // ─── Register Tier 1 Integrations ───────────────────────────
 
-// OpenAI
+// Google Gemini
 registry.register({
-    id: "openai",
-    name: "OpenAI",
+    id: "gemini",
+    name: "Google Gemini",
     actions: [
         {
             id: "chat",
             name: "Chat Completion",
-            description: "Ask GPT-4o a question",
+            description: "Ask Gemini a question",
             execute: async (config) => {
                 const { apiKey, systemPrompt, userPrompt } = config;
-                if (!apiKey) throw new Error("OpenAI API Key is required");
+                if (!apiKey) throw new Error("Gemini API Key is required");
 
-                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${apiKey}`,
                     },
                     body: JSON.stringify({
-                        model: "gpt-4o",
-                        messages: [
-                            { role: "system", content: systemPrompt || "You are a helpful assistant." },
-                            { role: "user", content: userPrompt },
+                        contents: [
+                            {
+                                parts: [
+                                    { text: systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt }
+                                ]
+                            }
                         ],
                     }),
                 });
 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(`OpenAI Error: ${error.error?.message || response.statusText}`);
+                    throw new Error(`Gemini Error: ${error.error?.message || response.statusText}`);
                 }
 
                 const data = await response.json();
-                return { text: data.choices[0].message.content };
+                return { text: data.candidates[0].content.parts[0].text };
             },
         },
     ],
