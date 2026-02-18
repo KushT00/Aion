@@ -37,9 +37,9 @@ class IntegrationRegistry {
 
 export const registry = new IntegrationRegistry();
 
-// ─── Register Tier 1 Integrations ───────────────────────────
 
-// OpenAI
+
+// OpenAI (Extended)
 registry.register({
     id: "openai",
     name: "OpenAI",
@@ -76,95 +76,49 @@ registry.register({
                 return { text: data.choices[0].message.content };
             },
         },
-    ],
-});
-
-// Google Gemini
-registry.register({
-    id: "google_gemini",
-    name: "Google Gemini",
-    actions: [
         {
-            id: "chat",
-            name: "Chat Completion",
-            description: "Ask Gemini a question",
+            id: "generate_reply",
+            name: "AI Response",
+            description: "Generates a response using ChatGPT",
             execute: async (config) => {
-                const { apiKey, model, systemPrompt, userPrompt } = config;
-                if (!apiKey) throw new Error("Gemini API Key is required");
+                const { apiKey, userPrompt, reply_type } = config;
 
-                // Gemini API format
-                const selectedModel = model || "gemini-2.0-flash";
+                // Trigger Condition: Only run if reply_type is 'question'
+                if (reply_type !== "question") {
+                    return {
+                        skipped: true,
+                        reply_text: ""
+                    };
+                }
 
-                // Use v1 for 2.x/3.x models, v1beta for 1.x legacy models
-                const isLegacy = selectedModel.startsWith("gemini-1.");
-                const apiVersion = isLegacy ? "v1beta" : "v1";
+                if (!apiKey) throw new Error("OpenAI API Key is required");
 
-                const payload: any = {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [{ text: userPrompt }],
+                try {
+                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${apiKey}`,
                         },
-                    ],
-                };
+                        body: JSON.stringify({
+                            model: "gpt-4o",
+                            messages: [
+                                { role: "system", content: "You are a helpful Telegram chatbot. Answer the user's question clearly and concisely." },
+                                { role: "user", content: userPrompt },
+                            ],
+                        }),
+                    });
 
-                if (systemPrompt) {
-                    // v1 uses camelCase systemInstruction, v1beta uses snake_case system_instruction
-                    if (apiVersion === "v1") {
-                        payload.systemInstruction = {
-                            parts: [{ text: systemPrompt }],
-                        };
-                    } else {
-                        payload.system_instruction = {
-                            parts: [{ text: systemPrompt }],
-                        };
-                    }
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message);
+
+                    return {
+                        reply_text: data.choices[0].message.content,
+                        reply_type: "answer"
+                    };
+                } catch (error: any) {
+                    throw new Error(`OpenAI Error: ${error.message}`);
                 }
-
-                const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${selectedModel}:generateContent?key=${apiKey}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(payload),
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(`Gemini Error: ${error.error?.message || response.statusText}`);
-                }
-
-                const data = await response.json();
-                return { text: data.candidates[0].content.parts[0].text };
-            },
-        },
-    ],
-});
-
-// Discord
-registry.register({
-    id: "discord",
-    name: "Discord",
-    actions: [
-        {
-            id: "send_message",
-            name: "Send Message",
-            description: "Send a message to a Discord channel via Webhook",
-            execute: async (config) => {
-                const { webhookUrl, content } = config;
-                if (!webhookUrl) throw new Error("Discord Webhook URL is required");
-
-                const response = await fetch(webhookUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content }),
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Discord Error: ${response.statusText}`);
-                }
-
-                return { success: true };
             },
         },
     ],
@@ -182,6 +136,43 @@ registry.register({
             execute: async (config, input) => {
                 console.log("Workflow Log:", input);
                 return input;
+            },
+        },
+    ],
+});
+
+// Telegram
+registry.register({
+    id: "telegram",
+    name: "Telegram",
+    actions: [
+        {
+            id: "send_message",
+            name: "Send Message",
+            description: "Send a message via Telegram Bot API",
+            execute: async (config) => {
+                const { botToken, chatId, content } = config;
+
+                if (!botToken) throw new Error("Telegram Bot Token is required");
+                if (!chatId) throw new Error("Telegram Chat ID is required");
+                if (!content) throw new Error("Message Content is required");
+
+                const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: content
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.ok) {
+                    throw new Error(`Telegram Error: ${data.description}`);
+                }
+
+                return { sent_message: data.result };
             },
         },
     ],

@@ -37,10 +37,13 @@ export class WorkflowRunner {
             return config.replace(/\{\{(.+?)\}\}/g, (_, path) => {
                 const [identifier, ...parts] = path.trim().split(".");
 
-                // 1. Try to find node by ID or Label
+                // 1. Try to find node by ID or Label (fuzzy match for label)
                 let nodeResult = this.context.nodes[identifier];
                 if (!nodeResult) {
-                    const nodeByLabel = this.nodes.find(n => n.label.toLowerCase() === identifier.toLowerCase());
+                    const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+                    const target = normalize(identifier);
+
+                    const nodeByLabel = this.nodes.find(n => normalize(n.label) === target);
                     if (nodeByLabel) nodeResult = this.context.nodes[nodeByLabel.id];
                 }
 
@@ -51,7 +54,16 @@ export class WorkflowRunner {
 
                 for (const part of effectiveParts) {
                     if (value === undefined || value === null) break;
-                    value = value[part];
+
+                    // Specific fallback: if user asks for .text but it doesn't exist, check common alternatives
+                    if (part === 'text' && value[part] === undefined) {
+                        if (value['topic'] !== undefined) value = value['topic'];
+                        else if (value['input'] !== undefined) value = value['input'];
+                        else if (value['message'] !== undefined) value = value['message'];
+                        else value = value[part];
+                    } else {
+                        value = value[part];
+                    }
                 }
 
                 return value !== undefined ? value : `{{${path}}}`;
@@ -78,9 +90,20 @@ export class WorkflowRunner {
         const visited = new Set<string>();
         const visiting = new Set<string>();
 
+        // Create a map for faster lookup and to ensure we only process existing nodes
+        const nodeMap = new Map(this.nodes.map(n => [n.id, n]));
+
         const visit = (nodeId: string) => {
-            if (visiting.has(nodeId)) throw new Error("Cycle detected in workflow");
+            if (visiting.has(nodeId)) {
+                console.warn(`Cycle detected or complex dependency for node ${nodeId}, skipping dependency check to proceed.`);
+                return;
+            }
             if (visited.has(nodeId)) return;
+
+            if (!nodeMap.has(nodeId)) {
+                // If a node is referenced in an edge but doesn't exist, we skip it
+                return;
+            }
 
             visiting.add(nodeId);
 
@@ -91,7 +114,7 @@ export class WorkflowRunner {
 
             visiting.delete(nodeId);
             visited.add(nodeId);
-            sorted.push(this.nodes.find((n) => n.id === nodeId)!);
+            sorted.push(nodeMap.get(nodeId)!);
         };
 
         for (const node of this.nodes) {
@@ -103,45 +126,80 @@ export class WorkflowRunner {
 
     async execute(triggerData: any = {}, onLog?: (log: RunLog) => void): Promise<any> {
         this.context.trigger = triggerData;
-        const sortedNodes = this.getSortedNodes();
 
-        for (const node of sortedNodes) {
-            const log: RunLog = {
-                nodeId: node.id,
-                status: "running",
-                timestamp: new Date().toISOString(),
-            };
-            this.logs.push(log);
-            onLog?.(log);
+        try {
+            const sortedNodes = this.getSortedNodes();
 
-            try {
-                const config = node.config || {};
-                const integrationId = config.integrationId as string;
-                const actionId = config.actionId as string;
-
-                if (!integrationId || !actionId) {
-                    // Fallback for simple nodes or logic
-                    this.context.nodes[node.id] = config;
-                } else {
-                    const action = registry.getAction(integrationId, actionId);
-                    if (!action) throw new Error(`Action ${actionId} not found in ${integrationId}`);
-
-                    const resolvedConfig = this.resolveVariables(config.data || {});
-                    const result = await action.execute(resolvedConfig, this.context);
-                    this.context.nodes[node.id] = result;
-                }
-
-                log.status = "success";
-                log.output = this.context.nodes[node.id];
-            } catch (error: any) {
-                log.status = "failed";
-                log.error = error.message;
-                onLog?.(log);
-                throw error;
+            if (sortedNodes.length === 0) {
+                console.warn("No nodes to execute.");
+                return {};
             }
 
-            log.timestamp = new Date().toISOString();
-            onLog?.(log);
+            for (const node of sortedNodes) {
+                if (!node) continue; // Safety check
+
+                const log: RunLog = {
+                    nodeId: node.id,
+                    status: "running",
+                    timestamp: new Date().toISOString(),
+                };
+                this.logs.push(log);
+                onLog?.(log);
+
+                try {
+                    const config = node.config || {};
+                    const integrationId = config.integrationId as string;
+                    const actionId = config.actionId as string;
+
+                    if (integrationId && actionId) {
+                        const action = registry.getAction(integrationId, actionId);
+                        if (!action) {
+                            throw new Error(`Action ${actionId} not found in ${integrationId}`);
+                        }
+
+                        // Resolve variables in the data object, not the top-level config
+                        const resolvedData = this.resolveVariables(config.data || {});
+
+                        // Pass the entire resolved context if needed, but actions usually expect specific config
+                        const result = await action.execute(resolvedData, this.context);
+
+                        // Check for stop_execution signal
+                        if (result && result.stop_execution) {
+                            log.status = "success";
+                            log.output = result;
+                            log.timestamp = new Date().toISOString();
+                            onLog?.(log);
+                            console.log(`🛑 Node ${node.id} stopped execution.`);
+                            break; // Stop the runner loop
+                        }
+
+                        // Merge triggerData if present (allows Input Node to provide data AND run action)
+                        this.context.nodes[node.id] = { ...result, ...(config.triggerData || {}) };
+                    } else {
+                        // For nodes without integration (e.g. Input), just pass through or store config
+                        // Prioritize triggerData, fall back to data (migration support)
+                        const outputData = config.triggerData ? { ...config.triggerData } : (config.data ? { ...config.data } : {});
+                        this.context.nodes[node.id] = outputData;
+                    }
+
+                    log.status = "success";
+                    log.output = this.context.nodes[node.id];
+                    log.timestamp = new Date().toISOString();
+                    onLog?.(log);
+
+                } catch (error: any) {
+                    log.status = "failed";
+                    log.error = error.message;
+                    log.timestamp = new Date().toISOString();
+                    onLog?.(log);
+                    console.error(`Error executing node ${node.id}:`, error);
+                    // Decide if we want to stop execution on error. For now, yes.
+                    throw error;
+                }
+            }
+        } catch (err) {
+            console.error("Workflow Execution Failed:", err);
+            throw err;
         }
 
         return this.context.nodes;

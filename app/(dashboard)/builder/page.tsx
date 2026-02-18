@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ReactFlow,
     Background,
@@ -37,6 +37,7 @@ import {
 import toast from 'react-hot-toast';
 import { WorkflowRunner, RunLog } from '@/lib/workflow/runner';
 import { WorkflowNode, WorkflowEdge, NodeType } from '@/types';
+import { createClient } from '@/lib/supabase/client';
 
 // ─── Custom Node Component ──────────────────────────────────
 interface NodeData {
@@ -129,46 +130,39 @@ const nodeTypes: NodeTypes = {
 };
 
 // ─── Initial data ──────────────────────────────────────────
-const initialNodes: Node[] = [
-    {
-        id: '1',
-        type: 'custom',
-        position: { x: 300, y: 50 },
-        data: { label: 'User Input', type: 'input' },
-    },
-    {
-        id: '2',
-        type: 'custom',
-        position: { x: 300, y: 200 },
-        data: { label: 'AI Classifier', type: 'ai_step' },
-    },
-    {
-        id: '3',
-        type: 'custom',
-        position: { x: 100, y: 370 },
-        data: { label: 'Fetch Data', type: 'api_step' },
-    },
-    {
-        id: '4',
-        type: 'custom',
-        position: { x: 500, y: 370 },
-        data: { label: 'Route Logic', type: 'logic_step' },
-    },
-    {
-        id: '5',
-        type: 'custom',
-        position: { x: 300, y: 540 },
-        data: { label: 'Send Response', type: 'output' },
-    },
-];
+const getInitialWorkflow = (): { nodes: Node[]; edges: Edge[] } => {
+    const triggerId = crypto.randomUUID();
+    const aiId = crypto.randomUUID();
+    const outputId = crypto.randomUUID();
 
-const initialEdges: Edge[] = [
-    { id: 'e1-2', source: '1', target: '2', animated: true },
-    { id: 'e2-3', source: '2', target: '3' },
-    { id: 'e2-4', source: '2', target: '4' },
-    { id: 'e3-5', source: '3', target: '5' },
-    { id: 'e4-5', source: '4', target: '5' },
-];
+    const nodes: Node[] = [
+        {
+            id: triggerId,
+            type: 'custom',
+            position: { x: 100, y: 100 },
+            data: { label: 'Input Trigger', type: 'input' },
+        },
+        {
+            id: aiId,
+            type: 'custom',
+            position: { x: 400, y: 100 },
+            data: { label: 'AI Processing', type: 'ai_step' },
+        },
+        {
+            id: outputId,
+            type: 'custom',
+            position: { x: 700, y: 100 },
+            data: { label: 'Output Result', type: 'output' },
+        },
+    ];
+
+    const edges: Edge[] = [
+        { id: crypto.randomUUID(), source: triggerId, target: aiId, animated: true },
+        { id: crypto.randomUUID(), source: aiId, target: outputId, animated: true },
+    ];
+
+    return { nodes, edges };
+};
 
 // ─── Node Palette ──────────────────────────────────────────
 const paletteItems = [
@@ -181,12 +175,22 @@ const paletteItems = [
 
 // ─── Builder Page ──────────────────────────────────────────
 export default function BuilderPage() {
-    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    // Initialize empty to avoid hydration mismatch (server vs client UUIDs)
+    const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+    // Load initial data only on client side
+    useEffect(() => {
+        const initial = getInitialWorkflow();
+        setNodes(initial.nodes);
+        setEdges(initial.edges);
+    }, []); // Run once on mount
+
     const [isExecuting, setIsExecuting] = useState(false);
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [executionLogs, setExecutionLogs] = useState<{ nodeId: string; status: string; timestamp: string; output?: any; error?: string }[]>([]);
     const [showConsole, setShowConsole] = useState(false);
+    const [workflowId, setWorkflowId] = useState<string | null>(null);
 
     // Derive selected node from nodes state to ensure it's always up to date
     const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
@@ -204,7 +208,8 @@ export default function BuilderPage() {
         (type: string, label: string) => {
             setNodes((nds) => {
                 const count = nds.filter(n => (n.data as any).type === type).length + 1;
-                const id = `${type.replace('_', '-')}-${count}`;
+                // Use crypto.randomUUID() for Supabase compatibility
+                const id = crypto.randomUUID();
                 const newNode: Node = {
                     id,
                     type: 'custom',
@@ -217,10 +222,109 @@ export default function BuilderPage() {
         [setNodes],
     );
 
-    const handleSave = () => {
-        const workflowData = { nodes, edges };
-        console.log('Saving workflow:', JSON.stringify(workflowData, null, 2));
-        toast.success('Workflow saved successfully!');
+    const handleSave = async () => {
+        setIsExecuting(true);
+        toast.loading('Saving workflow...', { id: 'save' });
+
+        try {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                toast.error('You must be logged in to save.', { id: 'save' });
+                return;
+            }
+
+            // 1. Save or Update Workflow
+            let currentId = workflowId;
+            if (!currentId) {
+                const { data, error } = await supabase
+                    .from('workflows')
+                    .insert({
+                        user_id: user.id,
+                        name: 'Telegram Bot Workflow',
+                        status: 'published',
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+                currentId = data.id;
+                setWorkflowId(currentId);
+            }
+
+            // 2. Prepare Nodes and Edges
+            // Helper function to map frontend types to DB types
+            const getDbType = (type: string): string => {
+                const map: Record<string, string> = {
+                    // Fallback for others
+                    'input': 'input',
+                    'output': 'output',
+                    'custom': 'logic_step'
+                };
+                return map[type] || 'logic_step';
+            };
+
+            const dbNodes = nodes.map(n => ({
+                id: n.id,
+                workflow_id: currentId,
+                type: getDbType((n.data as any).type),
+                label: (n.data as any).label,
+                position_x: n.position.x,
+                position_y: n.position.y,
+                // Store the REAL frontend type in config so we can restore it later if needed
+                config: {
+                    ...((n.data as any).config || {}),
+                    _frontend_type: (n.data as any).type
+                },
+            }));
+
+            const dbEdges = edges.map(e => {
+                // Ensure ID is a valid UUID, otherwise generate one
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
+                return {
+                    id: isUUID ? e.id : crypto.randomUUID(),
+                    workflow_id: currentId,
+                    source_node_id: e.source,
+                    target_node_id: e.target,
+                    label: e.label || null,
+                };
+            });
+
+            // 3. Delete existing queries (simple replace strategy for now)
+            await supabase.from('workflow_edges').delete().eq('workflow_id', currentId);
+            await supabase.from('workflow_nodes').delete().eq('workflow_id', currentId);
+
+            const { error: nodesError } = await supabase.from('workflow_nodes').insert(dbNodes);
+            if (nodesError) throw nodesError;
+
+            const { error: edgesError } = await supabase.from('workflow_edges').insert(dbEdges);
+            if (edgesError) throw edgesError;
+
+            // 4. Update UI with new ID (specifically trigger nodes)
+            setNodes(nds => nds.map(n => {
+                if ((n.data as any).type === 'telegram_trigger') {
+                    return {
+                        ...n,
+                        data: {
+                            ...n.data,
+                            config: {
+                                ...(n.data as any).config,
+                                workflowId: currentId
+                            }
+                        }
+                    };
+                }
+                return n;
+            }));
+
+            toast.success('Workflow saved successfully!', { id: 'save' });
+        } catch (error: any) {
+            console.error('Save Error:', error, error.message, error.details);
+            toast.error(`Save failed: ${error.message || 'Unknown error'}`, { id: 'save' });
+        } finally {
+            setIsExecuting(false);
+        }
     };
 
     const handleRun = async () => {
@@ -251,9 +355,12 @@ export default function BuilderPage() {
                 created_at: new Date().toISOString()
             }));
 
-            // 2. Extract Trigger Data from Input Node
-            const inputNode = nodes.find(n => (n.data as any).type === 'input');
-            const triggerData = (inputNode?.data as any)?.config?.data || {};
+            // 2. Extract Trigger Data
+            const triggerNode = nodes.find(n => ['input', 'telegram_trigger'].includes((n.data as any).type));
+
+            let triggerData = (triggerNode?.data as any)?.config?.data || {};
+
+
 
             // 3. Initialize Runner
             const runner = new WorkflowRunner(engineNodes, engineEdges);
@@ -284,15 +391,15 @@ export default function BuilderPage() {
             toast.success('Execution completed!', { id: 'exec' });
         } catch (error: any) {
             console.error('Execution Error:', error);
-            toast.error(`Error: ${error.message}`, { id: 'exec' });
+            toast.error(`Execution failed: ${error.message}`, { id: 'exec' });
         } finally {
             setIsExecuting(false);
         }
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col">
-            {/* Toolbar */}
+        <div className="flex flex-col h-screen bg-[var(--bg)] text-[var(--fg)] font-sans">
+            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
                 <div className="flex items-center gap-2">
                     <h2 className="text-lg font-semibold text-[var(--fg)]">Workflow Builder</h2>
@@ -305,7 +412,14 @@ export default function BuilderPage() {
                         <Redo2 className="w-4 h-4" />
                     </Button>
                     <div className="w-px h-6 bg-[var(--border)] mx-1" />
-                    <Button variant="ghost" size="icon" title="Export">
+                    <Button variant="ghost" size="icon" title="Export" onClick={() => {
+                        const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'workflow.json';
+                        a.click();
+                    }}>
                         <Download className="w-4 h-4" />
                     </Button>
                     <Button
@@ -436,23 +550,121 @@ export default function BuilderPage() {
                                         Trigger Data (JSON)
                                     </label>
                                     <textarea
-                                        placeholder='{ "topic": "AI Future" }'
+                                        placeholder='{ "text": "AI Future" }'
                                         className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] h-32 focus:outline-none"
-                                        value={JSON.stringify((selectedNode.data as any).config?.data || {}, null, 2)}
+                                        value={JSON.stringify((selectedNode.data as any).config?.triggerData || (selectedNode.data as any).config?.data || {}, null, 2)}
                                         onChange={(e) => {
                                             try {
-                                                const data = JSON.parse(e.target.value);
+                                                const triggerData = JSON.parse(e.target.value);
                                                 setNodes(nds => nds.map(n =>
                                                     n.id === selectedNode.id
-                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data } } }
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, triggerData } } }
                                                         : n
                                                 ));
                                             } catch (err) { }
                                         }}
                                     />
                                     <p className="text-[10px] text-[var(--muted-fg)] italic mt-1">
-                                        This data will be available as {"{{trigger.YOUR_KEY}}"}
+                                        This data will be available as {"{{Input Trigger.text}}"}
                                     </p>
+                                </div>
+                            )}
+
+                            {/* AI Response Specialized Settings */}
+                            {(selectedNode.data as unknown as NodeData).type === 'ai_response' && (
+                                <div className="pt-4 border-t border-[var(--border)] space-y-4">
+                                    <div>
+                                        <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                            OpenAI API Key
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-..."
+                                            className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                            value={(selectedNode.data as any).config?.data?.apiKey || ''}
+                                            onChange={(e) => {
+                                                const apiKey = e.target.value;
+                                                setNodes(nds => nds.map(n =>
+                                                    n.id === selectedNode.id
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, apiKey } } } }
+                                                        : n
+                                                ));
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="hidden">
+                                        {/* Hidden config to force integrationId/actionId and default prompt */}
+                                        <input
+                                            type="hidden"
+                                            value={(selectedNode.data as any).config?.integrationId || ''}
+                                            ref={(input) => {
+                                                // Initialize defaults if not set
+                                                if (input && !(selectedNode.data as any).config?.integrationId) {
+                                                    setNodes(nds => nds.map(n =>
+                                                        n.id === selectedNode.id
+                                                            ? {
+                                                                ...n,
+                                                                data: {
+                                                                    ...n.data,
+                                                                    config: {
+                                                                        ...(n.data as any).config,
+                                                                        integrationId: 'openai',
+                                                                        actionId: 'generate_reply',
+                                                                        data: {
+                                                                            ...(n.data as any).config?.data,
+                                                                            userPrompt: "{{4.original_text}}", // Default connection to logic node (assuming id 4 for now, user can edit)
+                                                                            reply_type: "{{4.reply_type}}"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            : n
+                                                    ));
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                            User Prompt Source
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="{{node.original_text}}"
+                                            className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] focus:outline-none"
+                                            value={(selectedNode.data as any).config?.data?.userPrompt || ''}
+                                            onChange={(e) => {
+                                                const userPrompt = e.target.value;
+                                                setNodes(nds => nds.map(n =>
+                                                    n.id === selectedNode.id
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, userPrompt } } } }
+                                                        : n
+                                                ));
+                                            }}
+                                        />
+                                        <p className="text-[10px] text-[var(--muted-fg)] mt-1">
+                                            Should reference the "original_text" from the Logic node.
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                            Reply Type Source
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="{{node.reply_type}}"
+                                            className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm font-mono text-[var(--fg)] focus:outline-none"
+                                            value={(selectedNode.data as any).config?.data?.reply_type || ''}
+                                            onChange={(e) => {
+                                                const reply_type = e.target.value;
+                                                setNodes(nds => nds.map(n =>
+                                                    n.id === selectedNode.id
+                                                        ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, reply_type } } } }
+                                                        : n
+                                                ));
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -477,6 +689,7 @@ export default function BuilderPage() {
                                         <option value="openai">OpenAI</option>
                                         <option value="google_gemini">Google Gemini</option>
                                         <option value="discord">Discord</option>
+                                        <option value="telegram">Telegram</option>
                                         <option value="logic">Logic</option>
                                     </select>
                                 </div>
@@ -506,6 +719,9 @@ export default function BuilderPage() {
                                                 <option value="chat">Chat Completion</option>
                                             )}
                                             {(selectedNode.data as any).config?.integrationId === 'discord' && (
+                                                <option value="send_message">Send Message</option>
+                                            )}
+                                            {(selectedNode.data as any).config?.integrationId === 'telegram' && (
                                                 <option value="send_message">Send Message</option>
                                             )}
                                             {(selectedNode.data as any).config?.integrationId === 'logic' && (
@@ -701,10 +917,72 @@ export default function BuilderPage() {
                                             </>
                                         )}
 
+                                        {(selectedNode.data as any).config?.integrationId === 'telegram' && (
+                                            <>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Bot Token
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.botToken || ''}
+                                                        onChange={(e) => {
+                                                            const botToken = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, botToken } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Chat ID
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="123456789"
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.chatId || ''}
+                                                        onChange={(e) => {
+                                                            const chatId = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, chatId } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
+                                                        Message Content
+                                                    </label>
+                                                    <textarea
+                                                        placeholder="Message: {{ai-1.text}} or {{Node Label.text}}"
+                                                        className="mt-1 w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-24 focus:outline-none"
+                                                        value={(selectedNode.data as any).config?.data?.content || ''}
+                                                        onChange={(e) => {
+                                                            const content = e.target.value;
+                                                            setNodes(nds => nds.map(n =>
+                                                                n.id === selectedNode.id
+                                                                    ? { ...n, data: { ...n.data, config: { ...(n.data as any).config, data: { ...(n.data as any).config?.data, content } } } }
+                                                                    : n
+                                                            ));
+                                                        }}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
                                         {/* Fallback to JSON editor for other actions */}
                                         {(selectedNode.data as any).config?.integrationId !== 'openai' &&
                                             (selectedNode.data as any).config?.integrationId !== 'google_gemini' &&
-                                            (selectedNode.data as any).config?.integrationId !== 'discord' && (
+                                            (selectedNode.data as any).config?.integrationId !== 'discord' &&
+                                            (selectedNode.data as any).config?.integrationId !== 'telegram' && (
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-medium text-[var(--muted-fg)] uppercase tracking-wider">
                                                         Data / Payload
