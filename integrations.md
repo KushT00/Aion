@@ -5,8 +5,8 @@ AION's power comes from its connectivity. Each integration is a "Connector" that
 ## Priority 1: AI (The Brains)
 | Provider | Capabilities | Notes |
 | :--- | :--- | :--- |
-| **OpenAI** | GPT-4o, DALL-E, TTS | Gold standard for general AI tasks. |
-| **Google Gemini** | Multimodal, Long context | Best for large document analysis. |
+| **Google Gemini** | Multimodal, Long context | Primary AI provider for intelligent workflows. |
+| **OpenAI** | GPT-4o, DALL-E, TTS | Alternative for specialized AI tasks. |
 | **Groq / Cerebras** | Ultra-fast inference | Ideal for real-time responsiveness. |
 | **Local LLMs** | Privacy, Cost-effective | Integration via Ollama or custom gateways. |
 

@@ -78,7 +78,7 @@ create index idx_workflows_status on public.workflows(status);
 create table public.workflow_nodes (
   id          uuid primary key default gen_random_uuid(),
   workflow_id uuid not null references public.workflows(id) on delete cascade,
-  type        text not null check (type in ('input', 'ai_step', 'api_step', 'logic_step', 'output')),
+  type        text not null check (type in ('input', 'trigger', 'ai_action', 'api_action', 'social_action', 'logic_gate', 'data_tool', 'output')),
   label       text not null,
   position_x  float not null default 0,
   position_y  float not null default 0,

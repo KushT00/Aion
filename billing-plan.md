@@ -33,6 +33,6 @@ AION uses a hybrid credits/currency system powered by Stripe.
 - Access to high-quality AI models at wholesale rates.
 
 ## 5. Cost Tracking
-- Each node in the engine reports its "cost" (e.g., OpenAI tokens used).
+- Each node in the engine reports its "cost" (e.g., Gemini tokens used).
 - Total run cost = sum(node costs) + creator margin.
 - Users are notified if their balance is too low to complete a run.

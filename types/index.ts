@@ -34,7 +34,15 @@ export interface Workflow {
   updated_at: string;
 }
 
-export type NodeType = 'input' | 'ai_step' | 'api_step' | 'logic_step' | 'output';
+export type NodeType =
+  | 'input'
+  | 'trigger'
+  | 'ai_action'
+  | 'api_action'
+  | 'social_action'
+  | 'logic_gate'
+  | 'data_tool'
+  | 'output';
 
 export interface WorkflowNode {
   id: string;

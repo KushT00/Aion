@@ -22,7 +22,7 @@ AION is built on a serverless-first, edge-ready tech stack optimized for low lat
 
 ## 4. Third-Party Services
 - **Stripe**: Payments, Wallet balance, and Creator payouts.
-- **AI Gateways**: Direct connection to OpenAI, Gemini, Groq, and Cerebras.
+- **AI Gateways**: Direct connection to Gemini, OpenAI, Groq, and Cerebras.
 - **Upstash (Optional)**: Redis for global rate limiting and caching.
 
 ## 5. Security Model
