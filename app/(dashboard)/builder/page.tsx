@@ -40,7 +40,9 @@ import {
     Settings2,
     Database,
     Clock,
+
     Webhook as WebhookIcon,
+    Calendar,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
@@ -165,7 +167,9 @@ const paletteItems = [
     { type: 'ai_action', label: 'AI Engine', icon: Cpu, integrationId: 'google_gemini' },
     { type: 'social_action', label: 'Discord', icon: MessageSquare, integrationId: 'discord' },
     { type: 'logic_gate', label: 'Logic', icon: GitFork, integrationId: 'logic' },
+
     { type: 'api_action', label: 'HTTP Request', icon: Globe, integrationId: 'api' },
+    { type: 'data_tool', label: 'Google Calendar', icon: Calendar, integrationId: 'google_calendar' },
 ];
 
 // ─── Specialized Configuration Components ──────────────────
@@ -493,6 +497,153 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                         </Button>
                     </div>
                     <p className="text-[10px] opacity-60 italic">Send a POST request with any JSON body to this endpoint to trigger the workflow worker.</p>
+                </div>
+            )}
+        </div>
+    );
+
+}
+
+function GoogleCalendarConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const actionId = config.actionId || 'get_events';
+
+    const updateData = (kv: any) => {
+        updateNode({
+            config: {
+                ...config,
+                data: { ...data, ...kv }
+            }
+        });
+    };
+
+    const updateAction = (newActionId: string) => {
+        updateNode({
+            config: {
+                ...config,
+                actionId: newActionId,
+                // preserve accessToken for convenience
+                data: { ...data, accessToken: data.accessToken }
+            }
+        });
+    };
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
+                <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
+                <div>
+                    <div className="text-xs font-bold text-blue-600 dark:text-blue-400">Google Calendar</div>
+                    <div className="text-[10px] opacity-60">Manage your schedule and events.</div>
+                </div>
+            </div>
+
+            {/* Account Connection */}
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Access Token</label>
+                <div className="flex gap-2">
+                    <input
+                        type="password"
+                        placeholder="Paste OAuth2 Access Token"
+                        className="flex-1 bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                        value={data.accessToken || ''}
+                        onChange={(e) => updateData({ accessToken: e.target.value })}
+                    />
+                    {data.accessToken && (
+                        <div className="flex items-center justify-center px-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg" title="Token Present">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        </div>
+                    )}
+                </div>
+                <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                    1. Go to <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google OAuth Playground</a>.<br />
+                    2. In "Input your own scopes", paste: <code className="bg-[var(--muted)] px-1 rounded text-[9px] select-all">https://www.googleapis.com/auth/calendar</code><br />
+                    3. Click "Authorize APIs" and copy the Access Token.
+                </p>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
+                <select
+                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                    value={actionId}
+                    onChange={(e) => updateAction(e.target.value)}
+                >
+                    <option value="get_events">Get Events</option>
+                    <option value="create_event">Create Event</option>
+                    <option value="update_event">Update Event</option>
+                </select>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Calendar ID</label>
+                <input
+                    type="text"
+                    placeholder="primary"
+                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                    value={data.calendarId || ''}
+                    onChange={(e) => updateData({ calendarId: e.target.value })}
+                />
+            </div>
+
+            {actionId === 'create_event' && (
+                <>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Event Summary</label>
+                        <input
+                            type="text"
+                            placeholder="Meeting with Client"
+                            className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                            value={data.summary || ''}
+                            onChange={(e) => updateData({ summary: e.target.value })}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Start Time</label>
+                            <input
+                                type="datetime-local"
+                                className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                                value={data.startTime || ''}
+                                onChange={(e) => updateData({ startTime: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">End Time</label>
+                            <input
+                                type="datetime-local"
+                                className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                                value={data.endTime || ''}
+                                onChange={(e) => updateData({ endTime: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {actionId === 'update_event' && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Event ID</label>
+                    <input
+                        type="text"
+                        placeholder="Event ID to update"
+                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                        value={data.eventId || ''}
+                        onChange={(e) => updateData({ eventId: e.target.value })}
+                    />
+                </div>
+            )}
+
+            {(actionId === 'create_event' || actionId === 'update_event') && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Description</label>
+                    <textarea
+                        placeholder="Event details..."
+                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-20 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+                        value={data.description || ''}
+                        onChange={(e) => updateData({ description: e.target.value })}
+                    />
                 </div>
             )}
         </div>
@@ -929,7 +1080,10 @@ function BuilderContent() {
                                         <p className="text-xs italic text-[var(--muted-fg)]">Coming soon: Advanced branching and conditional IF/ELSE logic.</p>
                                     </div>
                                 )}
-                                {['api_action', 'data_tool', 'input', 'output'].includes((selectedNode.data as any).type) && (
+                                {selectedNode.data.type === 'data_tool' && ((selectedNode.data.config as any)?.integrationId === 'google_calendar') && (
+                                    <GoogleCalendarConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                )}
+                                {['api_action', 'data_tool', 'input', 'output'].includes((selectedNode.data as any).type) && !((selectedNode.data.config as any)?.integrationId === 'google_calendar') && (
                                     <div className="space-y-4">
                                         <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Advanced JSON Config</label>
                                         <textarea

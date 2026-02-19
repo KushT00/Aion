@@ -375,3 +375,171 @@ registry.register({
         },
     ],
 });
+
+// Google Calendar
+registry.register({
+    id: "google_calendar",
+    name: "Google Calendar",
+    category: "utility",
+    actions: [
+        {
+            id: "get_events",
+            name: "Get Events",
+            description: "List events from a Google Calendar",
+            execute: async (config) => {
+                const { accessToken, calendarId, timeMin, timeMax } = config;
+                if (!accessToken) throw new Error("Google Calendar Access Token is required. Please authorize the app or provide a token.");
+
+                const params = new URLSearchParams({
+                    maxResults: "10",
+                    singleEvents: "true",
+                    orderBy: "startTime",
+                });
+
+                try {
+                    params.append("timeMin", timeMin ? new Date(timeMin).toISOString() : new Date().toISOString());
+                    if (timeMax) params.append("timeMax", new Date(timeMax).toISOString());
+                } catch (e) {
+                    throw new Error("Invalid Date Format for timeMin or timeMax. Use ISO 8601 (YYYY-MM-DDTHH:mm:ssZ).");
+                }
+
+                const calId = calendarId || "primary";
+                const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events?${params.toString()}`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore JSON parse error */ }
+
+                    if (response.status === 404) {
+                        throw new Error(`Calendar Not Found: The Calendar ID '${calId}' is invalid. Try using 'primary'.`);
+                    }
+                    if (response.status === 401) {
+                        throw new Error("Authentication Failed: Your access token may have expired or is invalid. Please refresh it.");
+                    }
+                    if (errorDetails.includes('insufficient authentication scopes')) {
+                        throw new Error("Missing Permission: Your token needs 'https://www.googleapis.com/auth/calendar' scope.");
+                    }
+                    throw new Error(`Google Calendar Error (${response.status}): ${errorDetails}`);
+                }
+
+                return await response.json();
+            },
+        },
+        {
+            id: "create_event",
+            name: "Create Event",
+            description: "Create a new event in Google Calendar",
+            execute: async (config) => {
+                const { accessToken, calendarId, summary, description, startTime, endTime } = config;
+                if (!accessToken) throw new Error("Google Calendar Access Token is required.");
+                if (!summary) throw new Error("Event summary is required.");
+                if (!startTime || !endTime) throw new Error("Start and End times are required.");
+
+                const calId = calendarId || "primary";
+
+                let startISO, endISO;
+                try {
+                    startISO = new Date(startTime).toISOString();
+                    endISO = new Date(endTime).toISOString();
+                } catch (e) {
+                    throw new Error("Invalid Date Format for Start or End Time. Use ISO 8601 (YYYY-MM-DDTHH:mm:ssZ).");
+                }
+
+                const event = {
+                    summary,
+                    description,
+                    start: { dateTime: startISO },
+                    end: { dateTime: endISO },
+                };
+
+                const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(event),
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore JSON parse error */ }
+
+                    if (response.status === 404) {
+                        throw new Error(`Calendar Not Found: The Calendar ID '${calId}' is invalid. Try using 'primary'.`);
+                    }
+                    if (response.status === 401) {
+                        throw new Error("Authentication Failed: Your access token may have expired or is invalid. Please refresh it.");
+                    }
+                    if (errorDetails.includes('insufficient authentication scopes')) {
+                        throw new Error("Missing Permission: Your token needs 'https://www.googleapis.com/auth/calendar' scope.");
+                    }
+                    throw new Error(`Google Calendar Error (${response.status}): ${errorDetails}`);
+                }
+
+                return await response.json();
+            },
+        },
+        {
+            id: "update_event",
+            name: "Update Event",
+            description: "Update an existing event in Google Calendar",
+            execute: async (config) => {
+                const { accessToken, calendarId, eventId, summary, description } = config;
+                if (!accessToken) throw new Error("Google Calendar Access Token is required.");
+                if (!eventId) throw new Error("Event ID is required.");
+
+                const calId = calendarId || "primary";
+                const updates: any = {};
+                if (summary) updates.summary = summary;
+                if (description) updates.description = description;
+
+                if (Object.keys(updates).length === 0) {
+                    return { message: "No updates provided." };
+                }
+
+                const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${eventId}`, {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(updates),
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore JSON parse error */ }
+
+                    if (response.status === 404) {
+                        throw new Error(`Resource Not Found: Check if Calendar ID '${calId}' or Event ID '${eventId}' are correct.`);
+                    }
+                    if (response.status === 401) {
+                        throw new Error("Authentication Failed: Your access token may have expired or is invalid. Please refresh it.");
+                    }
+                    if (errorDetails.includes('insufficient authentication scopes')) {
+                        throw new Error("Missing Permission: Your token needs 'https://www.googleapis.com/auth/calendar' scope.");
+                    }
+                    throw new Error(`Google Calendar Error (${response.status}): ${errorDetails}`);
+                }
+
+                return await response.json();
+            },
+        },
+    ],
+});
