@@ -43,6 +43,7 @@ import {
 
     Webhook as WebhookIcon,
     Calendar,
+    Mail,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
@@ -170,6 +171,7 @@ const paletteItems = [
 
     { type: 'api_action', label: 'HTTP Request', icon: Globe, integrationId: 'api' },
     { type: 'data_tool', label: 'Google Calendar', icon: Calendar, integrationId: 'google_calendar' },
+    { type: 'data_tool', label: 'Google Gmail', icon: Mail, integrationId: 'google_gmail' },
 ];
 
 // ─── Specialized Configuration Components ──────────────────
@@ -439,28 +441,36 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
     };
 
     const isCron = config.integrationId === 'cron';
+    const isGmail = config.integrationId === 'google_gmail_trigger';
+    const isWebhook = config.integrationId === 'webhook' || (!isCron && !isGmail);
 
     return (
         <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
             <div className="space-y-2">
                 <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Trigger Type</label>
-                <div className="flex bg-[var(--muted)] p-1 rounded-lg">
+                <div className="flex bg-[var(--muted)] p-1 rounded-lg gap-1">
                     <button
                         onClick={() => updateNode({ config: { ...config, integrationId: 'cron', actionId: 'schedule' } })}
-                        className={cn("flex-1 px-3 py-1.5 rounded-md text-xs transition-all", isCron ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)]" : "opacity-60")}
+                        className={cn("flex-1 px-2 py-1.5 rounded-md text-xs transition-all", isCron ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)]" : "opacity-60")}
                     >
                         Schedule
                     </button>
                     <button
                         onClick={() => updateNode({ config: { ...config, integrationId: 'webhook', actionId: 'receive' } })}
-                        className={cn("flex-1 px-3 py-1.5 rounded-md text-xs transition-all", !isCron ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)]" : "opacity-60")}
+                        className={cn("flex-1 px-2 py-1.5 rounded-md text-xs transition-all", isWebhook ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)]" : "opacity-60")}
                     >
                         Webhook
+                    </button>
+                    <button
+                        onClick={() => updateNode({ config: { ...config, integrationId: 'google_gmail_trigger', actionId: 'on_new_email' } })}
+                        className={cn("flex-1 px-2 py-1.5 rounded-md text-xs transition-all flex items-center justify-center gap-1", isGmail ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)] text-red-600 dark:text-red-400" : "opacity-60")}
+                    >
+                        <Mail className="w-3 h-3" /> Gmail
                     </button>
                 </div>
             </div>
 
-            {isCron ? (
+            {isCron && (
                 <div className="space-y-3">
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Cron Expression</label>
@@ -476,7 +486,9 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                         </div>
                     </div>
                 </div>
-            ) : (
+            )}
+
+            {(isWebhook || isGmail) && (
                 <div className="space-y-2">
                     <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Webhook Endpoint (Production)</label>
                     <div className="relative group">
@@ -496,12 +508,15 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                             <Upload className="w-3 h-3" />
                         </Button>
                     </div>
-                    <p className="text-[10px] opacity-60 italic">Send a POST request with any JSON body to this endpoint to trigger the workflow worker.</p>
+                    {isGmail ? (
+                        <p className="text-[10px] opacity-60 italic text-red-600 dark:text-red-400">Configure Gmail to forward emails or Push Notifications to this endpoint. The workflow will run when a new email payload is received.</p>
+                    ) : (
+                        <p className="text-[10px] opacity-60 italic">Send a POST request with any JSON body to this endpoint to trigger the workflow worker.</p>
+                    )}
                 </div>
             )}
         </div>
     );
-
 }
 
 function GoogleCalendarConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
@@ -645,6 +660,187 @@ function GoogleCalendarConfiguration({ node, updateNode, workflowId }: { node: a
                         onChange={(e) => updateData({ description: e.target.value })}
                     />
                 </div>
+            )}
+        </div>
+    );
+}
+
+function GoogleGmailConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const actionId = config.actionId || 'send_email';
+
+    const updateData = (kv: any) => {
+        updateNode({
+            config: {
+                ...config,
+                data: { ...data, ...kv }
+            }
+        });
+    };
+
+    const updateAction = (newActionId: string) => {
+        updateNode({
+            config: {
+                ...config,
+                actionId: newActionId,
+                data: { ...data, accessToken: data.accessToken }
+            }
+        });
+    };
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
+                <Mail className="w-5 h-5 text-red-500 mt-0.5" />
+                <div>
+                    <div className="text-xs font-bold text-red-600 dark:text-red-400">Google Gmail</div>
+                    <div className="text-[10px] opacity-60">Automate your email workflow.</div>
+                </div>
+            </div>
+
+            {/* Account Connection */}
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Access Token</label>
+                <div className="flex gap-2">
+                    <input
+                        type="password"
+                        placeholder="Paste OAuth2 Access Token"
+                        className="flex-1 bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                        value={data.accessToken || ''}
+                        onChange={(e) => updateData({ accessToken: e.target.value })}
+                    />
+                    {data.accessToken && (
+                        <div className="flex items-center justify-center px-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg" title="Token Present">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        </div>
+                    )}
+                </div>
+                <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                    1. Go to <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google OAuth Playground</a>.<br />
+                    2. Scopes: <code className="bg-[var(--muted)] px-1 rounded text-[9px] select-all">https://mail.google.com/</code><br />
+                    3. Click "Authorize APIs" and copy the Access Token.
+                </p>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
+                <select
+                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                    value={actionId}
+                    onChange={(e) => updateAction(e.target.value)}
+                >
+                    <option value="send_email">Send Email</option>
+                    <option value="reply_email">Reply to Email</option>
+                    <option value="fetch_emails">Fetch Emails</option>
+                    <option value="modify_email">Modify Labels</option>
+                    <option value="delete_archive">Delete/Archive</option>
+                </select>
+            </div>
+
+            {actionId === 'send_email' && (
+                <>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">To</label>
+                        <input type="text" placeholder="recipient@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.to || ''} onChange={(e) => updateData({ to: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">CC</label>
+                            <input type="text" placeholder="cc@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.cc || ''} onChange={(e) => updateData({ cc: e.target.value })} />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">BCC</label>
+                            <input type="text" placeholder="bcc@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.bcc || ''} onChange={(e) => updateData({ bcc: e.target.value })} />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Subject</label>
+                        <input type="text" placeholder="Email Subject" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.subject || ''} onChange={(e) => updateData({ subject: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Thread ID (Optional)</label>
+                        <input type="text" placeholder="To continue an existing thread" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.threadId || ''} onChange={(e) => updateData({ threadId: e.target.value })} />
+                    </div>
+                </>
+            )}
+
+            {actionId === 'reply_email' && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID to Reply</label>
+                    <input type="text" placeholder="Original Message ID" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
+                </div>
+            )}
+
+            {(actionId === 'send_email' || actionId === 'reply_email') && (
+                <>
+                    <div className="flex items-center gap-2 mt-2">
+                        <input type="checkbox" id="isHtml" checked={!!data.isHtml} onChange={(e) => updateData({ isHtml: e.target.checked })} className="rounded cursor-pointer" />
+                        <label htmlFor="isHtml" className="text-xs font-semibold text-[var(--fg)] cursor-pointer">Send as HTML</label>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Body</label>
+                        <textarea placeholder="Email Content..." className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-primary-500 resize-none" value={data.body || ''} onChange={(e) => updateData({ body: e.target.value })} />
+                    </div>
+                </>
+            )}
+
+            {actionId === 'fetch_emails' && (
+                <>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Search Query</label>
+                        <input type="text" placeholder="is:unread label:important" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.query || ''} onChange={(e) => updateData({ query: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Label IDs</label>
+                            <input type="text" placeholder="INBOX, UNREAD" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.labelIds || ''} onChange={(e) => updateData({ labelIds: e.target.value })} />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Max Results</label>
+                            <input type="number" placeholder="10" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.maxResults || ''} onChange={(e) => updateData({ maxResults: e.target.value })} />
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {actionId === 'modify_email' && (
+                <>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID</label>
+                        <input type="text" placeholder="Message ID to modify" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Add Labels</label>
+                            <input type="text" placeholder="e.g. STARRED" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.addLabelIds || ''} onChange={(e) => updateData({ addLabelIds: e.target.value })} />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Remove Labels</label>
+                            <input type="text" placeholder="e.g. UNREAD" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.removeLabelIds || ''} onChange={(e) => updateData({ removeLabelIds: e.target.value })} />
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {actionId === 'delete_archive' && (
+                <>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID</label>
+                        <input type="text" placeholder="Message ID" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
+                        <select
+                            className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
+                            value={data.actionType || 'trash'}
+                            onChange={(e) => updateData({ actionType: e.target.value })}
+                        >
+                            <option value="trash">Move to Trash</option>
+                            <option value="archive">Archive (Remove INBOX)</option>
+                        </select>
+                    </div>
+                </>
             )}
         </div>
     );
@@ -1083,7 +1279,10 @@ function BuilderContent() {
                                 {selectedNode.data.type === 'data_tool' && ((selectedNode.data.config as any)?.integrationId === 'google_calendar') && (
                                     <GoogleCalendarConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                 )}
-                                {['api_action', 'data_tool', 'input', 'output'].includes((selectedNode.data as any).type) && !((selectedNode.data.config as any)?.integrationId === 'google_calendar') && (
+                                {selectedNode.data.type === 'data_tool' && ((selectedNode.data.config as any)?.integrationId === 'google_gmail') && (
+                                    <GoogleGmailConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                )}
+                                {['api_action', 'data_tool', 'input', 'output'].includes((selectedNode.data as any).type) && !((selectedNode.data.config as any)?.integrationId === 'google_calendar' || (selectedNode.data.config as any)?.integrationId === 'google_gmail') && (
                                     <div className="space-y-4">
                                         <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Advanced JSON Config</label>
                                         <textarea

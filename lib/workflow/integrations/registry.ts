@@ -326,6 +326,24 @@ registry.register({
     ],
 });
 
+registry.register({
+    id: "google_gmail_trigger",
+    name: "New Email (Gmail)",
+    category: "trigger",
+    actions: [
+        {
+            id: "on_new_email",
+            name: "On New Email",
+            description: "Triggers the workflow when a new email arrives",
+            execute: async (config, input) => {
+                // Returns the payload received from the Gmail webhook / pubsub
+                return input;
+            },
+        },
+    ],
+});
+
+
 // HTTP / API
 registry.register({
     id: "api",
@@ -539,6 +557,249 @@ registry.register({
                 }
 
                 return await response.json();
+            },
+        },
+    ],
+});
+
+// Google Gmail
+registry.register({
+    id: "google_gmail",
+    name: "Google Gmail",
+    category: "utility",
+    actions: [
+        {
+            id: "send_email",
+            name: "Send Email",
+            description: "Send a new email",
+            execute: async (config) => {
+                const { accessToken, to, cc, bcc, subject, body, isHtml, threadId } = config;
+                if (!accessToken) throw new Error("Google Gmail Access Token is required.");
+                if (!to) throw new Error("Recipient address (to) is required.");
+
+                const headers = [
+                    `To: ${to}`,
+                    ...(cc ? [`Cc: ${cc}`] : []),
+                    ...(bcc ? [`Bcc: ${bcc}`] : []),
+                    `Subject: ${subject || ""}`,
+                ];
+
+                if (isHtml) {
+                    headers.push('Content-Type: text/html; charset="UTF-8"');
+                } else {
+                    headers.push('Content-Type: text/plain; charset="UTF-8"');
+                }
+
+                const emailStr = headers.join("\r\n") + "\r\n\r\n" + (body || "");
+                const base64EncodedEmail = btoa(unescape(encodeURIComponent(emailStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+                const payload: any = { raw: base64EncodedEmail };
+                if (threadId) { payload.threadId = threadId; }
+
+                const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore */ }
+                    throw new Error(`Gmail Error: ${errorDetails}`);
+                }
+                return await response.json();
+            },
+        },
+        {
+            id: "reply_email",
+            name: "Reply to Email",
+            description: "Reply to a specific email maintaining thread context",
+            execute: async (config) => {
+                const { accessToken, messageId, body, isHtml } = config;
+                if (!accessToken || !messageId) throw new Error("Access Token and Message ID are required.");
+
+                const getRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=From`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                if (!getRes.ok) throw new Error("Failed to fetch original message for reply.");
+                const originalMsg = await getRes.json();
+                const headersMap = new Map();
+                originalMsg.payload?.headers?.forEach((h: any) => headersMap.set(h.name.toLowerCase(), h.value));
+
+                const origSubject = headersMap.get("subject") || "";
+                const subject = origSubject.startsWith("Re:") ? origSubject : `Re: ${origSubject}`;
+                const to = headersMap.get("from") || "";
+                const origMessageId = headersMap.get("message-id") || "";
+                const origReferences = headersMap.get("references") || "";
+
+                const replyHeaders = [
+                    `To: ${to}`,
+                    `Subject: ${subject}`,
+                    `In-Reply-To: ${origMessageId}`,
+                    `References: ${origReferences ? origReferences + " " : ""}${origMessageId}`
+                ];
+                if (isHtml) {
+                    replyHeaders.push('Content-Type: text/html; charset="UTF-8"');
+                } else {
+                    replyHeaders.push('Content-Type: text/plain; charset="UTF-8"');
+                }
+                const emailStr = replyHeaders.join("\r\n") + "\r\n\r\n" + (body || "");
+                const base64Str = btoa(unescape(encodeURIComponent(emailStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+                const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ raw: base64Str, threadId: originalMsg.threadId }),
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore */ }
+                    throw new Error(`Gmail Error: ${errorDetails}`);
+                }
+                return await response.json();
+            }
+        },
+        {
+            id: "fetch_emails",
+            name: "Fetch Emails",
+            description: "Fetch emails from Google Gmail",
+            execute: async (config) => {
+                const { accessToken, maxResults, query, labelIds } = config;
+                if (!accessToken) throw new Error("Google Gmail Access Token is required.");
+
+                const params = new URLSearchParams();
+                if (maxResults) params.append("maxResults", maxResults);
+                else params.append("maxResults", "10");
+
+                if (query) params.append("q", query);
+                if (labelIds) {
+                    const labels = labelIds.split(",").map((l: string) => l.trim());
+                    labels.forEach((l: string) => params.append("labelIds", l));
+                }
+
+                const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore */ }
+                    throw new Error(`Gmail Error: ${errorDetails}`);
+                }
+
+                const data = await response.json();
+                if (!data.messages) return { messages: [] };
+
+                const msgDetails = await Promise.all(data.messages.map(async (msg: any) => {
+                    const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+                    if (msgRes.ok) return await msgRes.json();
+                    return msg;
+                }));
+
+                return { messages: msgDetails };
+            },
+        },
+        {
+            id: "modify_email",
+            name: "Modify Email",
+            description: "Add/Remove Labels or Mark as Read/Unread",
+            execute: async (config) => {
+                const { accessToken, messageId, addLabelIds, removeLabelIds } = config;
+                if (!accessToken) throw new Error("Google Gmail Access Token is required.");
+                if (!messageId) throw new Error("Message ID is required.");
+
+                const payload: any = {};
+                if (addLabelIds) {
+                    payload.addLabelIds = addLabelIds.split(",").map((l: string) => l.trim());
+                }
+                if (removeLabelIds) {
+                    payload.removeLabelIds = removeLabelIds.split(",").map((l: string) => l.trim());
+                }
+
+                const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    let errorDetails = response.statusText;
+                    try {
+                        const error = await response.json();
+                        errorDetails = error.error?.message || response.statusText;
+                    } catch { /* ignore */ }
+                    throw new Error(`Gmail Error: ${errorDetails}`);
+                }
+                return await response.json();
+            },
+        },
+        {
+            id: "delete_archive",
+            name: "Delete / Archive Email",
+            description: "Move an email to trash or archive it",
+            execute: async (config) => {
+                const { accessToken, messageId, actionType } = config;
+                if (!accessToken) throw new Error("Google Gmail Access Token is required.");
+                if (!messageId) throw new Error("Message ID is required.");
+
+                if (actionType === "trash") {
+                    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    if (!response.ok && response.status !== 200) {
+                        let errorDetails = response.statusText;
+                        try {
+                            const error = await response.json();
+                            errorDetails = error.error?.message || response.statusText;
+                        } catch { /* ignore */ }
+                        throw new Error(`Gmail Error: ${errorDetails}`);
+                    }
+                    return { success: true, action: "trashed", messageId };
+                } else {
+                    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+                    });
+                    if (!response.ok) {
+                        let errorDetails = response.statusText;
+                        try {
+                            const error = await response.json();
+                            errorDetails = error.error?.message || response.statusText;
+                        } catch { /* ignore */ }
+                        throw new Error(`Gmail Error: ${errorDetails}`);
+                    }
+                    return await response.json();
+                }
             },
         },
     ],
