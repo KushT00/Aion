@@ -106,6 +106,10 @@ export class WorkflowRunner {
         return sorted;
     }
 
+    getLogs(): RunLog[] {
+        return this.logs;
+    }
+
     async execute(triggerData: any = {}, onLog?: (log: RunLog) => void): Promise<any> {
         this.context.trigger = triggerData;
         const sortedNodes = this.getSortedNodes();

@@ -404,9 +404,10 @@ registry.register({
             id: "get_events",
             name: "Get Events",
             description: "List events from a Google Calendar",
-            execute: async (config) => {
-                const { accessToken, calendarId, timeMin, timeMax } = config;
-                if (!accessToken) throw new Error("Google Calendar Access Token is required. Please authorize the app or provide a token.");
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { calendarId, timeMin, timeMax } = config;
+                if (!accessToken) throw new Error("Google Calendar Access Token is required.");
 
                 const params = new URLSearchParams({
                     maxResults: "10",
@@ -456,8 +457,9 @@ registry.register({
             id: "create_event",
             name: "Create Event",
             description: "Create a new event in Google Calendar",
-            execute: async (config) => {
-                const { accessToken, calendarId, summary, description, startTime, endTime } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { calendarId, summary, description, startTime, endTime } = config;
                 if (!accessToken) throw new Error("Google Calendar Access Token is required.");
                 if (!summary) throw new Error("Event summary is required.");
                 if (!startTime || !endTime) throw new Error("Start and End times are required.");
@@ -514,8 +516,9 @@ registry.register({
             id: "update_event",
             name: "Update Event",
             description: "Update an existing event in Google Calendar",
-            execute: async (config) => {
-                const { accessToken, calendarId, eventId, summary, description } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { calendarId, eventId, summary, description } = config;
                 if (!accessToken) throw new Error("Google Calendar Access Token is required.");
                 if (!eventId) throw new Error("Event ID is required.");
 
@@ -572,8 +575,9 @@ registry.register({
             id: "send_email",
             name: "Send Email",
             description: "Send a new email",
-            execute: async (config) => {
-                const { accessToken, to, cc, bcc, subject, body, isHtml, threadId } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { to, cc, bcc, subject, body, isHtml, threadId } = config;
                 if (!accessToken) throw new Error("Google Gmail Access Token is required.");
                 if (!to) throw new Error("Recipient address (to) is required.");
 
@@ -620,8 +624,9 @@ registry.register({
             id: "reply_email",
             name: "Reply to Email",
             description: "Reply to a specific email maintaining thread context",
-            execute: async (config) => {
-                const { accessToken, messageId, body, isHtml } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { messageId, body, isHtml } = config;
                 if (!accessToken || !messageId) throw new Error("Access Token and Message ID are required.");
 
                 const getRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=From`, {
@@ -652,14 +657,19 @@ registry.register({
                 const emailStr = replyHeaders.join("\r\n") + "\r\n\r\n" + (body || "");
                 const base64Str = btoa(unescape(encodeURIComponent(emailStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-                const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ raw: base64Str, threadId: originalMsg.threadId }),
-                });
+                let response;
+                try {
+                    response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ raw: base64Str, threadId: originalMsg.threadId }),
+                    });
+                } catch (err: any) {
+                    throw new Error(`Gmail Network Error: ${err.message}. (Check Adblockers or Google Cloud Origin settings)`);
+                }
 
                 if (!response.ok) {
                     let errorDetails = response.statusText;
@@ -676,27 +686,32 @@ registry.register({
             id: "fetch_emails",
             name: "Fetch Emails",
             description: "Fetch emails from Google Gmail",
-            execute: async (config) => {
-                const { accessToken, maxResults, query, labelIds } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { maxResults, query, labelIds } = config;
                 if (!accessToken) throw new Error("Google Gmail Access Token is required.");
 
                 const params = new URLSearchParams();
-                if (maxResults) params.append("maxResults", maxResults);
+                if (maxResults) params.append("maxResults", String(maxResults));
                 else params.append("maxResults", "10");
 
                 if (query) params.append("q", query);
-                if (labelIds) {
-                    const labels = labelIds.split(",").map((l: string) => l.trim());
+                if (labelIds && typeof labelIds === 'string') {
+                    const labels = labelIds.split(",").map((l: string) => l.trim()).filter(Boolean);
                     labels.forEach((l: string) => params.append("labelIds", l));
                 }
 
-                const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`, {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`,
-                        "Content-Type": "application/json",
-                    },
-                });
+                let response;
+                try {
+                    response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`, {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                        },
+                    });
+                } catch (err: any) {
+                    throw new Error(`Gmail Network Error: ${err.message}. (Check if http://localhost:3000 is added to Authorized JavaScript Origins in Google Console)`);
+                }
 
                 if (!response.ok) {
                     let errorDetails = response.statusText;
@@ -708,25 +723,45 @@ registry.register({
                 }
 
                 const data = await response.json();
-                if (!data.messages) return { messages: [] };
+                if (!data.messages) return { messages: [], from: '', subject: '', date: '', body: '' };
 
                 const msgDetails = await Promise.all(data.messages.map(async (msg: any) => {
-                    const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
-                        headers: { Authorization: `Bearer ${accessToken}` }
-                    });
-                    if (msgRes.ok) return await msgRes.json();
-                    return msg;
+                    try {
+                        const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+                            headers: { Authorization: `Bearer ${accessToken}` }
+                        });
+                        if (msgRes.ok) return await msgRes.json();
+                        return msg;
+                    } catch (e) {
+                        return msg; // Fallback to basic info if detail fetch fails
+                    }
                 }));
 
-                return { messages: msgDetails };
+                // Helper to extract flattened data from the first message
+                const first = msgDetails[0];
+                let flattened = { from: '', subject: '', date: '', body: '' };
+                if (first && first.payload) {
+                    const headers = first.payload.headers || [];
+                    flattened.from = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || '';
+                    flattened.subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '';
+                    flattened.date = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value || '';
+                    flattened.body = first.snippet || '';
+                }
+
+                return {
+                    messages: msgDetails,
+                    ...flattened,
+                    count: msgDetails.length
+                };
             },
         },
         {
             id: "modify_email",
             name: "Modify Email",
             description: "Add/Remove Labels or Mark as Read/Unread",
-            execute: async (config) => {
-                const { accessToken, messageId, addLabelIds, removeLabelIds } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { messageId, addLabelIds, removeLabelIds } = config;
                 if (!accessToken) throw new Error("Google Gmail Access Token is required.");
                 if (!messageId) throw new Error("Message ID is required.");
 
@@ -762,8 +797,9 @@ registry.register({
             id: "delete_archive",
             name: "Delete / Archive Email",
             description: "Move an email to trash or archive it",
-            execute: async (config) => {
-                const { accessToken, messageId, actionType } = config;
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { messageId, actionType } = config;
                 if (!accessToken) throw new Error("Google Gmail Access Token is required.");
                 if (!messageId) throw new Error("Message ID is required.");
 
@@ -799,6 +835,381 @@ registry.register({
                         throw new Error(`Gmail Error: ${errorDetails}`);
                     }
                     return await response.json();
+                }
+            },
+        },
+    ],
+});
+
+// ─── Slack ───────────────────────────────────────────────────
+registry.register({
+    id: "slack",
+    name: "Slack",
+    category: "communication",
+    actions: [
+        {
+            id: "send_message",
+            name: "Send Message",
+            description: "Send a message to a Slack channel via Incoming Webhook",
+            execute: async (config) => {
+                const { webhookUrl, text, username, iconEmoji, channel } = config;
+                if (!webhookUrl) throw new Error("Slack Webhook URL is required");
+                const payload: any = { text: text || "" };
+                if (username) payload.username = username;
+                if (iconEmoji) payload.icon_emoji = iconEmoji;
+                if (channel) payload.channel = channel;
+                const res = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) throw new Error(`Slack Error: ${res.statusText}`);
+                return { success: true };
+            },
+        },
+    ],
+});
+
+// ─── Telegram ────────────────────────────────────────────────
+registry.register({
+    id: "telegram",
+    name: "Telegram Bot",
+    category: "communication",
+    actions: [
+        {
+            id: "send_message",
+            name: "Send Message",
+            description: "Send a message via Telegram Bot",
+            execute: async (config) => {
+                const { botToken, chatId, text, parseMode } = config;
+                if (!botToken) throw new Error("Telegram Bot Token is required");
+                if (!chatId) throw new Error("Chat ID is required");
+                const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ chat_id: chatId, text: text || "", parse_mode: parseMode || "Markdown" }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(`Telegram Error: ${err.description || res.statusText}`);
+                }
+                return await res.json();
+            },
+        },
+    ],
+});
+
+// ─── Notion ──────────────────────────────────────────────────
+registry.register({
+    id: "notion",
+    name: "Notion",
+    category: "utility",
+    actions: [
+        {
+            id: "create_page",
+            name: "Create Page",
+            description: "Create a new page in a Notion database",
+            execute: async (config) => {
+                const { apiKey, databaseId, title, content } = config;
+                if (!apiKey) throw new Error("Notion API Key is required");
+                if (!databaseId) throw new Error("Database ID is required");
+                const res = await fetch("https://api.notion.com/v1/pages", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                        "Notion-Version": "2022-06-28",
+                    },
+                    body: JSON.stringify({
+                        parent: { database_id: databaseId },
+                        properties: {
+                            Name: { title: [{ text: { content: title || "Untitled" } }] },
+                        },
+                        children: content ? [{
+                            object: "block", type: "paragraph",
+                            paragraph: { rich_text: [{ text: { content } }] },
+                        }] : [],
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(`Notion Error: ${err.message || res.statusText}`);
+                }
+                return await res.json();
+            },
+        },
+        {
+            id: "append_block",
+            name: "Append Content",
+            description: "Append text to an existing Notion page",
+            execute: async (config) => {
+                const { apiKey, pageId, content } = config;
+                if (!apiKey) throw new Error("Notion API Key is required");
+                if (!pageId) throw new Error("Page ID is required");
+                const res = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                        "Notion-Version": "2022-06-28",
+                    },
+                    body: JSON.stringify({
+                        children: [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ text: { content: content || "" } }] } }],
+                    }),
+                });
+                if (!res.ok) throw new Error(`Notion Error: ${res.statusText}`);
+                return await res.json();
+            },
+        },
+    ],
+});
+
+// ─── Google Sheets ───────────────────────────────────────────
+registry.register({
+    id: "google_sheets",
+    name: "Google Sheets",
+    category: "utility",
+    actions: [
+        {
+            id: "append_row",
+            name: "Append Row",
+            description: "Append a row to a Google Sheet",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { spreadsheetId, range, values } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+                if (!spreadsheetId) throw new Error("Spreadsheet ID is required");
+                const parsedValues = typeof values === "string" ? JSON.parse(values) : values;
+                const res = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range || "Sheet1"}:append?valueInputOption=USER_ENTERED`,
+                    {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ values: [parsedValues] }),
+                    }
+                );
+                if (!res.ok) throw new Error(`Sheets Error: ${res.statusText}`);
+                return await res.json();
+            },
+        },
+        {
+            id: "read_range",
+            name: "Read Range",
+            description: "Read cells from a Google Sheet",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { spreadsheetId, range } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+                const res = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range || "Sheet1"}`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } }
+                );
+                if (!res.ok) throw new Error(`Sheets Error: ${res.statusText}`);
+                return await res.json();
+            },
+        },
+    ],
+});
+
+// ─── OpenRouter (300+ AI Models) ─────────────────────────────
+registry.register({
+    id: "openrouter",
+    name: "OpenRouter",
+    category: "ai",
+    actions: [
+        {
+            id: "chat",
+            name: "Chat Completion",
+            description: "Access 300+ AI models via OpenRouter",
+            execute: async (config) => {
+                const { apiKey, model, systemPrompt, userPrompt, temperature, maxTokens } = config;
+                if (!apiKey) throw new Error("OpenRouter API Key is required");
+                const messages: any[] = [];
+                if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+                messages.push({ role: "user", content: userPrompt || "" });
+                const payload: any = { model: model || "mistralai/mistral-7b-instruct", messages };
+                if (temperature) payload.temperature = Number(temperature);
+                if (maxTokens) payload.max_tokens = Number(maxTokens);
+                const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://aion.app",
+                        "X-Title": "AION",
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(`OpenRouter Error: ${err.error?.message || res.statusText}`);
+                }
+                const data = await res.json();
+                return { text: data.choices[0].message.content };
+            },
+        },
+    ],
+});
+
+// ─── Logic: IF/ELSE ──────────────────────────────────────────
+registry.register({
+    id: "if_else",
+    name: "IF / ELSE",
+    category: "logic",
+    actions: [
+        {
+            id: "condition",
+            name: "Condition Check",
+            description: "Branch workflow based on a condition",
+            execute: async (config, context) => {
+                const { leftValue, operator, rightValue } = config;
+                let left = leftValue;
+                let right = rightValue;
+                // Auto-convert numbers
+                if (!isNaN(Number(left)) && !isNaN(Number(right))) { left = Number(left); right = Number(right); }
+                let result = false;
+                switch (operator) {
+                    case "equals": result = left == right; break;
+                    case "not_equals": result = left != right; break;
+                    case "greater_than": result = Number(left) > Number(right); break;
+                    case "less_than": result = Number(left) < Number(right); break;
+                    case "contains": result = String(left).includes(String(right)); break;
+                    case "not_contains": result = !String(left).includes(String(right)); break;
+                    case "starts_with": result = String(left).startsWith(String(right)); break;
+                    case "is_empty": result = !left || String(left).trim() === ""; break;
+                    case "is_not_empty": result = !!left && String(left).trim() !== ""; break;
+                    default: result = Boolean(left);
+                }
+                return { result, branch: result ? "true" : "false", leftValue: left, rightValue: right };
+            },
+        },
+    ],
+});
+
+// ─── Logic: Loop ─────────────────────────────────────────────
+registry.register({
+    id: "loop",
+    name: "Loop",
+    category: "logic",
+    actions: [
+        {
+            id: "for_each",
+            name: "For Each Item",
+            description: "Iterate over an array of items",
+            execute: async (config) => {
+                const { inputArray } = config;
+                const arr = typeof inputArray === "string" ? JSON.parse(inputArray) : inputArray;
+                if (!Array.isArray(arr)) throw new Error("Input must be an array");
+                return { items: arr, count: arr.length, currentItem: arr[0] };
+            },
+        },
+    ],
+});
+
+// ─── Utility: Set Variable ────────────────────────────────────
+registry.register({
+    id: "set_variable",
+    name: "Set Variable",
+    category: "utility",
+    actions: [
+        {
+            id: "set",
+            name: "Set Values",
+            description: "Set named variables to pass data through the workflow",
+            execute: async (config) => {
+                const { variables } = config;
+                if (typeof variables === "string") return JSON.parse(variables);
+                return variables || {};
+            },
+        },
+    ],
+});
+
+// ─── Utility: Transform / Map Data ───────────────────────────
+registry.register({
+    id: "transform",
+    name: "Transform Data",
+    category: "utility",
+    actions: [
+        {
+            id: "map",
+            name: "Map / Extract Fields",
+            description: "Extract or reshape fields from input data",
+            execute: async (config, context) => {
+                const { expression } = config;
+                // expression is a JS expression string evaluated with the context
+                try {
+                    const fn = new Function("data", "context", `"use strict"; return (${expression})`);
+                    return fn(context?.nodes || {}, context);
+                } catch (e: any) {
+                    throw new Error(`Transform error: ${e.message}`);
+                }
+            },
+        },
+    ],
+});
+
+// ─── Utility: Delay / Wait ────────────────────────────────────
+registry.register({
+    id: "delay",
+    name: "Delay / Wait",
+    category: "utility",
+    actions: [
+        {
+            id: "wait",
+            name: "Wait",
+            description: "Pause execution for a number of seconds",
+            execute: async (config) => {
+                const seconds = Math.min(Number(config.seconds || 1), 60); // max 60s
+                await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+                return { waited_seconds: seconds, continued_at: new Date().toISOString() };
+            },
+        },
+    ],
+});
+
+// ─── Utility: Merge ──────────────────────────────────────────
+registry.register({
+    id: "merge",
+    name: "Merge",
+    category: "utility",
+    actions: [
+        {
+            id: "combine",
+            name: "Combine Inputs",
+            description: "Merge outputs from multiple nodes into one object",
+            execute: async (config, context) => {
+                const { nodeIds } = config;
+                const ids: string[] = typeof nodeIds === "string" ? nodeIds.split(",").map(s => s.trim()) : nodeIds || [];
+                const merged: any = {};
+                for (const id of ids) {
+                    if (context?.nodes?.[id]) merged[id] = context.nodes[id];
+                }
+                return merged;
+            },
+        },
+    ],
+});
+
+// ─── Code Runner (JS Sandbox) ────────────────────────────────
+registry.register({
+    id: "code",
+    name: "Code",
+    category: "utility",
+    actions: [
+        {
+            id: "run_js",
+            name: "Run JavaScript",
+            description: "Execute custom JavaScript code with access to node outputs",
+            execute: async (config, context) => {
+                const { code: userCode } = config;
+                if (!userCode) return {};
+                try {
+                    const fn = new Function("$input", "context", `"use strict";\n${userCode}`);
+                    const result = fn(context?.nodes || {}, context);
+                    return { result: await result };
+                } catch (e: any) {
+                    throw new Error(`Code Error: ${e.message}`);
                 }
             },
         },
