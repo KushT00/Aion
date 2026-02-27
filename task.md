@@ -77,7 +77,7 @@
 ### Communication & Notifications
 - [ ] Slack (Webhooks & Bot API) (In Progress)
 - [x] Discord (Webhooks)
-- [/] Telegram Bot integration (Send Message)
+- [x] Telegram Bot integration (Send Message)
 - [ ] Email SMTP & SendGrid/Resend
 
 ### Productivity & Workspace
@@ -93,11 +93,11 @@
 - [ ] Pinecone / Weaviate (Vector DB memory)
 
 ### Utilities & Triggers
-- [ ] Webhook Trigger (Incoming JSON)
-- [ ] Cron / Schedule Trigger
+- [x] Webhook Trigger (Incoming JSON)
+- [x] Cron / Schedule Trigger
 - [ ] PDF Text Extractor
 - [ ] CSV/JSON Parser
-- [ ] Custom API Connector (HTTP Request node)
+- [x] Custom API Connector (HTTP Request node)
 
 ---
 
@@ -122,6 +122,7 @@
 ## 🎨 Phase 4: Premium UI/UX Enhancements
 
 ### Visual Builder Upgrades
+- [x] Restore delete node button
 - [ ] Drag animations (Framer Motion)
 - [ ] Mini-map & Layout auto-arrange
 - [ ] Live execution debugging visualization
