@@ -7,6 +7,7 @@ export async function POST(
     request: NextRequest,
     context: { params: Promise<{ workflowId: string; nodeId: string }> }
 ) {
+    console.log("📍 [GENERIC ROUTE] POST BEGIN");
     const { workflowId, nodeId } = await context.params;
     const supabase = createAdminClient();
 

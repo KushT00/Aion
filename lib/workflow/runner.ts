@@ -35,43 +35,69 @@ export class WorkflowRunner {
         if (typeof config === "string") {
             // Basic mustache-style resolution: {{nodeId/label.property}}
             return config.replace(/\{\{(.+?)\}\}/g, (_, path) => {
-                const [identifier, ...parts] = path.trim().split(".");
+                const parts = path.trim().split(".");
+                const identifier = parts[0];
+                const propertyPath = parts.slice(1);
 
                 // 1. Resolve environmental variables
                 if (identifier === "env") {
-                    return this.context.env[parts[0]] || `{{${path}}}`;
+                    return this.context.env[propertyPath[0]] || `{{${path}}}`;
                 }
 
-                // 2. Try to find node by ID or Label (fuzzy match for label)
+                // 2. Try to find node result (by ID or Label)
                 let nodeResult = this.context.nodes[identifier];
-                if (!nodeResult) {
-                    const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
-                    const target = normalize(identifier);
 
-                    const nodeByLabel = this.nodes.find(n => normalize(n.label) === target);
-                    if (nodeByLabel) nodeResult = this.context.nodes[nodeByLabel.id];
+                const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+                const target = normalize(identifier);
+
+                if (!nodeResult && identifier !== "trigger" && identifier !== "input" && identifier !== "output") {
+                    // Try to find by label
+                    const nodeByLabel = this.nodes.find(n => normalize(n.label || '') === target);
+                    if (nodeByLabel) {
+                        nodeResult = this.context.nodes[nodeByLabel.id];
+                    }
                 }
 
-                let value = nodeResult || (identifier === "trigger" ? this.context.trigger : undefined);
+                // fallback to trigger if identifier is 'trigger', 'output', 'input'
+                // OR fallback to trigger as a general context if nothing else matches (bare variables like {{text}})
+                let value = nodeResult || (['trigger', 'output', 'input'].includes(target) ? this.context.trigger : this.context.trigger[identifier]);
 
-                // 3. Resolve parts, skip "output" if it's the first part of the result query
-                const effectiveParts = parts[0]?.toLowerCase() === "output" ? parts.slice(1) : parts;
+                // If value is still undefined but identifier is not a reserved name, 
+                // it might be a property of the trigger itself (bare variable)
+                if (value === undefined && identifier !== 'trigger' && identifier !== 'input' && identifier !== 'output') {
+                    value = this.context.trigger[identifier];
+                }
+
+                // Debug log
+                if (nodeResult || value !== undefined) {
+                    console.log(`✅ RESOLVED: "{{${path}}}" -> ${typeof value === 'object' ? '[Object]' : value}`);
+                } else {
+                    console.log(`❌ FAILED TO RESOLVE: "{{${path}}}"`);
+                }
+
+                // 3. Resolve parts
+                const effectiveParts = propertyPath[0]?.toLowerCase() === "output" ? propertyPath.slice(1) : propertyPath;
 
                 for (const part of effectiveParts) {
                     if (value === undefined || value === null) break;
 
-                    // Specific fallback: if user asks for .text but it doesn't exist, check common alternatives
+                    // Fallback for .text if it doesn't exist (check common keys)
                     if (part === 'text' && value[part] === undefined) {
-                        if (value['topic'] !== undefined) value = value['topic'];
-                        else if (value['input'] !== undefined) value = value['input'];
-                        else if (value['message'] !== undefined) value = value['message'];
-                        else value = value[part];
+                        value = value['topic'] ?? value['input'] ?? value['message'] ?? value['content'] ?? value[part];
                     } else {
                         value = value[part];
                     }
                 }
 
-                return value !== undefined && value !== null ? (typeof value === 'object' ? JSON.stringify(value) : value) : `{{${path}}}`;
+                if (value !== undefined && value !== null) {
+                    const strValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                    if (strValue.startsWith('"') && strValue.endsWith('"')) {
+                        return strValue.slice(1, -1);
+                    }
+                    return strValue;
+                }
+
+                return `{{${path}}}`;
             });
         }
 
@@ -106,7 +132,6 @@ export class WorkflowRunner {
             if (visited.has(nodeId)) return;
 
             if (!nodeMap.has(nodeId)) {
-                // If a node is referenced in an edge but doesn't exist, we skip it
                 return;
             }
 
@@ -153,20 +178,64 @@ export class WorkflowRunner {
 
                 try {
                     const config = node.config || {};
-                    const integrationId = config.integrationId as string;
-                    const actionId = config.actionId as string;
+                    if (node.config?.integrationId) {
+                        let integrationId = node.config.integrationId as string;
+                        let actionId = node.config.actionId as string;
 
-                    if (integrationId && actionId) {
+                        // Fallback for common integrations
+                        if (!actionId) {
+                            if (integrationId === 'cron') actionId = 'schedule';
+                            if (integrationId === 'api') actionId = 'request';
+                        }
+
+                        // Resolve variables in the entire config object
+                        let resolvedConfig = this.resolveVariables(node.config);
+
+                        // --- AI AGENT DYNAMIC RESOLUTION ---
+                        if (node.type === 'ai_action' || node.config?.originalType === 'ai_action') {
+                            const incomingEdges = this.edges.filter(e => e.target_node_id === node.id);
+
+                            const chatModelEdge = incomingEdges.find(e => e.target_handle === 'chat_model');
+                            const memoryEdge = incomingEdges.find(e => e.target_handle === 'memory');
+                            const toolEdges = incomingEdges.filter(e => e.target_handle === 'tools');
+
+                            let modelConfig = chatModelEdge ? this.context.nodes[chatModelEdge.source_node_id] : null;
+                            const memoryConfig = memoryEdge ? this.context.nodes[memoryEdge.source_node_id] : null;
+                            const toolsConfig = toolEdges.map(e => this.context.nodes[e.source_node_id]);
+
+                            // If no external model block is connected, use this block's own integration as the model config
+                            if (!modelConfig) {
+                                modelConfig = {
+                                    provider: integrationId === 'google_gemini' ? 'google_gemini' : (integrationId === 'groq' ? 'groq' : 'openai'),
+                                    ...resolvedConfig
+                                };
+                            }
+
+                            resolvedConfig = {
+                                ...resolvedConfig,
+                                agentModel: modelConfig,
+                                agentMemory: memoryConfig,
+                                agentTools: toolsConfig
+                            };
+
+                            // UPGRADE: Force all AI Action nodes in the UI to run through the Universal AI Agent handler
+                            // This ensures connected tools and memory are actually processed by the LLM
+                            integrationId = 'ai';
+                            actionId = 'agent';
+                        }
+
                         const action = registry.getAction(integrationId, actionId);
                         if (!action) {
                             throw new Error(`Action ${actionId} not found in ${integrationId}`);
                         }
 
-                        // Resolve variables in the data object, not the top-level config
-                        const resolvedData = this.resolveVariables(config.data || {});
+                        // Merge data into top level for convenient access in actions
+                        const actionConfig = {
+                            ...resolvedConfig,
+                            ...(resolvedConfig.data || {})
+                        };
 
-                        // Pass the entire resolved context if needed, but actions usually expect specific config
-                        const result = await action.execute(resolvedData, this.context);
+                        const result = await action.execute(actionConfig, this.context);
 
                         // Check for stop_execution signal
                         if (result && result.stop_execution) {
@@ -174,16 +243,24 @@ export class WorkflowRunner {
                             log.output = result;
                             log.timestamp = new Date().toISOString();
                             onLog?.(log);
-                            console.log(`🛑 Node ${node.id} stopped execution.`);
-                            break; // Stop the runner loop
+                            console.log(`Node ${node.id} stopped execution.`);
+                            break;
                         }
 
-                        // Merge triggerData if present (allows Input Node to provide data AND run action)
-                        this.context.nodes[node.id] = { ...result, ...(config.triggerData || {}) };
+                        // CRITICAL FIX: Ensure trigger node propagates message content (text, chat_id, etc)
+                        const isTrigger = node.type === 'trigger' || node.config?.originalType === 'trigger';
+                        const extraData = isTrigger ? { ...this.context.trigger } : {};
+
+                        this.context.nodes[node.id] = { ...result, ...extraData };
                     } else {
-                        // For nodes without integration (e.g. Input), just pass through or store config
-                        // Prioritize triggerData, fall back to data (migration support)
-                        const outputData = config.triggerData ? { ...config.triggerData } : (config.data ? { ...config.data } : {});
+                        // For nodes without integration (e.g. Input/Trigger)
+                        const isTrigger = node.type === 'trigger' || node.config?.originalType === 'trigger' || node.type === 'input';
+                        let outputData = config.triggerData ? { ...config.triggerData } : (config.data ? { ...config.data } : {});
+
+                        if (isTrigger) {
+                            outputData = { ...outputData, ...triggerData, ...this.context.trigger };
+                        }
+
                         this.context.nodes[node.id] = outputData;
                     }
 
@@ -198,7 +275,6 @@ export class WorkflowRunner {
                     log.timestamp = new Date().toISOString();
                     onLog?.(log);
                     console.error(`Error executing node ${node.id}:`, error);
-                    // Decide if we want to stop execution on error. For now, yes.
                     throw error;
                 }
             }
