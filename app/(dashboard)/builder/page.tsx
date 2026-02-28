@@ -314,7 +314,6 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                     </div>
                 </div>
             )}
-            </div>
 
             <div className="space-y-2">
                 <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Sheet Name</label>
