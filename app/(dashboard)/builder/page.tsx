@@ -339,54 +339,48 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                 </select>
             </div>
 
-            {
-        (config.actionId === 'append_row' || config.actionId === 'update_row') && (
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Data (JSON)</label>
-                <textarea
-                    placeholder='{ "Column1": "Value1", "Column2": "Value2" }'
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[10px] font-mono text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                    value={typeof data.rowData === 'object' ? JSON.stringify(data.rowData, null, 2) : data.rowData || ''}
-                    onChange={(e) => {
-                        try {
-                            const rowData = JSON.parse(e.target.value);
-                            updateData({ rowData });
-                        } catch (err) {
-                            updateData({ rowData: e.target.value });
-                        }
-                    }}
-                />
-            </div>
-        )
-    }
+            {(config.actionId === 'append_row' || config.actionId === 'update_row') && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Data (JSON)</label>
+                    <textarea
+                        placeholder='{ "Column1": "Value1", "Column2": "Value2" }'
+                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[10px] font-mono text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+                        value={typeof data.rowData === 'object' ? JSON.stringify(data.rowData, null, 2) : data.rowData || ''}
+                        onChange={(e) => {
+                            try {
+                                const rowData = JSON.parse(e.target.value);
+                                updateData({ rowData });
+                            } catch (err) {
+                                updateData({ rowData: e.target.value });
+                            }
+                        }}
+                    />
+                </div>
+            )}
 
-    {
-        (config.actionId === 'update_row' || config.actionId === 'delete_row') && (
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Index</label>
-                <Input
-                    type="number"
-                    placeholder="2"
-                    value={data.rowIndex || ''}
-                    onChange={(e: any) => updateData({ rowIndex: e.target.value })}
-                />
-            </div>
-        )
-    }
+            {(config.actionId === 'update_row' || config.actionId === 'delete_row') && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Index</label>
+                    <Input
+                        type="number"
+                        placeholder="2"
+                        value={data.rowIndex || ''}
+                        onChange={(e: any) => updateData({ rowIndex: e.target.value })}
+                    />
+                </div>
+            )}
 
-    {
-        config.actionId === 'get_rows' && (
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Range (A1 Notation)</label>
-                <Input
-                    placeholder="A1:C10"
-                    value={data.range || ''}
-                    onChange={(e: any) => updateData({ range: e.target.value })}
-                />
-            </div>
-        )
-    }
-        </div >
+            {config.actionId === 'get_rows' && (
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Range (A1 Notation)</label>
+                    <Input
+                        placeholder="A1:C10"
+                        value={data.range || ''}
+                        onChange={(e: any) => updateData({ range: e.target.value })}
+                    />
+                </div>
+            )}
+        </div>
     );
 }
 
