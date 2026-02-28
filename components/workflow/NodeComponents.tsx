@@ -1,11 +1,11 @@
 'use client';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useNodeConnections } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import {
     Cpu, Globe, MessageSquare, GitFork, Database, Upload,
     ArrowRightCircle, Zap, Code2, Clock, Merge, Repeat,
     SlidersHorizontal, Mail, Calendar, FileText,
-    CheckCircle2, XCircle, BrainCircuit, BookOpen, Wrench,
+    CheckCircle2, XCircle, BrainCircuit, BookOpen, Wrench, Webhook as WebhookIcon
 } from 'lucide-react';
 
 // ─── Color Palette per node type ───────────────────────────
@@ -21,6 +21,9 @@ export const nodeColors: Record<string, { bg: string; border: string; icon: stri
     output: { bg: 'bg-rose-500/10', border: 'border-rose-500/40', icon: 'text-rose-400', glow: 'shadow-rose-500/20' },
     code: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/40', icon: 'text-cyan-400', glow: 'shadow-cyan-500/20' },
     delay: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/40', icon: 'text-yellow-400', glow: 'shadow-yellow-500/20' },
+    chat_model: { bg: 'bg-purple-500/10', border: 'border-purple-500/40', icon: 'text-purple-400', glow: 'shadow-purple-500/20' },
+    memory: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/40', icon: 'text-yellow-400', glow: 'shadow-yellow-500/20' },
+    tool: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/40', icon: 'text-cyan-400', glow: 'shadow-cyan-500/20' },
 };
 
 export const nodeIcons: Record<string, any> = {
@@ -28,7 +31,7 @@ export const nodeIcons: Record<string, any> = {
     api_action: Globe, social_action: MessageSquare, logic_gate: GitFork,
     data_tool: Database, input: Upload, output: ArrowRightCircle,
     code: Code2, delay: Clock, merge: Merge, loop: Repeat,
-    set_variable: SlidersHorizontal,
+    set_variable: SlidersHorizontal, chat_model: Cpu, memory: Database, tool: WebhookIcon,
 };
 
 const handleStyle = '!w-3 !h-3 !border-2 !border-[var(--card)] hover:!scale-125 transition-transform';
@@ -130,30 +133,41 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
     const tools: string[] = data.config?.data?.tools || [];
     const hasKnowledge = !!(data.config?.data?.knowledgeBase);
 
+    const chatModelConnections = useNodeConnections({ handleType: 'target', handleId: 'chat_model' });
+    const isChatModelConnected = chatModelConnections.length > 0;
+    const hasError = !isChatModelConnected;
+
     return (
         <div className={cn(
-            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[180px] cursor-pointer',
-            'transition-all duration-200',
-            colors.border,
-            selected && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-purple-500 shadow-md shadow-purple-500/20',
+            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[200px] cursor-pointer',
+            'transition-all duration-200 group',
+            hasError ? 'border-[#ff4d4f] shadow-[#ff4d4f]/20' : colors.border,
+            selected && !hasError && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-purple-500 shadow-md shadow-purple-500/20',
         )}>
             {/* Main input */}
-            <Handle type="target" position={Position.Top}
+            <Handle type="target" id="main-in" position={Position.Top}
                 className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-purple-500')} />
 
             {/* Header */}
-            <div className="p-2 flex items-center gap-2 border-b border-[var(--border)]">
-                <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0', colors.bg)}>
-                    <BrainCircuit className={cn('w-3.5 h-3.5', colors.icon)} />
+            <div className="p-2 flex items-center justify-between border-b border-[var(--border)] relative z-10">
+                <div className="flex items-center gap-2">
+                    <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0', colors.bg)}>
+                        <BrainCircuit className={cn('w-3.5 h-3.5', colors.icon)} />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
+                        <p className="text-[9px] text-purple-400">AI Agent</p>
+                    </div>
                 </div>
-                <div className="min-w-0">
-                    <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
-                    <p className="text-[9px] text-purple-400">AI Agent</p>
-                </div>
+                {hasError && (
+                    <div className="text-[#ff4d4f] ml-2" title="Chat Model is required">
+                        <XCircle className="w-4 h-4" />
+                    </div>
+                )}
             </div>
 
             {/* Pills */}
-            <div className="px-2 py-1.5 flex flex-wrap gap-1">
+            <div className="px-2 py-1.5 flex flex-wrap gap-1 relative z-10">
                 <div className={cn(
                     'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-medium border',
                     hasKnowledge ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-[var(--muted)] border-[var(--border)] text-[var(--muted-fg)]'
@@ -171,8 +185,48 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
             </div>
 
             {/* Main output */}
-            <Handle type="source" position={Position.Bottom}
+            <Handle type="source" id="main-out" position={Position.Right}
                 className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-purple-500')} />
+
+            {/* Bottom Connectors (Chat Model, Memory, Tools) */}
+            <div className="absolute -bottom-[6px] left-0 right-0 flex justify-center gap-4 z-20">
+                {/* Chat Model (Required) */}
+                <div className="relative group/handle flex flex-col items-center">
+                    <Handle
+                        type="target"
+                        id="chat_model"
+                        position={Position.Bottom}
+                        className={cn(
+                            "!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0",
+                            "!w-3 !h-3 !border-0 !rotate-45 transition-colors shadow-sm",
+                            hasError ? "!bg-[#ff4d4f]" : "!bg-[var(--border)] hover:!bg-purple-500"
+                        )}
+                    />
+                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Chat Model *</span>
+                </div>
+
+                {/* Memory (Optional) */}
+                <div className="relative group/handle flex flex-col items-center">
+                    <Handle
+                        type="target"
+                        id="memory"
+                        position={Position.Bottom}
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
+                    />
+                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Memory</span>
+                </div>
+
+                {/* Tools (Optional, Multiple) */}
+                <div className="relative group/handle flex flex-col items-center">
+                    <Handle
+                        type="target"
+                        id="tools"
+                        position={Position.Bottom}
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
+                    />
+                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Tools</span>
+                </div>
+            </div>
         </div>
     );
 }

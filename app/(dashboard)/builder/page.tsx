@@ -74,6 +74,8 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'ai_action', label: 'OpenAI GPT', icon: Cpu, integrationId: 'openai', nodeType: 'custom', actionId: 'chat' },
             { type: 'ai_action', label: 'Groq (Llama)', icon: Cpu, integrationId: 'groq', nodeType: 'custom', actionId: 'chat' },
             { type: 'ai_action', label: 'OpenRouter', icon: Globe, integrationId: 'openrouter', nodeType: 'custom', actionId: 'chat' },
+            { type: 'chat_model', label: 'Chat Model', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'model' },
+            { type: 'memory', label: 'Memory Session', icon: Database, integrationId: 'memory', nodeType: 'custom', actionId: 'session' },
         ],
     },
     {
@@ -112,6 +114,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'data_tool', label: 'Code (JS)', icon: Code2, integrationId: 'code', nodeType: 'custom', actionId: 'run_js' },
             { type: 'data_tool', label: 'Set Variable', icon: SlidersHorizontal, integrationId: 'set_variable', nodeType: 'custom', actionId: 'set' },
             { type: 'data_tool', label: 'Delay / Wait', icon: Timer, integrationId: 'delay', nodeType: 'custom', actionId: 'wait' },
+            { type: 'tool', label: 'File Tool', icon: WebhookIcon, integrationId: 'tool', nodeType: 'custom', actionId: 'file_reader' },
         ],
     },
 ];
@@ -894,9 +897,25 @@ function BuilderContent() {
     // Google integration status
     const { isConnected: isGoogleConnected, getIntegration, connectGoogle, getAccessToken, disconnect: disconnectIntegration, refresh: refreshIntegrations } = useIntegrations();
 
-    // Load workflow from Supabase
+    // Load workflow from Supabase or Local Storage
     useEffect(() => {
         if (!workflowId) {
+            // Try loading local draft
+            try {
+                const savedNodes = localStorage.getItem('builder_nodes');
+                const savedEdges = localStorage.getItem('builder_edges');
+                if (savedNodes && savedEdges) {
+                    const parsedNodes = JSON.parse(savedNodes);
+                    if (parsedNodes.length > 0) {
+                        setNodes(parsedNodes);
+                        setEdges(JSON.parse(savedEdges));
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load local draft', e);
+            }
+
             // New Workflow: Load Template with Unique IDs
             const id1 = crypto.randomUUID();
             const id2 = crypto.randomUUID();
@@ -984,6 +1003,16 @@ function BuilderContent() {
 
         loadWorkflow();
     }, [workflowId, supabase, setNodes, setEdges]);
+
+    // Auto-save local draft
+    useEffect(() => {
+        if (!workflowId) {
+            try {
+                localStorage.setItem('builder_nodes', JSON.stringify(nodes));
+                localStorage.setItem('builder_edges', JSON.stringify(edges));
+            } catch (err) { }
+        }
+    }, [nodes, edges, workflowId]);
 
     // Derive selected node from nodes state to ensure it's always up to date
     const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
@@ -1474,8 +1503,13 @@ function BuilderContent() {
                                     if (nodeData.type === 'ai_action') return (
                                         integId === 'openrouter'
                                             ? <OpenRouterConfig node={selectedNode} updateNode={updateNode} />
-                                            : <AIConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                            : <AIConfiguration node={selectedNode} updateNode={updateNode} />
                                     );
+
+                                    // Component Support Nodes
+                                    if (nodeData.type === 'chat_model') return <ChatModelConfiguration node={selectedNode} updateNode={updateNode} />;
+                                    if (nodeData.type === 'memory') return <MemoryConfiguration node={selectedNode} updateNode={updateNode} />;
+                                    if (nodeData.type === 'tool') return <ToolConfiguration node={selectedNode} updateNode={updateNode} />;
 
                                     // IF/ELSE
                                     if (integId === 'if_else') return (
