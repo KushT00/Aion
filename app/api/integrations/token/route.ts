@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createServerClient } from '@/lib/supabase/server';
 
 // POST /api/integrations/token — returns a fresh access token for use in node execution
 // This is called by the webhook runner (server-side) to get tokens for a user's workflow
