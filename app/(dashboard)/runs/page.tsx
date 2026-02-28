@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,48 +32,7 @@ interface RunItem {
     logs: string;
 }
 
-const demoRuns: RunItem[] = [
-    {
-        id: 'run-001',
-        workflowName: 'Email Automation Flow',
-        status: 'success',
-        started_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-        duration_ms: 4523,
-        logs: '[2026-02-13 12:00:01] Starting workflow...\n[2026-02-13 12:00:02] Fetching emails from inbox...\n[2026-02-13 12:00:03] Processing 12 emails with AI classifier...\n[2026-02-13 12:00:04] Classified: 8 urgent, 3 normal, 1 spam\n[2026-02-13 12:00:05] Drafting responses for urgent emails...\n[2026-02-13 12:00:05] ✅ Workflow completed successfully',
-    },
-    {
-        id: 'run-002',
-        workflowName: 'Data Scraping Pipeline',
-        status: 'running',
-        started_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-        duration_ms: null,
-        logs: '[2026-02-13 11:48:01] Starting workflow...\n[2026-02-13 11:48:02] Connecting to target websites...\n[2026-02-13 11:48:05] Scraping page 1/50...\n[2026-02-13 11:55:00] Scraping page 35/50...\n⏳ In progress...',
-    },
-    {
-        id: 'run-003',
-        workflowName: 'Report Generator',
-        status: 'failed',
-        started_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-        duration_ms: 12340,
-        logs: '[2026-02-13 09:00:01] Starting workflow...\n[2026-02-13 09:00:05] Fetching data from analytics API...\n[2026-02-13 09:00:08] Processing 15,000 records...\n[2026-02-13 09:00:12] ERROR: Rate limit exceeded on external API\n[2026-02-13 09:00:12] ❌ Workflow failed: API_RATE_LIMIT_ERROR',
-    },
-    {
-        id: 'run-004',
-        workflowName: 'Customer Support Agent',
-        status: 'success',
-        started_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-        duration_ms: 2156,
-        logs: '[2026-02-13 07:00:01] Starting workflow...\n[2026-02-13 07:00:02] Processing 5 support tickets...\n[2026-02-13 07:00:03] ✅ Workflow completed successfully',
-    },
-    {
-        id: 'run-005',
-        workflowName: 'Social Media Bot',
-        status: 'queued',
-        started_at: new Date(Date.now() - 1000 * 60 * 1).toISOString(),
-        duration_ms: null,
-        logs: '[2026-02-13 12:00:00] Queued for execution...',
-    },
-];
+
 
 const statusConfig: Record<
     RunStatus,
@@ -86,11 +46,45 @@ const statusConfig: Record<
 };
 
 export default function RunsPage() {
+    const supabase = createClient();
+    const [runs, setRuns] = useState<RunItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [expandedRun, setExpandedRun] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | RunStatus>('all');
 
-    const filtered = demoRuns.filter((r) => {
+    useEffect(() => {
+        const fetchRuns = async () => {
+            setIsLoading(true);
+            try {
+                const { data: runsData, error } = await supabase
+                    .from('workflow_runs')
+                    .select('*, workflows(name)')
+                    .order('started_at', { ascending: false });
+
+                if (error) throw error;
+
+                const formatted: RunItem[] = (runsData || []).map((r: any) => ({
+                    id: r.id,
+                    workflowName: r.workflows?.name || 'Deleted Workflow',
+                    status: (r.status as RunStatus) || 'queued',
+                    started_at: r.started_at || r.created_at,
+                    duration_ms: r.duration_ms,
+                    logs: r.logs || (r.error ? `Error: ${r.error}` : 'No logs available.'),
+                }));
+
+                setRuns(formatted);
+            } catch (err: any) {
+                console.error('Failed to fetch runs:', err.message);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchRuns();
+    }, [supabase]);
+
+    const filtered = runs.filter((r) => {
         const matchesSearch = r.workflowName.toLowerCase().includes(search.toLowerCase());
         const matchesFilter = filter === 'all' || r.status === filter;
         return matchesSearch && matchesFilter;
@@ -131,7 +125,12 @@ export default function RunsPage() {
             </div>
 
             {/* Runs Table */}
-            {filtered.length === 0 ? (
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center h-64 border border-[var(--border)] rounded-xl bg-[var(--card)]/50">
+                    <Loader2 className="w-8 h-8 text-primary-500 animate-spin mb-4" />
+                    <p className="text-sm text-[var(--muted-fg)]">Analyzing execution history...</p>
+                </div>
+            ) : filtered.length === 0 ? (
                 <EmptyState
                     icon={Activity}
                     title="No runs found"

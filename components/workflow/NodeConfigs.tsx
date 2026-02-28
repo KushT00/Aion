@@ -8,21 +8,21 @@ import {
 import { useState } from 'react';
 
 // ─── Shared helpers ─────────────────────────────────────────
-const Label = ({ children }: { children: React.ReactNode }) => (
+export const Label = ({ children }: { children: React.ReactNode }) => (
     <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider block mb-1 ml-0.5">{children}</label>
 );
-const Input = ({ className = '', ...props }: any) => (
+export const Input = ({ className = '', ...props }: any) => (
     <input className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 transition-shadow", className)} {...props} />
 );
-const Textarea = ({ className = '', ...props }: any) => (
+export const Textarea = ({ className = '', ...props }: any) => (
     <textarea className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 resize-none transition-shadow", className)} {...props} />
 );
-const Select = ({ children, className = '', ...props }: any) => (
+export const Select = ({ children, className = '', ...props }: any) => (
     <select className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500", className)} {...props}>{children}</select>
 );
 
 // ─── Section Accordion ─────────────────────────────────────
-function Section({ title, icon: Icon, color = 'text-[var(--muted-fg)]', children, defaultOpen = true }: any) {
+export function Section({ title, icon: Icon, color = 'text-[var(--muted-fg)]', children, defaultOpen = true }: any) {
     const [open, setOpen] = useState(defaultOpen);
     return (
         <div className="border border-[var(--border)] rounded-lg overflow-hidden">
@@ -35,6 +35,53 @@ function Section({ title, icon: Icon, color = 'text-[var(--muted-fg)]', children
                 {open ? <ChevronDown className="w-3 h-3 text-[var(--muted-fg)]" /> : <ChevronRight className="w-3 h-3 text-[var(--muted-fg)]" />}
             </button>
             {open && <div className="p-3 space-y-2.5 border-t border-[var(--border)] bg-transparent">{children}</div>}
+        </div>
+    );
+}
+
+// ─── Shared Model Selector ──────────────────────────────────
+export function ModelSelector({ value, onChange, integrationId }: { value: string, onChange: (val: string) => void, integrationId: string }) {
+    const models = integrationId === 'google_gemini' || integrationId === 'gemini'
+        ? [
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Fast & Capable' },
+            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)', desc: 'Experimental' },
+            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Efficient' },
+            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Powerful' }
+        ]
+        : integrationId === 'openai'
+            ? [
+                { id: 'gpt-4o', name: 'GPT-4o', desc: 'SOTA performance' },
+                { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Efficient & Smart' },
+                { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', desc: 'Fast & Reliable' }
+            ]
+            : integrationId === 'groq'
+                ? [
+                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'State-of-the-art' },
+                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra-fast' },
+                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'High context' }
+                ]
+                : [];
+
+    return (
+        <div className="space-y-2">
+            <Label>ModelSelection</Label>
+            <div className="grid grid-cols-1 gap-2">
+                {models.map(m => (
+                    <button
+                        key={m.id}
+                        onClick={() => onChange(m.id)}
+                        className={cn(
+                            "w-full text-left p-2 rounded-lg border transition-all text-[11px]",
+                            value === m.id
+                                ? "bg-violet-500/10 border-violet-500 text-violet-600 dark:text-violet-400"
+                                : "bg-[var(--card)] border-[var(--border)] hover:border-violet-500/50"
+                        )}
+                    >
+                        <div className="font-semibold">{m.name}</div>
+                        <div className="text-[10px] opacity-60 leading-tight">{m.desc}</div>
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }
@@ -82,8 +129,21 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
                         <Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
                     </div>
                 </div>
-                <div className="space-y-1">
-                    <Label>Instuctions (System)</Label>
+
+                {config.integrationId !== 'openrouter' && (
+                    <ModelSelector
+                        integrationId={config.integrationId || 'google_gemini'}
+                        value={data.model || (
+                            config.integrationId === 'groq' ? 'llama-3.3-70b-versatile' :
+                                config.integrationId === 'openai' ? 'gpt-4o' :
+                                    'gemini-2.0-flash'
+                        )}
+                        onChange={(model) => updateData({ model })}
+                    />
+                )}
+
+                <div className="space-y-1 pt-2">
+                    <Label>Instructions (System)</Label>
                     <Textarea className="h-14 py-1" placeholder="Who are you?" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} />
                 </div>
                 <div className="space-y-1">
@@ -200,15 +260,21 @@ export function TelegramConfig({ node, updateNode }: { node: any; updateNode: (d
     const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     return (
         <div className="space-y-3">
-            <div className="space-y-2"><Label>Bot Token</Label>
-                <Input type="password" placeholder="1234567890:AAF..." value={data.botToken || ''} onChange={(e: any) => updateData({ botToken: e.target.value })} />
-                <p className="text-[10px] text-[var(--muted-fg)]">Get from <a href="https://t.me/BotFather" target="_blank" className="text-violet-400 hover:underline">@BotFather</a></p>
+            <div className="p-2.5 bg-sky-500/5 border border-sky-500/20 rounded-lg">
+                <p className="text-[10px] text-sky-400 font-semibold mb-1">Telegram Bot API</p>
+                <div className="space-y-2">
+                    <Label>Bot Token</Label>
+                    <Input type="password" placeholder="1234567890:AAF..." value={data.botToken || ''} onChange={(e: any) => updateData({ botToken: e.target.value })} />
+                    <p className="text-[9px] text-[var(--muted-fg)] leading-tight">Paste your token from <a href="https://t.me/BotFather" target="_blank" className="text-sky-400 hover:underline">@BotFather</a></p>
+                </div>
             </div>
-            <div className="space-y-2"><Label>Chat ID</Label>
-                <Input placeholder="-1001234567890" value={data.chatId || ''} onChange={(e: any) => updateData({ chatId: e.target.value })} />
+            <div className="space-y-2">
+                <Label>Chat ID (Optional)</Label>
+                <Input placeholder="-100..." value={data.chatId || ''} onChange={(e: any) => updateData({ chatId: e.target.value })} />
             </div>
-            <div className="space-y-2"><Label>Message (supports Markdown)</Label>
-                <Textarea className="h-28" placeholder="*Bold* {{node.text}}" value={data.text || ''} onChange={(e: any) => updateData({ text: e.target.value })} />
+            <div className="space-y-2">
+                <Label>Message Content</Label>
+                <Textarea className="h-28" placeholder="Hello!" value={data.text || ''} onChange={(e: any) => updateData({ text: e.target.value })} />
             </div>
         </div>
     );
@@ -223,7 +289,6 @@ export function NotionConfig({ node, updateNode }: { node: any; updateNode: (d: 
         <div className="space-y-3">
             <div className="space-y-2"><Label>Integration Token</Label>
                 <Input type="password" placeholder="secret_..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
-                <p className="text-[10px] text-[var(--muted-fg)]">From <a href="https://www.notion.so/my-integrations" target="_blank" className="text-violet-400 hover:underline">notion.so/my-integrations</a></p>
             </div>
             <div className="space-y-2"><Label>Action</Label>
                 <Select value={config.actionId || 'create_page'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
@@ -231,58 +296,12 @@ export function NotionConfig({ node, updateNode }: { node: any; updateNode: (d: 
                     <option value="append_block">Append to Page</option>
                 </Select>
             </div>
-            {config.actionId !== 'append_block' ? (
-                <div className="space-y-2"><Label>Database ID</Label>
-                    <Input placeholder="abc123def456..." value={data.databaseId || ''} onChange={(e: any) => updateData({ databaseId: e.target.value })} />
-                </div>
-            ) : (
-                <div className="space-y-2"><Label>Page ID</Label>
-                    <Input placeholder="abc123def456..." value={data.pageId || ''} onChange={(e: any) => updateData({ pageId: e.target.value })} />
-                </div>
-            )}
-            <div className="space-y-2"><Label>Title</Label>
-                <Input placeholder="{{node.text}}" value={data.title || ''} onChange={(e: any) => updateData({ title: e.target.value })} />
+            <div className="space-y-2"><Label>Page / Database ID</Label>
+                <Input placeholder="abc123def..." value={data.pageId || data.databaseId || ''} onChange={(e: any) => updateData({ pageId: e.target.value, databaseId: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Content</Label>
-                <Textarea className="h-24" placeholder="Page content..." value={data.content || ''} onChange={(e: any) => updateData({ content: e.target.value })} />
+                <Textarea className="h-24" value={data.content || ''} onChange={(e: any) => updateData({ content: e.target.value })} />
             </div>
-        </div>
-    );
-}
-
-// ─── Google Sheets Configuration ────────────────────────────
-export function SheetsConfig({ node, updateNode, googleIntegration, onConnectGoogle }: {
-    node: any; updateNode: (d: any) => void; googleIntegration: any; onConnectGoogle: () => void;
-}) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
-    return (
-        <div className="space-y-3">
-            <GoogleConnectButton
-                isConnected={!!googleIntegration}
-                isValid={googleIntegration?.is_valid}
-                accountEmail={googleIntegration?.account_email}
-                onConnect={onConnectGoogle}
-                onDisconnect={() => { }}
-            />
-            <div className="space-y-2"><Label>Spreadsheet ID</Label>
-                <Input placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value={data.spreadsheetId || ''} onChange={(e: any) => updateData({ spreadsheetId: e.target.value })} />
-            </div>
-            <div className="space-y-2"><Label>Action</Label>
-                <Select value={config.actionId || 'append_row'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
-                    <option value="append_row">Append Row</option>
-                    <option value="read_range">Read Range</option>
-                </Select>
-            </div>
-            <div className="space-y-2"><Label>Range (e.g. Sheet1!A:Z)</Label>
-                <Input placeholder="Sheet1" value={data.range || ''} onChange={(e: any) => updateData({ range: e.target.value })} />
-            </div>
-            {config.actionId !== 'read_range' && (
-                <div className="space-y-2"><Label>Values (JSON Array)</Label>
-                    <Textarea className="h-20 font-mono text-xs" placeholder='["Value1", "{{node.text}}", "2026-01-01"]' value={typeof data.values === 'object' ? JSON.stringify(data.values) : data.values || ''} onChange={(e: any) => updateData({ values: e.target.value })} />
-                </div>
-            )}
         </div>
     );
 }
@@ -298,13 +317,12 @@ export function OpenRouterConfig({ node, updateNode }: { node: any; updateNode: 
         { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (Free)' },
         { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
         { id: 'openai/gpt-4o', label: 'GPT-4o' },
-        { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (Free)' },
     ];
     return (
         <div className="space-y-3">
             <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 rounded-lg">
                 <p className="text-[10px] text-violet-400 font-semibold">300+ Models Available</p>
-                <p className="text-[10px] text-[var(--muted-fg)]">Many models are free. Get key at <a href="https://openrouter.ai/keys" target="_blank" className="text-violet-400 hover:underline">openrouter.ai</a></p>
+                <p className="text-[10px] text-[var(--muted-fg)]">Get key at <a href="https://openrouter.ai/keys" target="_blank" className="text-violet-400 hover:underline">openrouter.ai</a></p>
             </div>
             <div className="space-y-2"><Label>API Key</Label>
                 <Input type="password" placeholder="sk-or-..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
@@ -314,7 +332,7 @@ export function OpenRouterConfig({ node, updateNode }: { node: any; updateNode: 
                     <option value="">-- Select model --</option>
                     {popularModels.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </Select>
-                <Input placeholder="or type custom model ID..." value={data.model || ''} onChange={(e: any) => updateData({ model: e.target.value })} />
+                <Input placeholder="Custom Model ID..." value={data.model || ''} onChange={(e: any) => updateData({ model: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>System Prompt</Label>
                 <Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} />
@@ -330,20 +348,14 @@ export function OpenRouterConfig({ node, updateNode }: { node: any; updateNode: 
 export function CodeConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
     const config = node.data.config || {};
     const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     return (
         <div className="space-y-3">
-            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 rounded-lg">
-                <p className="text-[10px] text-cyan-400 font-semibold">JavaScript Sandbox</p>
-                <p className="text-[10px] text-[var(--muted-fg)]"><code className="bg-[var(--muted)] px-1 rounded">$input</code> = all previous node outputs</p>
+            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 rounded-lg text-[10px] text-[var(--muted-fg)]">
+                <p className="text-cyan-400 font-semibold uppercase mb-1">JavaScript Sandbox</p>
+                <code className="bg-[var(--muted)] px-1 rounded">$input</code> = previous outputs
             </div>
             <div className="space-y-2"><Label>Code</Label>
-                <Textarea
-                    className="h-48 font-mono text-xs"
-                    placeholder={`// Example:\nconst emails = $input['Fetch Emails'].messages;\nreturn emails.map(e => e.subject).join('\\n');`}
-                    value={data.code || ''}
-                    onChange={(e: any) => updateData({ code: e.target.value })}
-                />
+                <Textarea className="h-48 font-mono text-xs" value={data.code || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, code: e.target.value } } })} />
             </div>
         </div>
     );
@@ -354,28 +366,18 @@ export function SetVariableConfig({ node, updateNode }: { node: any; updateNode:
     const config = node.data.config || {};
     const data = config.data || {};
     const vars: { key: string; value: string }[] = data.varList || [{ key: '', value: '' }];
-    const updateVars = (list: { key: string; value: string }[]) =>
-        updateNode({ config: { ...config, data: { ...data, varList: list } } });
-
     return (
         <div className="space-y-3">
-            <p className="text-[10px] text-[var(--muted-fg)]">Set named values accessible via <code className="bg-[var(--muted)] px-1 rounded">{'{{Set Variable.key}}'}</code></p>
             <div className="space-y-2">
                 {vars.map((v, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                        <Input placeholder="key" className="w-28" value={v.key} onChange={(e: any) => { const n = [...vars]; n[i] = { ...v, key: e.target.value }; updateVars(n); }} />
-                        <span className="text-[var(--muted-fg)] text-sm">=</span>
-                        <Input placeholder="value or {{node.field}}" value={v.value} onChange={(e: any) => { const n = [...vars]; n[i] = { ...v, value: e.target.value }; updateVars(n); }} />
-                        <button onClick={() => updateVars(vars.filter((_, j) => j !== i))} className="p-1.5 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <Input placeholder="key" className="w-24" value={v.key} onChange={(e: any) => { const n = [...vars]; n[i].key = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
+                        <span className="text-[var(--muted-fg)]">=</span>
+                        <Input placeholder="value" value={v.value} onChange={(e: any) => { const n = [...vars]; n[i].value = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
                     </div>
                 ))}
             </div>
-            <button onClick={() => updateVars([...vars, { key: '', value: '' }])}
-                className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add variable
-            </button>
+            <button onClick={() => updateNode({ config: { ...config, data: { ...data, varList: [...vars, { key: '', value: '' }] } } })} className="text-[10px] text-violet-400 hover:underline">+ Add Variable</button>
         </div>
     );
 }
@@ -384,14 +386,174 @@ export function SetVariableConfig({ node, updateNode }: { node: any; updateNode:
 export function DelayConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
     const config = node.data.config || {};
     const data = config.data || {};
+    return (
+        <div className="space-y-3">
+            <Label>Delay (seconds)</Label>
+            <Input type="number" placeholder="5" value={data.seconds || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, seconds: e.target.value } } })} />
+        </div>
+    );
+}
+
+// ─── Unified AI Configuration ────────────────────────────────
+export function AIConfig({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const integrationId = config.integrationId || 'google_gemini';
     const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    return (
+        <div className="space-y-4">
+            <div className="space-y-1"><Label>Provider</Label>
+                <Select value={integrationId} onChange={(e: any) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
+                    <option value="google_gemini">Google Gemini</option>
+                    <option value="openai">OpenAI GPT</option>
+                    <option value="groq">Groq (Llama)</option>
+                    <option value="openrouter">OpenRouter</option>
+                </Select>
+            </div>
+            {integrationId !== 'openrouter' && (
+                <ModelSelector integrationId={integrationId} value={data.model || (integrationId === 'groq' ? 'llama-3.3-70b-versatile' : integrationId === 'openai' ? 'gpt-4o' : 'gemini-2.0-flash')} onChange={(model) => updateData({ model })} />
+            )}
+            <div className="space-y-2"><Label>API Key</Label><Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} /></div>
+            <div className="space-y-2"><Label>System Prompt</Label><Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} /></div>
+            <div className="space-y-2"><Label>User Message</Label><Textarea className="h-28" placeholder="{{trigger.text}}" value={data.userPrompt || ''} onChange={(e: any) => updateData({ userPrompt: e.target.value })} /></div>
+        </div>
+    );
+}
+
+// ─── Google Sheets Configuration ────────────────────────────
+export function SheetsConfig({ node, updateNode, googleIntegration, onConnectGoogle, onDisconnect, getAccessToken }: {
+    node: any; updateNode: (d: any) => void; googleIntegration: any; onConnectGoogle: () => void; onDisconnect: () => void; getAccessToken: (p: string) => Promise<string | null>;
+}) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const [sheets, setSheets] = useState<{ id: string; name: string }[] | null>(null);
+    const [fetching, setFetching] = useState(false);
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    const fetchSheets = async () => {
+        setFetching(true);
+        try {
+            const token = await getAccessToken('google');
+            if (!token) throw new Error("No token found. Please re-connect.");
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=15`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const { files } = await res.json();
+            setSheets(files || []);
+        } catch (e: any) { alert(e.message || "Failed to fetch sheets."); }
+        finally { setFetching(false); }
+    };
+
+    return (
+        <div className="space-y-3">
+            <GoogleConnectButton isConnected={!!googleIntegration} isValid={googleIntegration?.is_valid} accountEmail={googleIntegration?.account_email} onConnect={onConnectGoogle} onDisconnect={onDisconnect} />
+            <div className="space-y-2">
+                <div className="flex items-center justify-between"><Label>Spreadsheet ID</Label>
+                    {googleIntegration && <button onClick={fetchSheets} className="text-[9px] font-bold text-violet-400 hover:text-violet-300 transition-colors uppercase">{fetching ? '...' : 'Browse Recent'}</button>}
+                </div>
+                {sheets ? (
+                    <div className="border border-[var(--border)] rounded-lg p-1 bg-[var(--muted)]/50 max-h-32 overflow-y-auto custom-scrollbar">
+                        {sheets.map(s => <button key={s.id} onClick={() => { updateData({ spreadsheetId: s.id }); setSheets(null); }} className="w-full text-left px-2 py-1.5 rounded text-[10px] hover:bg-[var(--muted)] truncate">{s.name}</button>)}
+                    </div>
+                ) : <Input placeholder="Spreadsheet ID..." value={data.spreadsheetId || ''} onChange={(e: any) => updateData({ spreadsheetId: e.target.value })} />}
+            </div>
+            <div className="space-y-2"><Label>Action</Label>
+                <Select value={config.actionId || 'append_row'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                    <option value="append_row">Append Row</option><option value="get_rows">Get Rows</option><option value="update_row">Update Row</option>
+                </Select>
+            </div>
+        </div>
+    );
+}
+
+// ─── Google Calendar Config ───────────────────────────
+export function GoogleCalendarConfig({ node, updateNode, googleIntegration, onConnect, onDisconnect }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    return (
+        <div className="space-y-3">
+            <GoogleConnectButton isConnected={!!googleIntegration} isValid={googleIntegration?.is_valid} accountEmail={googleIntegration?.account_email} onConnect={onConnect} onDisconnect={onDisconnect} />
+            <div className="space-y-2">
+                <Label>Action</Label>
+                <Select value={config.actionId || 'get_events'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                    <option value="get_events">Get Events</option><option value="create_event">Create Event</option>
+                </Select>
+            </div>
+            <div className="space-y-2">
+                <Label>Calendar ID</Label>
+                <Input placeholder="primary" value={data.calendarId || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, calendarId: e.target.value } } })} />
+            </div>
+        </div>
+    );
+}
+
+// ─── Google Gmail Config ────────────────────────────
+export function GoogleGmailConfig({ node, updateNode, googleIntegration, onConnect, onDisconnect }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    return (
+        <div className="space-y-3">
+            <GoogleConnectButton isConnected={!!googleIntegration} isValid={googleIntegration?.is_valid} accountEmail={googleIntegration?.account_email} onConnect={onConnect} onDisconnect={onDisconnect} />
+            <div className="space-y-2"><Label>To</Label><Input placeholder="email@example.com" value={data.to || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, to: e.target.value } } })} /></div>
+            <div className="space-y-2"><Label>Subject</Label><Input value={data.subject || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, subject: e.target.value } } })} /></div>
+            <div className="space-y-2"><Label>Body</Label><Textarea className="h-24" value={data.body || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, body: e.target.value } } })} /></div>
+        </div>
+    );
+}
+
+// ─── Discord Config ─────────────────────────────────
+export function DiscordConfig({ node, updateNode }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    return (
+        <div className="space-y-3">
+            <div className="space-y-2"><Label>Webhook URL</Label><Input placeholder="https://discord..." value={data.webhookUrl || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, webhookUrl: e.target.value } } })} /></div>
+            <div className="space-y-2"><Label>Message</Label><Textarea className="h-32" value={data.content || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, content: e.target.value } } })} /></div>
+        </div>
+    );
+}
+
+// ─── API Config ─────────────────────────────────────
+export function APIConfig({ node, updateNode }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    return (
+        <div className="space-y-3">
+            <div className="flex gap-2">
+                <div className="w-20"><Label>Method</Label><Select value={data.method || 'GET'} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, method: e.target.value } } })}><option value="GET">GET</option><option value="POST">POST</option></Select></div>
+                <div className="flex-1"><Label>URL</Label><Input placeholder="https://api..." value={data.url || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, url: e.target.value } } })} /></div>
+            </div>
+            <div className="space-y-2"><Label>Body (JSON)</Label><Textarea className="h-32 text-[10px] font-mono" value={typeof data.body === 'object' ? JSON.stringify(data.body, null, 2) : data.body || ''} onChange={(e: any) => { try { updateNode({ config: { ...config, data: { ...data, body: JSON.parse(e.target.value) } } }); } catch { updateNode({ config: { ...config, data: { ...data, body: e.target.value } } }); } }} /></div>
+        </div>
+    );
+}
+
+// ─── Tool Config ────────────────────────────────────
+export function ToolConfig({ node, updateNode }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
     return (
         <div className="space-y-3">
             <div className="space-y-2">
-                <Label>Delay Duration (seconds)</Label>
-                <Input type="number" min="1" max="60" placeholder="5" value={data.seconds || ''} onChange={(e: any) => updateData({ seconds: e.target.value })} />
-                <p className="text-[10px] text-[var(--muted-fg)]">Max 60 seconds. For longer delays use a scheduled trigger.</p>
+                <Label>Tool Type</Label>
+                <Select value={config.actionId || 'file_reader'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                    <option value="file_reader">Read File / URL</option><option value="calculator">Calculator</option>
+                </Select>
             </div>
+            {config.actionId === 'file_reader' && <div className="space-y-2"><Label>Path / URL</Label><Input placeholder="https://..." value={data.filePath || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, filePath: e.target.value } } })} /></div>}
+        </div>
+    );
+}
+
+// ─── Memory Config ──────────────────────────────────
+export function MemoryConfig({ node, updateNode }: any) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    return (
+        <div className="space-y-3 opacity-60">
+            <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-500 text-[10px] font-bold">COMING SOON</div>
+            <div className="space-y-2"><Label>Session Key</Label><Input placeholder="{{trigger.chat_id}}" value={data.sessionId || '{{trigger.chat_id}}'} readOnly /></div>
         </div>
     );
 }

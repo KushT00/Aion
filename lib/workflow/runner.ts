@@ -199,19 +199,32 @@ export class WorkflowRunner {
                         if (node.type === 'ai_action' || node.config?.originalType === 'ai_action') {
                             const incomingEdges = this.edges.filter(e => e.target_node_id === node.id);
 
-                            const chatModelEdge = incomingEdges.find(e => e.target_handle === 'chat_model');
-                            const memoryEdge = incomingEdges.find(e => e.target_handle === 'memory');
-                            const toolEdges = incomingEdges.filter(e => e.target_handle === 'tools');
+                            // DB items store handles in JSON label. Extract them for matching.
+                            const getHandle = (edge: any, type: 'source' | 'target') => {
+                                const val = edge[`${type}_handle`] || edge[`${type}Handle`];
+                                if (val) return val;
+                                try {
+                                    const parsed = JSON.parse(edge.label || '{}');
+                                    return parsed[`${type}Handle`] || null;
+                                } catch (e) { return null; }
+                            };
+
+                            const chatModelEdge = incomingEdges.find(e => getHandle(e, 'target') === 'chat_model');
+                            const memoryEdge = incomingEdges.find(e => getHandle(e, 'target') === 'memory');
+                            const kbEdges = incomingEdges.filter(e => getHandle(e, 'target') === 'knowledge');
+                            const toolEdges = incomingEdges.filter(e => getHandle(e, 'target') === 'tools');
 
                             let modelConfig = chatModelEdge ? this.context.nodes[chatModelEdge.source_node_id] : null;
                             const memoryConfig = memoryEdge ? this.context.nodes[memoryEdge.source_node_id] : null;
+                            const kbConfig = kbEdges.map(e => this.context.nodes[e.source_node_id]);
                             const toolsConfig = toolEdges.map(e => this.context.nodes[e.source_node_id]);
 
                             // If no external model block is connected, use this block's own integration as the model config
                             if (!modelConfig) {
                                 modelConfig = {
                                     provider: integrationId === 'google_gemini' ? 'google_gemini' : (integrationId === 'groq' ? 'groq' : 'openai'),
-                                    ...resolvedConfig
+                                    ...resolvedConfig,
+                                    ...(resolvedConfig.data || {})
                                 };
                             }
 
@@ -219,6 +232,7 @@ export class WorkflowRunner {
                                 ...resolvedConfig,
                                 agentModel: modelConfig,
                                 agentMemory: memoryConfig,
+                                agentKB: kbConfig,
                                 agentTools: toolsConfig
                             };
 
@@ -256,6 +270,11 @@ export class WorkflowRunner {
                         const extraData = isTrigger ? { ...this.context.trigger } : {};
 
                         this.context.nodes[node.id] = { ...result, ...extraData };
+
+                        // Also update context.trigger so {{trigger.text}} works
+                        if (isTrigger) {
+                            this.context.trigger = { ...this.context.trigger, ...result };
+                        }
                     } else {
                         // For nodes without integration (e.g. Input/Trigger)
                         const isTrigger = node.type === 'trigger' || node.config?.originalType === 'trigger' || node.type === 'input';
@@ -263,6 +282,7 @@ export class WorkflowRunner {
 
                         if (isTrigger) {
                             outputData = { ...outputData, ...triggerData, ...this.context.trigger };
+                            this.context.trigger = outputData; // Sync here too
                         }
 
                         this.context.nodes[node.id] = outputData;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -23,14 +23,15 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
     Save, Play, Undo2, Redo2, Download, Upload,
     Cpu, Globe, GitFork, ArrowRightCircle, MessageSquare,
-    X, Zap, Settings2, Database, Clock, Search,
+    X, Zap, Settings2, Database, Clock, Search, Info,
     Webhook as WebhookIcon, Calendar, Mail,
     BrainCircuit, Code2, SlidersHorizontal, Merge, Repeat,
-    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal,
+    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
@@ -41,8 +42,10 @@ import { useIntegrations } from '@/hooks/useIntegrations';
 import { GoogleConnectButton } from '@/components/workflow/GoogleConnectButton';
 import {
     AIAgentConfig, IfElseConfig, SlackConfig, TelegramConfig,
-    NotionConfig, SheetsConfig, OpenRouterConfig, CodeConfig,
-    SetVariableConfig, DelayConfig,
+    NotionConfig, SheetsConfig, CodeConfig, ModelSelector,
+    SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
+    GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig,
+    Input, Label
 } from '@/components/workflow/NodeConfigs';
 
 // ─── Node type registration (custom components) ─────────────
@@ -62,6 +65,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
         items: [
             { type: 'trigger', label: 'Schedule', icon: Clock, integrationId: 'cron', nodeType: 'custom' },
             { type: 'trigger', label: 'Webhook', icon: WebhookIcon, integrationId: 'webhook', nodeType: 'custom' },
+            { type: 'trigger', label: 'Telegram Message', icon: Send, integrationId: 'telegram', nodeType: 'custom', actionId: 'telegram_message' },
             { type: 'trigger', label: 'Gmail Trigger', icon: Mail, integrationId: 'google_gmail_trigger', nodeType: 'custom' },
         ],
     },
@@ -70,10 +74,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
         color: 'text-violet-400',
         items: [
             { type: 'ai_action', label: 'AI Agent', icon: BrainCircuit, integrationId: 'google_gemini', nodeType: 'ai_agent', actionId: 'chat' },
-            { type: 'ai_action', label: 'Google Gemini', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'chat' },
-            { type: 'ai_action', label: 'OpenAI GPT', icon: Cpu, integrationId: 'openai', nodeType: 'custom', actionId: 'chat' },
-            { type: 'ai_action', label: 'Groq (Llama)', icon: Cpu, integrationId: 'groq', nodeType: 'custom', actionId: 'chat' },
-            { type: 'ai_action', label: 'OpenRouter', icon: Globe, integrationId: 'openrouter', nodeType: 'custom', actionId: 'chat' },
+            { type: 'ai_action', label: 'Chat AI', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'chat' },
             { type: 'chat_model', label: 'Chat Model', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'model' },
             { type: 'memory', label: 'Memory Session', icon: Database, integrationId: 'memory', nodeType: 'custom', actionId: 'session' },
         ],
@@ -139,325 +140,9 @@ function GoogleConnectionSection({ scope = 'all' }: { scope?: any }) {
 
 // ─── Specialized Configuration Components ──────────────────
 
-function ModelSelector({ value, onChange, integrationId }: { value: string, onChange: (val: string) => void, integrationId: string }) {
-    const models = integrationId === 'google_gemini' || integrationId === 'gemini'
-        ? [
-            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Fast & Capable' },
-            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)', desc: 'Experimental' },
-            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Efficient' },
-            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Powerful' }
-        ]
-        : integrationId === 'openai'
-            ? [
-                { id: 'gpt-4o', name: 'GPT-4o', desc: 'SOTA performance' },
-                { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Efficient & Smart' },
-                { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', desc: 'Fast & Reliable' }
-            ]
-            : integrationId === 'groq'
-                ? [
-                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'State-of-the-art' },
-                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra-fast' },
-                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'High context' }
-                ]
-                : [];
 
-    return (
-        <div className="space-y-2">
-            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Model Selection</label>
-            <div className="grid grid-cols-1 gap-2">
-                {models.map(m => (
-                    <button
-                        key={m.id}
-                        onClick={() => onChange(m.id)}
-                        className={cn(
-                            "w-full text-left p-2 rounded-lg border transition-all text-xs",
-                            value === m.id
-                                ? "bg-primary-500/10 border-primary-500 text-primary-600 dark:text-primary-400"
-                                : "bg-[var(--muted)] border-[var(--border)] hover:border-primary-500/50"
-                        )}
-                    >
-                        <div className="font-semibold">{m.name}</div>
-                        <div className="text-[10px] opacity-60">{m.desc}</div>
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-}
 
-function ChatModelConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
 
-    const updateData = (kv: any) => {
-        updateNode({
-            config: {
-                ...config,
-                data: { ...data, ...kv }
-            }
-        });
-    };
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Provider</label>
-                <select
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={config.integrationId || ''}
-                    onChange={(e) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'model' } })}
-                >
-                    <option value="google_gemini">Google Gemini</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="groq">Groq</option>
-                </select>
-            </div>
-
-            <ModelSelector
-                integrationId={config.integrationId}
-                value={data.model || (
-                    config.integrationId === 'groq' ? 'llama-3.3-70b-versatile' :
-                        config.integrationId === 'openai' ? 'gpt-4o' :
-                            'gemini-2.0-flash'
-                )}
-                onChange={(model) => updateData({ model })}
-            />
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">API Key</label>
-                <input
-                    type="password"
-                    placeholder="Provide token or use .env"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={data.apiKey || ''}
-                    onChange={(e) => updateData({ apiKey: e.target.value })}
-                />
-            </div>
-        </div>
-    );
-}
-
-function AIConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">System Prompt</label>
-                <textarea
-                    placeholder="e.g. You are a helpful AI assistant."
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-20 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                    value={data.systemPrompt || ''}
-                    onChange={(e) => updateData({ systemPrompt: e.target.value })}
-                />
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">User Message</label>
-                <textarea
-                    placeholder="Use {{text}} to pass dynamic input"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-28 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                    value={data.userPrompt || ''}
-                    onChange={(e) => updateData({ userPrompt: e.target.value })}
-                />
-            </div>
-        </div>
-    );
-}
-
-function MemoryConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Session Key</label>
-                <input
-                    type="text"
-                    placeholder="{{trigger.chat_id}}"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] font-mono outline-none focus:ring-1 focus:ring-primary-500"
-                    value={data.sessionId || '{{trigger.chat_id}}'}
-                    onChange={(e) => updateNode({ config: { ...config, data: { ...data, sessionId: e.target.value } } })}
-                />
-                <p className="text-[10px] opacity-60">This variable tracks the conversation history uniquely.</p>
-            </div>
-        </div>
-    );
-}
-
-function ToolConfiguration({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Tool Type</label>
-                <select
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={config.actionId || 'file_reader'}
-                    onChange={(e) => updateNode({ config: { ...config, actionId: e.target.value } })}
-                >
-                    <option value="file_reader">Read File / URL Data</option>
-                    <option value="calculator">Calculator</option>
-                </select>
-            </div>
-
-            {config.actionId === 'file_reader' && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">File Path or URL</label>
-                    <input
-                        type="text"
-                        placeholder="https://example.com/menu.xml"
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] font-mono outline-none focus:ring-1 focus:ring-primary-500"
-                        value={data.filePath || ''}
-                        onChange={(e) => updateNode({ config: { ...config, data: { ...data, filePath: e.target.value } } })}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
-function CommunicationConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-
-    const updateData = (kv: any) => {
-        updateNode({
-            config: {
-                ...config,
-                data: { ...data, ...kv }
-            }
-        });
-    };
-
-    // Switch between integrations if needed
-    const isTelegram = config.integrationId === 'telegram';
-
-    return (
-        <div className="space-y-3 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg flex items-start gap-2">
-                <MessageSquare className="w-4 h-4 text-indigo-500 mt-0.5" />
-                <div>
-                    <div className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">Discord Webhook</div>
-                    <div className="text-[9px] opacity-60">Send automated messages.</div>
-                </div>
-            </div>
-
-            <div className="space-y-1">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-1">Webhook URL</label>
-                <input
-                    type="text"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[11px] font-mono text-[var(--fg)] outline-none focus:ring-1 focus:ring-indigo-500"
-                    value={data.webhookUrl || ''}
-                    onChange={(e) => updateData({ webhookUrl: e.target.value })}
-                />
-            </div>
-
-            <div className="space-y-1">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-1">Message Content</label>
-                <textarea
-                    placeholder="Message: {{AI Action.text}}"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[11px] text-[var(--fg)] h-24 outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
-                    value={data.content || ''}
-                    onChange={(e) => updateData({ content: e.target.value })}
-                />
-            </div>
-        </div>
-    );
-}
-
-function APIConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-
-    const updateData = (kv: any) => {
-        updateNode({
-            config: {
-                ...config,
-                actionId: 'request',
-                data: { ...data, ...kv }
-            }
-        });
-    };
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="flex gap-2">
-                <div className="w-24">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Method</label>
-                    <select
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs font-bold text-primary-500 outline-none focus:ring-1 focus:ring-primary-500"
-                        value={data.method || 'GET'}
-                        onChange={(e) => updateData({ method: e.target.value })}
-                    >
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="PATCH">PATCH</option>
-                        <option value="DELETE">DELETE</option>
-                    </select>
-                </div>
-                <div className="flex-1">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">URL</label>
-                    <input
-                        type="text"
-                        placeholder="https://api.example.com/v1"
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                        value={data.url || ''}
-                        onChange={(e) => updateData({ url: e.target.value })}
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Headers (JSON)</label>
-                <textarea
-                    placeholder='{ "Authorization": "Bearer Token" }'
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[10px] font-mono text-[var(--fg)] h-20 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                    value={typeof data.headers === 'object' ? JSON.stringify(data.headers, null, 2) : data.headers || ''}
-                    onChange={(e) => {
-                        try {
-                            const headers = JSON.parse(e.target.value);
-                            updateData({ headers });
-                        } catch (err) {
-                            updateData({ headers: e.target.value });
-                        }
-                    }}
-                />
-            </div>
-
-            {['POST', 'PUT', 'PATCH'].includes(data.method || 'GET') && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Body (JSON/Text)</label>
-                    <textarea
-                        placeholder='{ "key": "value" }'
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[10px] font-mono text-[var(--fg)] h-40 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                        value={typeof data.body === 'object' ? JSON.stringify(data.body, null, 2) : data.body || ''}
-                        onChange={(e) => {
-                            try {
-                                const body = JSON.parse(e.target.value);
-                                updateData({ body });
-                            } catch (err) {
-                                updateData({ body: e.target.value });
-                            }
-                        }}
-                    />
-                </div>
-            )}
-
-            <p className="text-[10px] text-[var(--muted-fg)] italic">
-                Support for variables: Use {"{{node_label.field}}"} in URL or Body.
-            </p>
-        </div>
-    );
-}
 
 function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
     const config = node.data.config || {};
@@ -474,7 +159,57 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
 
     const isCron = config.integrationId === 'cron';
     const isGmail = config.integrationId === 'google_gmail_trigger';
-    const isWebhook = config.integrationId === 'webhook' || (!isCron && !isGmail);
+    const isTelegram = config.integrationId === 'telegram';
+    const isWebhook = config.integrationId === 'webhook' || (!isCron && !isGmail && !isTelegram);
+
+    // Professional: Auto-detect environment base URL
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const webhookUrl = `${baseUrl}/api/webhooks/${workflowId || 'SAVE_FIRST'}/${node.id}`;
+
+    const handleTelegramSync = async () => {
+        if (!data.botToken) {
+            toast.error('Bot Token is required to sync');
+            return;
+        }
+
+        let finalBaseUrl = baseUrl;
+
+        // Smart Handle for Localhost (No UI clutter)
+        if (!finalBaseUrl.startsWith('https://')) {
+            const manualUrl = window.prompt(
+                'Telegram Requires HTTPS.\n\nPlease paste your Ngrok link below (or use Vercel for production):',
+                'https://your-tunnel.ngrok-free.app'
+            );
+
+            if (!manualUrl) return;
+            if (!manualUrl.startsWith('https://')) {
+                toast.error('The provided URL must start with https://');
+                return;
+            }
+            // Strip trailing slash if present
+            finalBaseUrl = manualUrl.endsWith('/') ? manualUrl.slice(0, -1) : manualUrl;
+        }
+
+        if (!workflowId) {
+            toast.error('Save the workflow first!');
+            return;
+        }
+
+        const finalWebhookUrl = `${finalBaseUrl}/api/webhooks/${workflowId}/${node.id}`;
+        const tid = toast.loading(`Connecting to Telegram...`);
+
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${data.botToken}/setWebhook?url=${finalWebhookUrl}`);
+            const result = await res.json();
+            if (result.ok) {
+                toast.success('Bot synced successfully!', { id: tid });
+            } else {
+                toast.error(`Sync failed: ${result.description}`, { id: tid });
+            }
+        } catch (err: any) {
+            toast.error(`Error: ${err.message}`, { id: tid });
+        }
+    };
 
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-right-2 duration-200">
@@ -485,7 +220,7 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                         onClick={() => updateNode({ config: { ...config, integrationId: 'cron', actionId: 'schedule' } })}
                         className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] transition-all", isCron ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)]" : "opacity-60")}
                     >
-                        Schedule
+                        Cron
                     </button>
                     <button
                         onClick={() => updateNode({ config: { ...config, integrationId: 'webhook', actionId: 'receive' } })}
@@ -494,10 +229,16 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                         Webhook
                     </button>
                     <button
+                        onClick={() => updateNode({ config: { ...config, integrationId: 'telegram', actionId: 'telegram_message' } })}
+                        className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] transition-all", isTelegram ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)] text-sky-500" : "opacity-60")}
+                    >
+                        Telegram
+                    </button>
+                    <button
                         onClick={() => updateNode({ config: { ...config, integrationId: 'google_gmail_trigger', actionId: 'on_new_email' } })}
                         className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-center gap-1", isGmail ? "bg-[var(--card)] shadow-sm font-bold border border-[var(--border)] text-red-600 dark:text-red-400" : "opacity-60")}
                     >
-                        <Mail className="w-2.5 h-2.5" /> Gmail
+                        Gmail
                     </button>
                 </div>
             </div>
@@ -520,230 +261,67 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                 </div>
             )}
 
-            {(isWebhook || isGmail) && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-1">Endpoint (Production)</label>
-                    {isGmail && (
-                        <div className="space-y-2 pt-2 border-t border-[var(--border)]">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-1">Account Connection</label>
-                            <GoogleConnectionSection scope="gmail" />
-                            <p className="text-[9px] opacity-60 italic text-red-600 dark:text-red-400 leading-tight">Step 1: Connect your account above.<br />Step 2: Config Gmail to forward to the URL below.</p>
-                        </div>
+            {isTelegram && (
+                <div className="space-y-3 p-2.5 bg-sky-500/5 border border-sky-500/10 rounded-lg">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-sky-400 uppercase tracking-tight">Bot Token</label>
+                        <input
+                            type="password"
+                            placeholder="123456... BotFather Token"
+                            className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[11px] text-[var(--fg)] outline-none focus:ring-1 focus:ring-sky-500"
+                            value={data.botToken || ''}
+                            onChange={(e) => updateData({ botToken: e.target.value })}
+                        />
+                    </div>
+
+                    <Button
+                        size="sm"
+                        className="w-full h-8 text-xs bg-sky-500 hover:bg-sky-600 text-white gap-2"
+                        onClick={handleTelegramSync}
+                    >
+                        <Zap className="w-3 h-3" />
+                        Sync Bot Webhook
+                    </Button>
+
+                    {typeof window !== 'undefined' && !window.location.origin.startsWith('https://') && (
+                        <p className="text-[8px] text-amber-500/60 leading-tight">
+                            Note: Telegram requires HTTPS. For local testing, ensure your dev URL is accessible via tunnel.
+                        </p>
                     )}
+                </div>
+            )}
+
+            {(isWebhook || isGmail || isTelegram) && (
+                <div className="space-y-2 pt-2 border-t border-[var(--border)]">
+                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-1">
+                        {isTelegram ? 'Final Webhook URL' : 'Endpoint (Production)'}
+                    </label>
                     <div className="relative group">
                         <div className="p-2 bg-[var(--muted)] rounded-lg border border-dashed border-[var(--border)] text-[9px] font-mono break-all text-primary-600 dark:text-primary-400">
-                            {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/${workflowId || 'SAVE_FIRST'}/${node.id}` : ''}
+                            {webhookUrl}
                         </div>
                         <Button
                             variant="ghost"
                             size="sm"
                             className="absolute top-1 right-1 h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => {
-                                const url = `${window.location.origin}/api/webhooks/${workflowId || 'SAVE_FIRST'}/${node.id}`;
-                                navigator.clipboard.writeText(url);
+                                navigator.clipboard.writeText(webhookUrl);
                                 toast.success('Copied!');
                             }}
                         >
                             <Upload className="w-2.5 h-2.5" />
                         </Button>
                     </div>
-                    {!isGmail && (
-                        <p className="text-[9px] opacity-60 italic leading-tight">Send POST JSON to trigger.</p>
-                    )}
                 </div>
             )}
-        </div>
-    );
-}
-
-function GoogleCalendarConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-    const actionId = config.actionId || 'get_events';
-
-    const updateData = (kv: any) => {
-        updateNode({ config: { ...config, data: { ...data, ...kv } } });
-    };
-
-    const updateAction = (newActionId: string) => {
-        updateNode({
-            config: {
-                ...config,
-                actionId: newActionId,
-                // preserve accessToken for convenience
-                data: { ...data, accessToken: data.accessToken }
-            }
-        });
-    };
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
-                <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
-                <div>
-                    <div className="text-xs font-bold text-blue-600 dark:text-blue-400">Google Calendar</div>
-                    <div className="text-[10px] opacity-60">Manage your events and schedule.</div>
-                </div>
             </div>
 
             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Account Connection</label>
-                <GoogleConnectionSection scope="calendar" />
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Manual Token (Optional Override)</label>
-                <div className="flex gap-2">
-                    <input
-                        type="password"
-                        placeholder="Paste OAuth2 Access Token"
-                        className="flex-1 bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                        value={data.accessToken || ''}
-                        onChange={(e) => updateData({ accessToken: e.target.value })}
-                    />
-                    {data.accessToken && (
-                        <div className="flex items-center justify-center px-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg" title="Token Present">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                        </div>
-                    )}
-                </div>
-                <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
-                    1. Go to <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google OAuth Playground</a>.<br />
-                    2. In "Input your own scopes", paste: <code className="bg-[var(--muted)] px-1 rounded text-[9px] select-all">https://www.googleapis.com/auth/calendar</code><br />
-                    3. Click "Authorize APIs" and copy the Access Token.
-                </p>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
-                <select
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={actionId}
-                    onChange={(e) => updateAction(e.target.value)}
-                >
-                    <option value="get_events">Get Events</option>
-                    <option value="create_event">Create Event</option>
-                    <option value="update_event">Update Event</option>
-                </select>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Calendar ID</label>
-                <input
-                    type="text"
-                    placeholder="primary"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={data.calendarId || ''}
-                    onChange={(e) => updateData({ calendarId: e.target.value })}
-                />
-            </div>
-
-            {actionId === 'create_event' && (
-                <>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Event Summary</label>
-                        <input
-                            type="text"
-                            placeholder="Meeting with Client"
-                            className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                            value={data.summary || ''}
-                            onChange={(e) => updateData({ summary: e.target.value })}
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Start Time</label>
-                            <input
-                                type="datetime-local"
-                                className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                                value={data.startTime || ''}
-                                onChange={(e) => updateData({ startTime: e.target.value })}
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">End Time</label>
-                            <input
-                                type="datetime-local"
-                                className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                                value={data.endTime || ''}
-                                onChange={(e) => updateData({ endTime: e.target.value })}
-                            />
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {actionId === 'update_event' && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Event ID</label>
-                    <input
-                        type="text"
-                        placeholder="Event ID to update"
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                        value={data.eventId || ''}
-                        onChange={(e) => updateData({ eventId: e.target.value })}
-                    />
-                </div>
-            )}
-
-            {(actionId === 'create_event' || actionId === 'update_event') && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Description</label>
-                    <textarea
-                        placeholder="Event details..."
-                        className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-20 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-                        value={data.description || ''}
-                        onChange={(e) => updateData({ description: e.target.value })}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
-function GoogleGmailConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
-    const config = node.data.config || {};
-    const data = config.data || {};
-    const actionId = config.actionId || 'send_email';
-
-    const updateData = (kv: any) => {
-        updateNode({ config: { ...config, data: { ...data, ...kv } } });
-    };
-
-    const updateAction = (newActionId: string) => {
-        updateNode({
-            config: {
-                ...config,
-                actionId: newActionId,
-                data: { ...data, accessToken: data.accessToken }
-            }
-        });
-    };
-
-    return (
-        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
-                <Mail className="w-5 h-5 text-red-500 mt-0.5" />
-                <div>
-                    <div className="text-xs font-bold text-red-600 dark:text-red-400">Google Gmail</div>
-                    <div className="text-[10px] opacity-60">Automate your email workflow.</div>
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Account Connection</label>
-                <GoogleConnectionSection scope="gmail" />
-                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed italic mt-1">Users connect their own Google account when deploying this worker.</p>
-            </div>
-
-            <div className="space-y-2">
-                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Manual Token (Optional Override)</label>
-                <input
-                    type="password"
-                    placeholder="Paste OAuth2 Access Token"
-                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={data.accessToken || ''}
-                    onChange={(e) => updateData({ accessToken: e.target.value })}
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Sheet Name</label>
+                <Input
+                    placeholder="Sheet1"
+                    value={data.sheetName || ''}
+                    onChange={(e: any) => updateData({ sheetName: e.target.value })}
                 />
             </div>
 
@@ -751,124 +329,68 @@ function GoogleGmailConfiguration({ node, updateNode, workflowId }: { node: any,
                 <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
                 <select
                     className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                    value={actionId}
-                    onChange={(e) => updateAction(e.target.value)}
+                    value={config.actionId || 'get_rows'}
+                    onChange={(e) => updateNode({ config: { ...config, actionId: e.target.value } })}
                 >
-                    <option value="send_email">Send Email</option>
-                    <option value="reply_email">Reply to Email</option>
-                    <option value="fetch_emails">Fetch Emails</option>
-                    <option value="modify_email">Modify Labels</option>
-                    <option value="delete_archive">Delete/Archive</option>
+                    <option value="get_rows">Get Rows</option>
+                    <option value="append_row">Append Row</option>
+                    <option value="update_row">Update Row</option>
+                    <option value="delete_row">Delete Row</option>
                 </select>
             </div>
 
-            {actionId === 'send_email' && (
-                <>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">To</label>
-                        <input type="text" placeholder="recipient@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.to || ''} onChange={(e) => updateData({ to: e.target.value })} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">CC</label>
-                            <input type="text" placeholder="cc@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.cc || ''} onChange={(e) => updateData({ cc: e.target.value })} />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">BCC</label>
-                            <input type="text" placeholder="bcc@example.com" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.bcc || ''} onChange={(e) => updateData({ bcc: e.target.value })} />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Subject</label>
-                        <input type="text" placeholder="Email Subject" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.subject || ''} onChange={(e) => updateData({ subject: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Thread ID (Optional)</label>
-                        <input type="text" placeholder="To continue an existing thread" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.threadId || ''} onChange={(e) => updateData({ threadId: e.target.value })} />
-                    </div>
-                </>
-            )}
+            {
+        (config.actionId === 'append_row' || config.actionId === 'update_row') && (
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Data (JSON)</label>
+                <textarea
+                    placeholder='{ "Column1": "Value1", "Column2": "Value2" }'
+                    className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-[10px] font-mono text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+                    value={typeof data.rowData === 'object' ? JSON.stringify(data.rowData, null, 2) : data.rowData || ''}
+                    onChange={(e) => {
+                        try {
+                            const rowData = JSON.parse(e.target.value);
+                            updateData({ rowData });
+                        } catch (err) {
+                            updateData({ rowData: e.target.value });
+                        }
+                    }}
+                />
+            </div>
+        )
+    }
 
-            {actionId === 'reply_email' && (
-                <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID to Reply</label>
-                    <input type="text" placeholder="Original Message ID" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
-                </div>
-            )}
+    {
+        (config.actionId === 'update_row' || config.actionId === 'delete_row') && (
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Row Index</label>
+                <Input
+                    type="number"
+                    placeholder="2"
+                    value={data.rowIndex || ''}
+                    onChange={(e: any) => updateData({ rowIndex: e.target.value })}
+                />
+            </div>
+        )
+    }
 
-            {(actionId === 'send_email' || actionId === 'reply_email') && (
-                <>
-                    <div className="flex items-center gap-2 mt-2">
-                        <input type="checkbox" id="isHtml" checked={!!data.isHtml} onChange={(e) => updateData({ isHtml: e.target.checked })} className="rounded cursor-pointer" />
-                        <label htmlFor="isHtml" className="text-xs font-semibold text-[var(--fg)] cursor-pointer">Send as HTML</label>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Body</label>
-                        <textarea placeholder="Email Content..." className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-primary-500 resize-none" value={data.body || ''} onChange={(e) => updateData({ body: e.target.value })} />
-                    </div>
-                </>
-            )}
-
-            {actionId === 'fetch_emails' && (
-                <>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Search Query</label>
-                        <input type="text" placeholder="is:unread label:important" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.query || ''} onChange={(e) => updateData({ query: e.target.value })} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Label IDs</label>
-                            <input type="text" placeholder="INBOX, UNREAD" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.labelIds || ''} onChange={(e) => updateData({ labelIds: e.target.value })} />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Max Results</label>
-                            <input type="number" placeholder="10" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.maxResults || ''} onChange={(e) => updateData({ maxResults: e.target.value })} />
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {actionId === 'modify_email' && (
-                <>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID</label>
-                        <input type="text" placeholder="Message ID to modify" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Add Labels</label>
-                            <input type="text" placeholder="e.g. STARRED" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.addLabelIds || ''} onChange={(e) => updateData({ addLabelIds: e.target.value })} />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Remove Labels</label>
-                            <input type="text" placeholder="e.g. UNREAD" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.removeLabelIds || ''} onChange={(e) => updateData({ removeLabelIds: e.target.value })} />
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {actionId === 'delete_archive' && (
-                <>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Message ID</label>
-                        <input type="text" placeholder="Message ID" className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500" value={data.messageId || ''} onChange={(e) => updateData({ messageId: e.target.value })} />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Action</label>
-                        <select
-                            className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500"
-                            value={data.actionType || 'trash'}
-                            onChange={(e) => updateData({ actionType: e.target.value })}
-                        >
-                            <option value="trash">Move to Trash</option>
-                            <option value="archive">Archive (Remove INBOX)</option>
-                        </select>
-                    </div>
-                </>
-            )}
-        </div>
+    {
+        config.actionId === 'get_rows' && (
+            <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tight">Range (A1 Notation)</label>
+                <Input
+                    placeholder="A1:C10"
+                    value={data.range || ''}
+                    onChange={(e: any) => updateData({ range: e.target.value })}
+                />
+            </div>
+        )
+    }
+        </div >
     );
 }
+
+
 
 export default function BuilderPage() {
     return (
@@ -892,7 +414,36 @@ function BuilderContent() {
     const [isSaving, setIsSaving] = useState(false);
     const [executionLogs, setExecutionLogs] = useState<{ nodeId: string; status: string; timestamp: string; output?: any; error?: string }[]>([]);
     const [showConsole, setShowConsole] = useState(false);
+    const [activeConsoleTab, setActiveConsoleTab] = useState<'logs' | 'history'>('logs');
+    const [cloudRunHistory, setCloudRunHistory] = useState<any[]>([]);
     const [paletteSearch, setPaletteSearch] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const content = JSON.parse(event.target?.result as string);
+                if (content.nodes && Array.isArray(content.nodes) && content.edges && Array.isArray(content.edges)) {
+                    setNodes(content.nodes);
+                    setEdges(content.edges);
+                    if (content.name) setWorkflowName(content.name + ' (Imported)');
+                    toast.success('Workflow imported successfully!');
+                } else {
+                    toast.error('Invalid workflow file format');
+                }
+            } catch (err) {
+                toast.error('Failed to parse workflow file');
+                console.error(err);
+            }
+            // Reset input
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        };
+        reader.readAsText(file);
+    };
 
     // Google integration status
     const { isConnected: isGoogleConnected, getIntegration, connectGoogle, getAccessToken, disconnect: disconnectIntegration, refresh: refreshIntegrations } = useIntegrations();
@@ -957,35 +508,42 @@ function BuilderContent() {
 
             if (wfNodes && wfNodes.length > 0) {
                 setNodes(wfNodes.map(n => {
-                    // Determine correct React Flow node type from config
-                    const integId = (n.config as any)?.integrationId;
+                    const cfg = n.config as any || {};
+                    const integId = cfg?.integrationId;
+                    // Restore real data type from saved config.originalType
+                    const realDataType = cfg?.originalType || n.type;
+                    // Restore React Flow node component type
                     let rfType = 'custom';
                     if (integId === 'if_else') rfType = 'if_else';
-                    else if ((n.config as any)?.rfType === 'ai_agent') rfType = 'ai_agent';
+                    else if (cfg?.rfType === 'ai_agent') rfType = 'ai_agent';
+                    else if (realDataType === 'ai_agent') rfType = 'ai_agent';
                     return {
                         id: n.id,
                         type: rfType,
                         position: { x: n.position_x, y: n.position_y },
-                        data: { label: n.label, type: n.type, config: n.config }
+                        // Use restored real data type, not the DB 'input' placeholder
+                        data: { label: n.label, type: realDataType, config: n.config }
                     };
                 }));
             }
             if (wfEdges) {
                 setEdges(wfEdges.map(e => {
-                    let sourceH = e.source_handle;
-                    let targetH = e.target_handle;
-                    let realLabel = e.label;
+                    let sourceH: string | null = null;
+                    let targetH: string | null = null;
+                    let realLabel: string | null = null;
 
-                    // Fallback hack: check if label is a JSON string holding handle data
+                    // Handles are packed into the label column as JSON
                     if (e.label && e.label.startsWith('{')) {
                         try {
                             const parsed = JSON.parse(e.label);
                             if (parsed.__is_handle_data) {
-                                sourceH = parsed.sourceHandle;
-                                targetH = parsed.targetHandle;
-                                realLabel = parsed.label;
+                                sourceH = parsed.sourceHandle || null;
+                                targetH = parsed.targetHandle || null;
+                                realLabel = parsed.label || null;
                             }
                         } catch (err) { }
+                    } else {
+                        realLabel = e.label || null;
                     }
 
                     return {
@@ -1003,6 +561,51 @@ function BuilderContent() {
 
         loadWorkflow();
     }, [workflowId, supabase, setNodes, setEdges]);
+
+    // Real-time Cloud Run History & Initial Load
+    useEffect(() => {
+        if (!workflowId) return;
+
+        // 1. Fetch initial history
+        const fetchHistory = async () => {
+            const { data } = await supabase
+                .from('workflow_runs')
+                .select('*')
+                .eq('workflow_id', workflowId)
+                .order('created_at', { ascending: false })
+                .limit(10);
+            if (data) setCloudRunHistory(data);
+        };
+        fetchHistory();
+
+        // 2. Subscribe to REALTIME updates
+        const channel = supabase.channel(`workflow_runs_live_${workflowId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'workflow_runs',
+                filter: `workflow_id=eq.${workflowId}`
+            }, (payload) => {
+                setCloudRunHistory(prev => [payload.new, ...prev]);
+                // Automatically open console on new cloud run
+                setShowConsole(true);
+                setActiveConsoleTab('history');
+                toast.success('Workflow triggered remotely!', { icon: '🚀' });
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'workflow_runs',
+                filter: `workflow_id=eq.${workflowId}`
+            }, (payload) => {
+                setCloudRunHistory(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [workflowId, supabase]);
 
     // Auto-save local draft
     useEffect(() => {
@@ -1043,13 +646,23 @@ function BuilderContent() {
                     toast.error('Only a Memory node can be connected here');
                     return;
                 }
-                if (params.targetHandle === 'tools' && sourceType !== 'tool') {
-                    toast.error('Only Tool nodes can be connected here');
-                    return;
+                if (params.targetHandle === 'knowledge') {
+                    const allowedKBTypes = ['data_tool', 'tool', 'api_action'];
+                    if (!allowedKBTypes.includes(sourceType)) {
+                        toast.error('Only Data/Tool nodes can be connected to Knowledge');
+                        return;
+                    }
+                }
+                if (params.targetHandle === 'tools') {
+                    const allowedToolTypes = ['tool', 'api_action', 'social_action', 'data_tool'];
+                    if (!allowedToolTypes.includes(sourceType)) {
+                        toast.error('Only Tool or Action nodes can be connected here');
+                        return;
+                    }
                 }
             }
 
-            setEdges((eds) => addEdge({ ...params, animated: true }, eds));
+            setEdges((eds) => addEdge({ ...params, id: crypto.randomUUID(), animated: true }, eds));
         },
         [nodes, setEdges],
     );
@@ -1116,23 +729,20 @@ function BuilderContent() {
             await supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId);
 
             // DB CONSTRAINT HACK:
-            // The database has an outdated check constraint that rejects new types (ai_action, etc).
-            // We map all types to 'input' (which is definitely allowed) and store the real type in config.
+            // The database type CHECK constraint only allows certain values. We map everything to 'input'
+            // and store the real type + rfType in config so we can fully restore on load.
             const nodesToInsert = nodes.map(n => {
                 const realType = (n.data as any).type;
+                const rfType = n.type; // React Flow component type (e.g. 'ai_agent', 'if_else', 'custom')
                 const config = (n.data as any).config || {};
 
-                // Store the real type in config so we can restore it on load
-                const newConfig = { ...config, originalType: realType };
-
-                // Always save as 'input' to be safe, or 'trigger' if it was a trigger
-                // Actually 'input' is the safest bet for legacy schemas.
-                const dbType = 'input';
+                // Store both real data type and RF component type in config
+                const newConfig = { ...config, originalType: realType, rfType };
 
                 return {
                     id: n.id,
                     workflow_id: currentWfId,
-                    type: dbType,
+                    type: 'input', // safe fallback for DB constraint
                     label: (n.data as any).label,
                     position_x: n.position.x,
                     position_y: n.position.y,
@@ -1145,23 +755,32 @@ function BuilderContent() {
 
             // 3. Sync Edges
             await supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId);
-            const edgesToInsert = edges.map(e => ({
-                workflow_id: currentWfId,
-                source_node_id: e.source,
-                target_node_id: e.target,
-                // Workaround: if Supabase rejects these columns due to cache, we also pack them into the label as JSON
-                // source_handle: e.sourceHandle || null,
-                // target_handle: e.targetHandle || null,
-                label: JSON.stringify({
-                    __is_handle_data: true,
-                    sourceHandle: e.sourceHandle || null,
-                    targetHandle: e.targetHandle || null,
-                    label: e.label || null
-                })
-            }));
+            const edgesToInsert = edges.map(e => {
+                // Supabase requires a valid UUID. ReactFlow's default IDs (xy-edge__...) are NOT valid UUIDs.
+                // We check if the ID is a valid UUID format; if not, we generate a new one.
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
+
+                return {
+                    id: isUUID ? e.id : crypto.randomUUID(),
+                    workflow_id: currentWfId,
+                    source_node_id: e.source,
+                    target_node_id: e.target,
+                    // Pack sourceHandle + targetHandle into label column (schema workaround)
+                    label: JSON.stringify({
+                        __is_handle_data: true,
+                        sourceHandle: e.sourceHandle || null,
+                        targetHandle: e.targetHandle || null,
+                        label: typeof e.label === 'string' ? e.label : null
+                    })
+                };
+            });
 
             const { error: edgesErr } = await supabase.from('workflow_edges').insert(edgesToInsert);
             if (edgesErr) throw edgesErr;
+
+            // Clear local draft on successful cloud save to prevent confusion
+            localStorage.removeItem('builder_nodes');
+            localStorage.removeItem('builder_edges');
 
             toast.success('Workflow saved to cloud!', { id: toastId });
         } catch (error: any) {
@@ -1314,14 +933,24 @@ function BuilderContent() {
                     </Button>
                     <div className="w-px h-6 bg-[var(--border)] mx-1" />
                     <Button variant="ghost" size="icon" title="Export" onClick={() => {
-                        const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: 'application/json' });
+                        const blob = new Blob([JSON.stringify({ nodes, edges, name: workflowName }, null, 2)], { type: 'application/json' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = 'workflow.json';
+                        a.download = `${workflowName.replace(/\s+/g, '_').toLowerCase()}.json`;
                         a.click();
                     }}>
                         <Download className="w-4 h-4" />
+                    </Button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImport}
+                        accept=".json"
+                        className="hidden"
+                    />
+                    <Button variant="ghost" size="icon" title="Import" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="w-4 h-4" />
                     </Button>
                     <Button
                         variant="outline"
@@ -1494,22 +1123,20 @@ function BuilderContent() {
                                         <TriggerConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
                                     );
 
-                                    // AI Agent (multi-panel)
+                                    // AI Agent (multi-panel with tools/RAG)
                                     if (nodeData.type === 'ai_action' && selectedNode.type === 'ai_agent') return (
                                         <AIAgentConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
-                                    // Standard AI node
+                                    // All standard AI nodes (Google Gemini, OpenAI, Groq, OpenRouter)
                                     if (nodeData.type === 'ai_action') return (
-                                        integId === 'openrouter'
-                                            ? <OpenRouterConfig node={selectedNode} updateNode={updateNode} />
-                                            : <AIConfiguration node={selectedNode} updateNode={updateNode} />
+                                        <AIConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
                                     // Component Support Nodes
-                                    if (nodeData.type === 'chat_model') return <ChatModelConfiguration node={selectedNode} updateNode={updateNode} />;
-                                    if (nodeData.type === 'memory') return <MemoryConfiguration node={selectedNode} updateNode={updateNode} />;
-                                    if (nodeData.type === 'tool') return <ToolConfiguration node={selectedNode} updateNode={updateNode} />;
+                                    if (nodeData.type === 'chat_model') return <AIConfig node={selectedNode} updateNode={updateNode} />;
+                                    if (nodeData.type === 'memory') return <MemoryConfig node={selectedNode} updateNode={updateNode} />;
+                                    if (nodeData.type === 'tool') return <ToolConfig node={selectedNode} updateNode={updateNode} />;
 
                                     // IF/ELSE
                                     if (integId === 'if_else') return (
@@ -1520,16 +1147,17 @@ function BuilderContent() {
                                     if (nodeData.type === 'social_action') {
                                         if (integId === 'slack') return <SlackConfig node={selectedNode} updateNode={updateNode} />;
                                         if (integId === 'telegram') return <TelegramConfig node={selectedNode} updateNode={updateNode} />;
-                                        return <CommunicationConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />;
+                                        if (integId === 'discord') return <DiscordConfig node={selectedNode} updateNode={updateNode} />;
+                                        return <APIConfig node={selectedNode} updateNode={updateNode} />;
                                     }
 
                                     // Google nodes
                                     const googleIntegration = getIntegration('google');
                                     if (integId === 'google_calendar') return (
-                                        <GoogleCalendarConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                        <GoogleCalendarConfig node={selectedNode} updateNode={updateNode} googleIntegration={googleIntegration} onConnect={() => connectGoogle('calendar')} onDisconnect={() => disconnectIntegration('google')} />
                                     );
                                     if (integId === 'google_gmail') return (
-                                        <GoogleGmailConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                        <GoogleGmailConfig node={selectedNode} updateNode={updateNode} googleIntegration={googleIntegration} onConnect={() => connectGoogle('gmail')} onDisconnect={() => disconnectIntegration('google')} />
                                     );
                                     if (integId === 'google_sheets') return (
                                         <SheetsConfig
@@ -1537,6 +1165,8 @@ function BuilderContent() {
                                             updateNode={updateNode}
                                             googleIntegration={googleIntegration}
                                             onConnectGoogle={() => connectGoogle('all')}
+                                            onDisconnect={() => disconnectIntegration('google')}
+                                            getAccessToken={getAccessToken}
                                         />
                                     );
 
@@ -1554,7 +1184,7 @@ function BuilderContent() {
 
                                     // HTTP Request
                                     if (nodeData.type === 'api_action') return (
-                                        <APIConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
+                                        <APIConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
                                     // Fallback — raw JSON
@@ -1577,58 +1207,185 @@ function BuilderContent() {
 
             {/* Console / Logs Overlay */}
             {showConsole && (
-                <div className="fixed bottom-0 left-0 right-0 h-1/3 bg-black/90 text-green-400 font-mono text-xs p-4 overflow-y-auto border-t border-white/10 z-50 shadow-2xl animate-in slide-in-from-bottom duration-300">
-                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10 sticky top-0 bg-black/90">
-                        <span className="font-bold flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            Live Execution Logs
-                        </span>
+                <div className="fixed bottom-0 left-0 right-0 h-1/3 bg-black/90 text-[var(--fg)] font-mono text-xs p-4 overflow-hidden border-t border-white/10 z-50 shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
+                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10 sticky top-0 bg-transparent shrink-0">
+                        <div className="flex items-center gap-6">
+                            <span className="font-bold flex items-center gap-2 text-green-400">
+                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                CONSOLE
+                            </span>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setActiveConsoleTab('logs')}
+                                    className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'logs' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
+                                >
+                                    Live Logs
+                                </button>
+                                <button
+                                    onClick={() => setActiveConsoleTab('history')}
+                                    className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'history' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
+                                >
+                                    Execution History {cloudRunHistory.length > 0 && `(${cloudRunHistory.length})`}
+                                </button>
+                            </div>
+                            {activeConsoleTab === 'history' && cloudRunHistory.length > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={async () => {
+                                        if (!workflowId) return;
+                                        if (!confirm('Clear all run history for this workflow?')) return;
+
+                                        const { error } = await supabase
+                                            .from('workflow_runs')
+                                            .delete()
+                                            .eq('workflow_id', workflowId);
+
+                                        if (error) {
+                                            toast.error('Failed to clear history');
+                                        } else {
+                                            setCloudRunHistory([]);
+                                            toast.success('History cleared');
+                                        }
+                                    }}
+                                    className="h-7 px-2 text-[10px] text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 gap-1.5 ml-4"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    Clear History
+                                </Button>
+                            )}
+                        </div>
                         <button onClick={() => setShowConsole(false)} className="text-white/50 hover:text-white">
                             <X className="w-4 h-4" />
                         </button>
                     </div>
-                    <div className="space-y-1">
-                        {executionLogs.map((log, i) => (
-                            <div key={i} className={cn(
-                                "flex flex-col gap-1 border-l-2 pl-3 py-2 transition-colors",
-                                log.status === 'running' ? "border-primary-500 bg-primary-500/5" :
-                                    log.status === 'error' ? "border-red-500 bg-red-500/5" : "border-emerald-500 bg-emerald-500/5"
-                            )}>
-                                <div className="flex items-center gap-4">
-                                    <span className="text-[var(--muted-fg)] min-w-[80px] font-mono">{log.timestamp}</span>
-                                    <span className={cn(
-                                        "font-bold uppercase text-[10px] px-1.5 py-0.5 rounded",
-                                        log.status === 'running' ? "bg-primary-500/20 text-primary-500" :
-                                            log.status === 'error' ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-500"
-                                    )}>
-                                        {log.status}
-                                    </span>
-                                    <span className="text-[var(--fg)] font-medium">
-                                        Node <span className="text-primary-400">{log.nodeId}</span>
-                                    </span>
-                                </div>
-                                <div className="text-[11px] mt-1">
-                                    {log.status === 'running' && <span className="text-[var(--muted-fg)]">Processing node logic...</span>}
-                                    {log.status === 'success' && <span className="text-emerald-500/80">Execution completed successfully.</span>}
-                                    {log.status === 'error' && (
-                                        <div className="space-y-1">
-                                            <span className="text-red-500 font-bold">Error:</span>
-                                            <p className="text-red-400 bg-red-950/20 p-2 rounded border border-red-500/20 break-words">
-                                                {log.error || 'Unknown error occurred'}
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                                {log.output && (
-                                    <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
-                                        <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
-                                        <pre>{JSON.stringify(log.output, null, 2)}</pre>
+                    <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-2 pt-2">
+                        {activeConsoleTab === 'logs' ? (
+                            <>
+                                {executionLogs.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center h-full opacity-30 text-white">
+                                        <Terminal className="w-8 h-8 mb-2" />
+                                        <p>No local logs yet. Click 'Run' to test.</p>
                                     </div>
                                 )}
+                                {executionLogs.map((log, i) => (
+                                    <div key={i} className={cn(
+                                        "flex flex-col gap-1 border-l-2 pl-3 py-2 transition-colors",
+                                        log.status === 'running' ? "border-primary-500 bg-primary-500/5" :
+                                            log.status === 'error' ? "border-red-500 bg-red-500/5" : "border-emerald-500 bg-emerald-500/5"
+                                    )}>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[var(--muted-fg)] min-w-[80px] font-mono">{log.timestamp}</span>
+                                            <span className={cn(
+                                                "font-bold uppercase text-[10px] px-1.5 py-0.5 rounded",
+                                                log.status === 'running' ? "bg-primary-500/20 text-primary-500" :
+                                                    log.status === 'error' ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-500"
+                                            )}>
+                                                {log.status}
+                                            </span>
+                                            <span className="text-[var(--fg)] font-medium">
+                                                Node <span className="text-primary-400">{log.nodeId}</span>
+                                            </span>
+                                        </div>
+                                        <div className="text-[11px] mt-1">
+                                            {log.status === 'running' && <span className="text-[var(--muted-fg)]">Processing node logic...</span>}
+                                            {log.status === 'success' && <span className="text-emerald-500/80">Execution completed successfully.</span>}
+                                            {log.status === 'error' && (
+                                                <div className="space-y-1">
+                                                    <span className="text-red-500 font-bold">Error:</span>
+                                                    <p className="text-red-400 bg-red-950/20 p-2 rounded border border-red-500/20 break-words">
+                                                        {log.error || 'Unknown error occurred'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {log.output && (
+                                            <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
+                                                <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
+                                                <pre>{JSON.stringify(log.output, null, 2)}</pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </>
+                        ) : (
+                            <div className="space-y-3">
+                                {cloudRunHistory.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center h-full opacity-30 text-white min-h-[140px]">
+                                        <Activity className="w-8 h-8 mb-2" />
+                                        <p>No remote executions detected for this workflow.</p>
+                                    </div>
+                                )}
+                                {cloudRunHistory.map((run: any) => {
+                                    let logs: any[] = [];
+                                    try { logs = typeof run.logs === 'string' ? JSON.parse(run.logs) : (run.logs || []); } catch (e) { }
+
+                                    const getStatusColor = (s: string) => {
+                                        if (s === 'success') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
+                                        if (s === 'failed') return 'bg-rose-500/10 text-rose-500 border-rose-500/30';
+                                        return 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                                    };
+
+                                    return (
+                                        <div key={run.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden hover:border-violet-500/30 transition-all shadow-sm">
+                                            <div className="p-4 flex items-center justify-between border-b border-[var(--border)] bg-gray-500/5">
+                                                <div className="flex items-center gap-3">
+                                                    <Badge className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase", getStatusColor(run.status))}>
+                                                        {run.status === 'running' && <Activity className="w-2.5 h-2.5 mr-1.5 animate-pulse" />}
+                                                        {run.status}
+                                                    </Badge>
+                                                    <span className="text-xs font-mono text-[var(--muted-fg)]">{new Date(run.started_at).toLocaleString()}</span>
+                                                </div>
+                                                <div className="text-[10px] font-mono text-[var(--muted-fg)] opacity-50 uppercase tracking-tighter">ID: {run.id.slice(-8)}</div>
+                                            </div>
+
+                                            {run.error && (
+                                                <div className="p-3 bg-rose-500/10 border-b border-[var(--border)] text-rose-500 text-[10px] font-mono flex items-start gap-2">
+                                                    <X className="w-3 h-3 mt-0.5 shrink-0" />
+                                                    <div className="flex-1 font-bold">{run.error}</div>
+                                                </div>
+                                            )}
+
+                                            <div className="p-4 space-y-3">
+                                                {logs.length > 0 ? (
+                                                    <div className="space-y-1.5">
+                                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Execution Steps</p>
+                                                        {logs.map((log: any, i: number) => (
+                                                            <div key={i} className="flex items-center gap-3 text-xs border-l-2 border-violet-500/10 pl-3 py-0.5">
+                                                                <div className={cn(
+                                                                    "w-1.5 h-1.5 rounded-full",
+                                                                    log.status === 'success' ? 'bg-emerald-500' : (log.status === 'failed' ? 'bg-rose-500' : 'bg-blue-500 animate-pulse')
+                                                                )} />
+                                                                <span className="font-semibold text-[var(--fg)] min-w-[120px]">
+                                                                    {(nodes.find(n => n.id === log.nodeId)?.data as any)?.label || 'Node'}
+                                                                </span>
+                                                                <span className="text-[10px] text-[var(--muted-fg)] italic">{log.status}</span>
+                                                                {log.output && <span className="text-[9px] text-violet-400 opacity-70 ml-auto font-mono">Output: {typeof log.output === 'object' ? 'JSON' : log.output.toString().slice(0, 20)}</span>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center p-8 bg-[var(--muted)]/30 rounded-lg border border-dashed border-[var(--border)]">
+                                                        <div className="text-center">
+                                                            <Activity className="w-5 h-5 text-[var(--muted-fg)] mx-auto mb-2 animate-pulse opacity-50" />
+                                                            <p className="text-[10px] font-medium text-[var(--muted-fg)]">Waiting for background session logs...</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {run.output && (
+                                                    <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Final Output</p>
+                                                        <pre className="text-[10px] bg-[var(--muted)] p-3 rounded-lg overflow-x-auto font-mono text-violet-400 border border-[var(--border)]">
+                                                            {JSON.stringify(run.output, null, 2)}
+                                                        </pre>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        ))}
-                        {executionLogs.length === 0 && (
-                            <div className="opacity-50 italic">Waiting for execution...</div>
                         )}
                     </div>
                 </div>

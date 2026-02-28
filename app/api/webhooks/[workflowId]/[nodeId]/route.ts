@@ -66,42 +66,68 @@ export async function POST(
             return NextResponse.json({ error: 'Failed to create run record' }, { status: 500 });
         }
 
-        // 5. Execute runner asynchronously (background)
-        // Note: In a production environment, you should use a background job queue (e.g. Inngest, Upstash QStash)
-        // For this implementation, we will perform the execution and update Supabase.
-
+        // 5. Execute runner (await it to ensure DB update happens before response)
         const runner = new WorkflowRunner(nodes, edges, process.env as Record<string, string>);
+        console.log(`🚀 [WEBHOOK] Starting execution for run ${run.id}...`);
 
-        // Use a non-blocking execution block
-        (async () => {
-            try {
-                const results = await runner.execute(triggerData);
+        try {
+            const results = await runner.execute(triggerData);
+            console.log(`✅ [WEBHOOK] Execution complete for run ${run.id}. Updating DB...`);
 
-                await supabase.from('workflow_runs').update({
-                    status: 'success',
-                    completed_at: new Date().toISOString(),
-                    output: results,
-                    logs: 'Workflow executed successfully from Webhook.'
-                }).eq('id', run.id);
-            } catch (err: any) {
-                console.error('Webhook execution error:', err);
-                await supabase.from('workflow_runs').update({
-                    status: 'failed',
-                    completed_at: new Date().toISOString(),
-                    error: err.message,
-                    logs: `Execution failed: ${err.message}`
-                }).eq('id', run.id);
+            // 6. Save results with log fallback
+            console.log(`📡 [WEBHOOK] Saving results for run ${run.id}...`);
+            const updatePayload: any = {
+                status: 'success',
+                completed_at: new Date().toISOString(),
+                output: results,
+                logs: JSON.stringify(runner.getLogs())
+            };
+
+            const { error: updateError } = await supabase.from('workflow_runs').update(updatePayload).eq('id', run.id);
+
+            if (updateError) {
+                if (updateError.message.includes("'logs' column")) {
+                    console.warn(`⚠️ [WEBHOOK] 'logs' column missing. Retrying update without logs...`);
+                    delete updatePayload.logs;
+                    await supabase.from('workflow_runs').update(updatePayload).eq('id', run.id);
+                } else {
+                    console.error(`❌ [WEBHOOK] Update error:`, updateError);
+                }
+            } else {
+                console.log(`🎊 [WEBHOOK] Run ${run.id} marked as success.`);
             }
-        })();
 
-        // 6. Respond immediately to the webhook sender
-        return NextResponse.json({
-            message: 'Webhook received. Workflow execution started.',
-            runId: run.id
-        }, { status: 202 });
+            return NextResponse.json({
+                message: 'Workflow executed successfully.',
+                runId: run.id,
+                output: results
+            });
 
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        } catch (err: any) {
+            console.error(`❌ [WEBHOOK] Execution FAILED for run ${run.id}:`, err);
+            const errorPayload: any = {
+                status: 'failed',
+                completed_at: new Date().toISOString(),
+                error: err.message,
+                logs: JSON.stringify(runner.getLogs())
+            };
+
+            const { error: failedUpdateError } = await supabase.from('workflow_runs').update(errorPayload).eq('id', run.id);
+
+            if (failedUpdateError && failedUpdateError.message.includes("'logs' column")) {
+                delete errorPayload.logs;
+                await supabase.from('workflow_runs').update(errorPayload).eq('id', run.id);
+            }
+
+            return NextResponse.json({
+                error: 'Workflow execution failed',
+                message: err.message,
+                runId: run.id
+            }, { status: 500 });
+        }
+    } catch (outerErr: any) {
+        console.error('Outer Webhook error:', outerErr);
+        return NextResponse.json({ error: outerErr.message }, { status: 500 });
     }
 }
 

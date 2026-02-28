@@ -14,6 +14,7 @@ export interface Integration {
     icon?: string;
     category: 'ai' | 'communication' | 'logic' | 'utility' | 'trigger' | 'api_action';
     actions: NodeAction[];
+    triggers?: any[];
 }
 
 class IntegrationRegistry {
@@ -241,21 +242,50 @@ registry.register({
     ]
 });
 
-// Memory Integration
+// ─── Memory ───────────────────────────────────────────────────
 registry.register({
     id: "memory",
     name: "Memory Session",
-    category: "ai",
+    category: "logic",
     actions: [
         {
             id: "session",
-            name: "Session Key",
-            description: "Provide a session ID to track conversation history",
-            execute: async (config) => {
-                return { ...config };
-            }
-        }
-    ]
+            name: "Session Manager",
+            description: "Manages conversation history",
+            execute: async (config, context) => {
+                const { sessionId } = config;
+                if (!sessionId) return { history: [] };
+
+                const supabase = createClient(
+                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+                );
+
+                // Try to get existing session
+                const { data } = await supabase
+                    .from('workflow_sessions')
+                    .select('data')
+                    .eq('session_id', sessionId)
+                    .single();
+
+                const history = data?.data?.history || [];
+
+                // Return history for the AI to use
+                return {
+                    history,
+                    sessionId,
+                    addMessage: async (msg: any) => {
+                        const newHistory = [...history, msg].slice(-10); // Keep last 10
+                        await supabase.from('workflow_sessions').upsert({
+                            session_id: sessionId,
+                            data: { history: newHistory },
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+                };
+            },
+        },
+    ],
 });
 
 // Tool Integration
@@ -294,7 +324,7 @@ registry.register({
             name: "Run Agent",
             description: "Execute LLM with Memory and Tools",
             execute: async (config, context) => {
-                const { systemPrompt, userPrompt: configUserPrompt, agentModel, agentMemory, agentTools } = config;
+                const { systemPrompt, userPrompt: configUserPrompt, agentModel, agentMemory, agentTools, agentKB } = config;
                 const userPrompt = configUserPrompt || context?.trigger?.text;
 
                 if (!agentModel || !agentModel.provider) {
@@ -385,7 +415,19 @@ registry.register({
                     finalSystemPrompt += `\n\nUse the following external context if relevant to the user's query:\n${toolsContext}`;
                 }
 
-                // 3. Execute LLM (Gemini or OpenAI or Groq)
+                // 3. Process Knowledge Base (KB) and merge into system prompt
+                if (agentKB && Array.isArray(agentKB) && agentKB.length > 0) {
+                    const kbContent = agentKB.map(kb => {
+                        if (kb.type === 'file_reader' && kb.text) {
+                            return `--- Knowledge from ${kb.filePath || 'file'} ---\n${kb.text}\n--- End Knowledge ---`;
+                        }
+                        // Add other KB types here if needed
+                        return JSON.stringify(kb); // Fallback for other KB types
+                    }).join('\n\n');
+                    finalSystemPrompt += `\n\nUse the following knowledge base content if relevant to the user's query:\n${kbContent}`;
+                }
+
+                // 4. Execute LLM (Gemini or OpenAI or Groq)
                 let aiResponseText = "";
 
                 if (agentModel.provider === 'google_gemini') {
@@ -457,7 +499,7 @@ registry.register({
                     throw new Error(`Unsupported provider: ${agentModel.provider}`);
                 }
 
-                // 4. Save Memory
+                // 5. Save Memory
                 let memoryError = null;
                 if (sessionId && supabase) {
                     messages.push({ role: "user", content: userPrompt || "" });
@@ -483,7 +525,8 @@ registry.register({
                     memory_context_used: !!sessionId,
                     memory_error: memoryError,
                     tools_used: agentTools?.length || 0,
-                    debug_tools_context_length: toolsContext ? toolsContext.length : 0
+                    debug_tools_context_length: toolsContext ? toolsContext.length : 0,
+                    knowledge_base_used: agentKB?.length || 0,
                 };
             }
         }
@@ -1173,14 +1216,18 @@ registry.register({
             id: "send_message",
             name: "Send Message",
             description: "Send a message via Telegram Bot",
-            execute: async (config) => {
+            execute: async (config, context) => {
                 const { botToken, chatId, text, parseMode } = config;
                 if (!botToken) throw new Error("Telegram Bot Token is required");
-                if (!chatId) throw new Error("Chat ID is required");
+
+                // SMART REPLY: Use trigger sender_id if no chatId is provided
+                const targetChatId = chatId || context?.trigger?.sender_id;
+
+                if (!targetChatId) throw new Error("No Chat ID provided and no trigger sender found.");
 
                 // [MOCK LOCAL FIX] Prevent Telegram from throwing "Bad Request: chat not found"
                 // during local interface testing where the trigger data injects a fake chat ID.
-                if (chatId === "123456789" || chatId.toString() === "123456789") {
+                if (targetChatId === "123456789" || targetChatId.toString() === "123456789") {
                     console.log(`[LOCAL MOCK] Captured Telegram send to mock chat ID 123456789. Text:`, text);
                     return { ok: true, result: { message_id: 999, text, chat: { id: "123456789" } } };
                 }
@@ -1188,8 +1235,13 @@ registry.register({
                 const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ chat_id: chatId, text: text || "", parse_mode: parseMode || "Markdown" }),
+                    body: JSON.stringify({
+                        chat_id: targetChatId,
+                        text: text || "",
+                        parse_mode: parseMode || "Markdown",
+                    }),
                 });
+
                 if (!res.ok) {
                     const err = await res.json();
                     throw new Error(`Telegram Error: ${err.description || res.statusText}`);
@@ -1197,7 +1249,25 @@ registry.register({
                 return await res.json();
             },
         },
+        {
+            id: "telegram_message",
+            name: "On Message Received",
+            description: "Triggers when your bot receives a message",
+            execute: async (config, context) => {
+                const body = context.trigger || {};
+                const message = body.message || body.edited_message || body.callback_query?.message;
+                if (!message) return { text: "", sender_id: null, chat_id: null };
+                return {
+                    text: message.text || "",
+                    sender_id: message.from?.id,
+                    username: message.from?.username,
+                    chat_id: message.chat?.id,
+                    message_id: message.message_id,
+                };
+            }
+        },
     ],
+    triggers: [],
 });
 
 // ─── Notion ──────────────────────────────────────────────────

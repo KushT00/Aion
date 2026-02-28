@@ -69,8 +69,11 @@ export function CustomNode({ data, selected }: { data: any; selected?: boolean }
                 </div>
                 <div className="min-w-0">
                     <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
-                    <p className="text-[9px] text-[var(--muted-fg)]">
-                        {integrationLabel[integrationId] || data.type?.replace(/_/g, ' ')}
+                    <p className="text-[9px] text-[var(--muted-fg)] truncate flex items-center gap-1">
+                        <span>{integrationLabel[integrationId] || data.type?.replace(/_/g, ' ')}</span>
+                        {data.config?.data?.model && (
+                            <span className="opacity-50">• {data.config.data.model.replace(/^gpt-/, 'GPT-').replace(/^gemini-/, 'Gemini ')}</span>
+                        )}
                     </p>
                 </div>
             </div>
@@ -205,6 +208,17 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
                     <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Chat Model *</span>
                 </div>
 
+                {/* Knowledge Base (Optional) */}
+                <div className="relative group/handle flex flex-col items-center">
+                    <Handle
+                        type="target"
+                        id="knowledge"
+                        position={Position.Bottom}
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-blue-500 transition-colors shadow-sm !rotate-45"
+                    />
+                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Knowledge (KB)</span>
+                </div>
+
                 {/* Memory (Optional) */}
                 <div className="relative group/handle flex flex-col items-center">
                     <Handle
@@ -213,7 +227,7 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
                         position={Position.Bottom}
                         className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
                     />
-                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Memory</span>
+                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Memory (History)</span>
                 </div>
 
                 {/* Tools (Optional, Multiple) */}
@@ -222,7 +236,7 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
                         type="target"
                         id="tools"
                         position={Position.Bottom}
-                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-amber-500 transition-colors shadow-sm !rotate-45"
                     />
                     <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Tools</span>
                 </div>
