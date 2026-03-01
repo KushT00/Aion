@@ -412,20 +412,28 @@ registry.register({
                 // Construct Prompt
                 let finalSystemPrompt = systemPrompt || "You are a helpful AI assistant.";
                 if (toolsContext) {
-                    finalSystemPrompt += `\n\nUse the following external context if relevant to the user's query:\n${toolsContext}`;
+                    finalSystemPrompt += `\n\n--- EXTERNAL CONTEXT ---\n${toolsContext}\n--- END EXTERNAL CONTEXT ---`;
                 }
 
-                // 3. Process Knowledge Base (KB) and merge into system prompt
+                // 3. Process Knowledge Base (KB)
                 if (agentKB && Array.isArray(agentKB) && agentKB.length > 0) {
                     const kbContent = agentKB.map(kb => {
-                        if (kb.type === 'file_reader' && kb.text) {
-                            return `--- Knowledge from ${kb.filePath || 'file'} ---\n${kb.text}\n--- End Knowledge ---`;
+                        // Handle Structured Data (Google Sheets, etc)
+                        if (kb.values && Array.isArray(kb.values)) {
+                            const table = kb.values.map((row: any[]) => row.join(" | ")).join("\n");
+                            return `[Spreadsheet Data: ${kb.range || 'Menu'}]\n${table}`;
                         }
-                        // Add other KB types here if needed
-                        return JSON.stringify(kb); // Fallback for other KB types
+                        // Handle File Reader / Text nodes
+                        if (kb.text) {
+                            return `[Document: ${kb.filePath || kb.name || 'document'}]\n${kb.text}`;
+                        }
+                        return `[Data Content]\n${JSON.stringify(kb)}`;
                     }).join('\n\n');
-                    finalSystemPrompt += `\n\nUse the following knowledge base content if relevant to the user's query:\n${kbContent}`;
+
+                    finalSystemPrompt += `\n\n### KNOWLEDGE BASE DATA\n\n${kbContent}\n\n### INSTRUCTIONS\n1. Use the data above to answer the query accurately.\n2. Do NOT mention headers like "KNOWLEDGE BASE DATA" or quote the raw table formatting in your response.\n3. Provide a natural, friendly chat response.`;
                 }
+                console.log(`\n📝 [AI AGENT] Final System Prompt Length: ${finalSystemPrompt.length} chars.`);
+                // console.log(`FULL PROMPT:`, finalSystemPrompt); // Uncomment only for deep debug
 
                 // 4. Execute LLM (Gemini or OpenAI or Groq)
                 let aiResponseText = "";
@@ -437,7 +445,10 @@ registry.register({
                     const payload: any = {
                         system_instruction: { parts: [{ text: finalSystemPrompt }] },
                         contents: [
-                            ...messages.map(m => ({ role: m.role === 'assistant' ? 'model' : m.role, parts: [{ text: m.content }] })),
+                            ...messages.map(m => ({
+                                role: (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user',
+                                parts: [{ text: m.content }]
+                            })),
                             { role: "user", parts: [{ text: userPrompt || "" }] }
                         ]
                     };
@@ -460,7 +471,10 @@ registry.register({
                         model: agentModel.model || 'llama-3.1-8b-instant',
                         messages: [
                             { role: "system", content: finalSystemPrompt },
-                            ...messages.map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content })),
+                            ...messages.map(m => ({
+                                role: (m.role === 'model' || m.role === 'assistant') ? 'assistant' : 'user',
+                                content: m.content
+                            })),
                             { role: "user", content: userPrompt || "" }
                         ]
                     };
@@ -482,7 +496,10 @@ registry.register({
                         model: agentModel.model || 'gpt-4o',
                         messages: [
                             { role: "system", content: finalSystemPrompt },
-                            ...messages.map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.content })),
+                            ...messages.map(m => ({
+                                role: (m.role === 'model' || m.role === 'assistant') ? 'assistant' : 'user',
+                                content: m.content
+                            })),
                             { role: "user", content: userPrompt || "" }
                         ]
                     };
@@ -502,20 +519,27 @@ registry.register({
                 // 5. Save Memory
                 let memoryError = null;
                 if (sessionId && supabase) {
-                    messages.push({ role: "user", content: userPrompt || "" });
-                    // Map generic "assistant" / "model" mapping safely for next runs by keeping standard "user" and "model" roles
                     const aiRole = agentModel.provider === 'google_gemini' ? 'model' : 'assistant';
-                    messages.push({ role: aiRole, content: aiResponseText });
+                    const newMessages = [
+                        ...(messages || []),
+                        { role: "user", content: userPrompt || "" },
+                        { role: aiRole, content: aiResponseText || "" }
+                    ].slice(-10); // Keep last 10 messages for context
 
                     // Upsert Memory
                     const { data: existing, error: selectErr } = await supabase.from('workflow_memory').select('id').eq('session_id', sessionId).maybeSingle();
-                    if (selectErr) console.error("[MEMORY] Select Error:", selectErr.message);
 
                     if (existing) {
-                        const { error: updateErr } = await supabase.from('workflow_memory').update({ messages, updated_at: new Date().toISOString() }).eq('id', existing.id);
+                        const { error: updateErr } = await supabase.from('workflow_memory').update({
+                            messages: newMessages,
+                            updated_at: new Date().toISOString()
+                        }).eq('id', existing.id);
                         if (updateErr) memoryError = updateErr.message;
                     } else {
-                        const { error: insertErr } = await supabase.from('workflow_memory').insert({ session_id: sessionId, messages });
+                        const { error: insertErr } = await supabase.from('workflow_memory').insert({
+                            session_id: sessionId,
+                            messages: newMessages
+                        });
                         if (insertErr) memoryError = insertErr.message;
                     }
                 }
@@ -1347,35 +1371,105 @@ registry.register({
             description: "Append a row to a Google Sheet",
             execute: async (config, input) => {
                 const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
-                const { spreadsheetId, range, values } = config;
+                const { spreadsheetId, range, values, rowData } = config;
                 if (!accessToken) throw new Error("Google Access Token is required");
                 if (!spreadsheetId) throw new Error("Spreadsheet ID is required");
-                const parsedValues = typeof values === "string" ? JSON.parse(values) : values;
+
+                // Handle both 'values' (array) and 'rowData' (object)
+                let finalValues = values;
+                if (!finalValues && rowData) {
+                    finalValues = Object.values(typeof rowData === 'string' ? JSON.parse(rowData) : rowData);
+                }
+                let parsedValues = typeof finalValues === "string" ? JSON.parse(finalValues) : finalValues;
+
+                // Ensure it's a 2D array (e.g. [["A", "B"]])
+                const valuesToSubmit = Array.isArray(parsedValues) && Array.isArray(parsedValues[0])
+                    ? parsedValues
+                    : [parsedValues];
+
                 const res = await fetch(
                     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range || "Sheet1"}:append?valueInputOption=USER_ENTERED`,
                     {
                         method: "POST",
                         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ values: [parsedValues] }),
+                        body: JSON.stringify({ values: valuesToSubmit }),
                     }
                 );
-                if (!res.ok) throw new Error(`Sheets Error: ${res.statusText}`);
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Sheets Error: ${error.error?.message || res.statusText}`);
+                }
                 return await res.json();
             },
         },
         {
-            id: "read_range",
-            name: "Read Range",
+            id: "get_rows",
+            name: "Get Rows",
             description: "Read cells from a Google Sheet",
             execute: async (config, input) => {
                 const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
-                const { spreadsheetId, range } = config;
+                const { spreadsheetId, range, sheetName, rangeSpecific } = config;
                 if (!accessToken) throw new Error("Google Access Token is required");
+                if (!spreadsheetId) throw new Error("Spreadsheet ID is required");
+
+                // Combine tab name (range or sheetName) with A1 notation (rangeSpecific)
+                const tab = range || sheetName || "Sheet1";
+                const finalRange = rangeSpecific ? `${tab}!${rangeSpecific}` : tab;
+
                 const res = await fetch(
-                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range || "Sheet1"}`,
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${finalRange}`,
                     { headers: { Authorization: `Bearer ${accessToken}` } }
                 );
-                if (!res.ok) throw new Error(`Sheets Error: ${res.statusText}`);
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Sheets Error: ${error.error?.message || res.statusText}`);
+                }
+                const data = await res.json();
+                return {
+                    values: data.values || [],
+                    range: data.range,
+                    count: data.values?.length || 0
+                };
+            },
+        },
+        {
+            id: "update_row",
+            name: "Update Row",
+            description: "Update an existing row in a Google Sheet",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { spreadsheetId, range, sheetName, rowIndex, values, rowData } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+                if (!spreadsheetId) throw new Error("Spreadsheet ID is required");
+                if (!rowIndex) throw new Error("Row Index is required for Update Row");
+
+                let finalValues = values;
+                if (!finalValues && rowData) {
+                    finalValues = Object.values(typeof rowData === 'string' ? JSON.parse(rowData) : rowData);
+                }
+                let parsedValues = typeof finalValues === "string" ? JSON.parse(finalValues) : finalValues;
+
+                // Ensure it's a 2D array
+                const valuesToSubmit = Array.isArray(parsedValues) && Array.isArray(parsedValues[0])
+                    ? parsedValues
+                    : [parsedValues];
+
+                // Tab name preference: range > sheetName > "Sheet1"
+                const tab = (range || sheetName || "Sheet1").split('!')[0];
+                const updateRange = `${tab}!A${rowIndex}`;
+
+                const res = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${updateRange}?valueInputOption=USER_ENTERED`,
+                    {
+                        method: "PUT",
+                        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ values: valuesToSubmit }),
+                    }
+                );
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Sheets Error: ${error.error?.message || res.statusText}`);
+                }
                 return await res.json();
             },
         },

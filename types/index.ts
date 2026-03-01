@@ -38,6 +38,7 @@ export type NodeType =
   | 'input'
   | 'trigger'
   | 'ai_action'
+  | 'ai_agent'
   | 'api_action'
   | 'social_action'
   | 'logic_gate'

@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils';
 import { GoogleConnectButton } from './GoogleConnectButton';
 import {
     Plus, Trash2, BookOpen, Wrench, Globe, Link2,
-    ChevronDown, ChevronRight, BrainCircuit,
+    ChevronDown, ChevronRight, BrainCircuit, CheckCircle2,
+    FileSpreadsheet, Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -427,42 +428,195 @@ export function SheetsConfig({ node, updateNode, googleIntegration, onConnectGoo
 }) {
     const config = node.data.config || {};
     const data = config.data || {};
-    const [sheets, setSheets] = useState<{ id: string; name: string }[] | null>(null);
+    const [sheets, setSheets] = useState<{ id: string; name: string; modifiedTime?: string }[] | null>(null);
+    const [worksheets, setWorksheets] = useState<{ id: string; title: string }[] | null>(null);
     const [fetching, setFetching] = useState(false);
+    const [fetchingWorksheets, setFetchingWorksheets] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
     const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
-    const fetchSheets = async () => {
+    const fetchSheets = async (nameFilter?: string) => {
         setFetching(true);
+        setWorksheets(null);
         try {
             const token = await getAccessToken('google');
             if (!token) throw new Error("No token found. Please re-connect.");
-            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&orderBy=modifiedTime desc&pageSize=15`, {
+            let q = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
+            if (nameFilter) {
+                const sanitized = nameFilter.replace(/'/g, "\\'");
+                q += ` and name contains '${sanitized}'`;
+            }
+            const encodedQ = encodeURIComponent(q);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodedQ}&orderBy=modifiedTime desc&pageSize=30&fields=files(id, name, modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&spaces=drive`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const { files } = await res.json();
-            setSheets(files || []);
+            const body = await res.json();
+            if (body.error) throw new Error(body.error.message || "Google Drive API Error");
+            setSheets(body.files || []);
         } catch (e: any) { alert(e.message || "Failed to fetch sheets."); }
         finally { setFetching(false); }
     };
 
+    const fetchWorksheets = async (spreadsheetId: string) => {
+        setFetchingWorksheets(true);
+        try {
+            const token = await getAccessToken('google');
+            if (!token) throw new Error("No token found.");
+            const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const body = await res.json();
+            if (body.error) throw new Error(body.error.message || "Google Sheets API Error");
+            if (body.sheets) {
+                setWorksheets(body.sheets.map((s: any) => ({ id: s.properties.sheetId, title: s.properties.title })));
+            }
+        } catch (e: any) { alert(e.message || "Failed to fetch worksheets"); }
+        finally { setFetchingWorksheets(false); }
+    };
+
     return (
-        <div className="space-y-3">
-            <GoogleConnectButton isConnected={!!googleIntegration} isValid={googleIntegration?.is_valid} accountEmail={googleIntegration?.account_email} onConnect={onConnectGoogle} onDisconnect={onDisconnect} />
-            <div className="space-y-2">
-                <div className="flex items-center justify-between"><Label>Spreadsheet ID</Label>
-                    {googleIntegration && <button onClick={fetchSheets} className="text-[9px] font-bold text-violet-400 hover:text-violet-300 transition-colors uppercase">{fetching ? '...' : 'Browse Recent'}</button>}
-                </div>
-                {sheets ? (
-                    <div className="border border-[var(--border)] rounded-lg p-1 bg-[var(--muted)]/50 max-h-32 overflow-y-auto custom-scrollbar">
-                        {sheets.map(s => <button key={s.id} onClick={() => { updateData({ spreadsheetId: s.id }); setSheets(null); }} className="w-full text-left px-2 py-1.5 rounded text-[10px] hover:bg-[var(--muted)] truncate">{s.name}</button>)}
+        <div className="space-y-4">
+            <GoogleConnectButton
+                isConnected={!!googleIntegration}
+                isValid={googleIntegration?.is_valid}
+                accountEmail={googleIntegration?.account_email}
+                onConnect={onConnectGoogle}
+                onDisconnect={onDisconnect}
+            />
+
+            {googleIntegration && (
+                <Section title="Spreadsheet Setup" icon={FileSpreadsheet} color="text-emerald-400">
+                    <div className="space-y-3">
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                    <Input
+                                        placeholder="Search by name..."
+                                        value={searchQuery}
+                                        onChange={(e: any) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e: any) => e.key === 'Enter' && fetchSheets(searchQuery)}
+                                    />
+                                    {fetching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />}
+                                </div>
+                                <button
+                                    disabled={fetching}
+                                    onClick={() => fetchSheets(searchQuery)}
+                                    className="p-2 bg-violet-500 text-white rounded-lg hover:bg-violet-600 disabled:opacity-50 transition-colors"
+                                >
+                                    <Globe className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {sheets && (
+                            <div className="border border-violet-500/30 rounded-lg p-1 bg-violet-500/5 max-h-40 overflow-y-auto custom-scrollbar">
+                                {sheets.length === 0 && <p className="p-3 text-[10px] text-center opacity-50 italic">No sheets found.</p>}
+                                {sheets.map(s => (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => {
+                                            updateData({ spreadsheetId: s.id, spreadsheetName: s.name, range: 'Sheet1' });
+                                            setSheets(null);
+                                            fetchWorksheets(s.id);
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-lg text-[10px] hover:bg-violet-500/10 transition-colors truncate flex flex-col mb-1"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-bold truncate">{s.name}</span>
+                                            {s.modifiedTime && <span className="text-[8px] opacity-30">{new Date(s.modifiedTime).toLocaleDateString()}</span>}
+                                        </div>
+                                        <span className="opacity-40 text-[8px]">{s.id}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {!sheets && data.spreadsheetId && (
+                            <div className="flex items-center gap-2 p-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold text-emerald-400 truncate">{data.spreadsheetName || 'Connected Sheet'}</p>
+                                    <p className="text-[8px] opacity-40 truncate">{data.spreadsheetId}</p>
+                                </div>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            </div>
+                        )}
+
+                        {!sheets && !data.spreadsheetId && (
+                            <Input
+                                placeholder="Paste Spreadsheet ID..."
+                                value={data.spreadsheetId || ''}
+                                onChange={(e: any) => updateData({ spreadsheetId: e.target.value })}
+                            />
+                        )}
+
+                        {data.spreadsheetId && (
+                            <div className="space-y-1.5 pt-2 border-t border-[var(--border)]">
+                                <div className="flex items-center justify-between">
+                                    <Label>Sheet (Tab)</Label>
+                                    <button onClick={() => fetchWorksheets(data.spreadsheetId)} className="text-[9px] font-bold text-violet-400 hover:text-violet-300 transition-colors uppercase">
+                                        {fetchingWorksheets ? '...' : 'Refresh'}
+                                    </button>
+                                </div>
+                                {worksheets ? (
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {worksheets.map(w => (
+                                            <button
+                                                key={w.id}
+                                                onClick={() => { updateData({ range: w.title }); setWorksheets(null); }}
+                                                className={cn("px-2 py-1.5 rounded-md border text-[10px] transition-all truncate", data.range === w.title ? "bg-violet-500/10 border-violet-500 text-violet-400 font-bold" : "bg-[var(--muted)] border-[var(--border)] hover:border-violet-500/40")}
+                                            >
+                                                {w.title}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <Input placeholder="Sheet1" value={data.range || ''} onChange={(e: any) => updateData({ range: e.target.value })} />
+                                )}
+                            </div>
+                        )}
                     </div>
-                ) : <Input placeholder="Spreadsheet ID..." value={data.spreadsheetId || ''} onChange={(e: any) => updateData({ spreadsheetId: e.target.value })} />}
-            </div>
-            <div className="space-y-2"><Label>Action</Label>
-                <Select value={config.actionId || 'append_row'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
-                    <option value="append_row">Append Row</option><option value="get_rows">Get Rows</option><option value="update_row">Update Row</option>
-                </Select>
-            </div>
+                </Section>
+            )}
+
+            {data.spreadsheetId && (
+                <Section title="Operation" icon={Zap} color="text-amber-400">
+                    <div className="space-y-3">
+                        <div className="space-y-1">
+                            <Label>Action</Label>
+                            <Select value={config.actionId || 'append_row'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                                <option value="append_row">Append Row</option>
+                                <option value="get_rows">Get Rows</option>
+                                <option value="update_row">Update Row</option>
+                            </Select>
+                        </div>
+
+                        {config.actionId === 'update_row' && (
+                            <div className="space-y-1">
+                                <Label>Row Index</Label>
+                                <Input type="number" placeholder="e.g. 2" value={data.rowIndex || ''} onChange={(e: any) => updateData({ rowIndex: e.target.value })} />
+                            </div>
+                        )}
+
+                        {(config.actionId === 'append_row' || config.actionId === 'update_row') && (
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <Label>Row Data (JSON or Array)</Label>
+                                    <span className="text-[8px] opacity-40">Use {"{{id.field}}"}</span>
+                                </div>
+                                <Textarea className="h-24 font-mono text-[10px]" placeholder='{ "Name": "{{trigger.name}}" }' value={typeof data.rowData === 'object' ? JSON.stringify(data.rowData, null, 2) : data.rowData || ''} onChange={(e: any) => updateData({ rowData: e.target.value })} />
+                            </div>
+                        )}
+
+                        {config.actionId === 'get_rows' && (
+                            <div className="space-y-1">
+                                <Label>Specific Range (Optional)</Label>
+                                <Input placeholder="A1:C10" value={data.rangeSpecific || ''} onChange={(e: any) => updateData({ rangeSpecific: e.target.value })} />
+                            </div>
+                        )}
+                    </div>
+                </Section>
+            )}
         </div>
     );
 }
