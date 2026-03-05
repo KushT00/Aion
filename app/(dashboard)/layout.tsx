@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { ViewModeProvider } from '@/components/view-mode-context';
+import { AIChatProvider } from '@/components/ai-chat-context';
+import { AIChatPanel } from '@/components/ui/ai-chat-panel';
 
 export default function DashboardLayout({
     children,
@@ -12,19 +15,24 @@ export default function DashboardLayout({
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     return (
-        <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
-            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <Topbar
-                    onMenuClick={() => setSidebarOpen(true)}
-                    userName="User"
-                />
-                <main className="flex-1 overflow-y-auto">
-                    <div className="animate-fade-in">
-                        {children}
+        <ViewModeProvider>
+            <AIChatProvider>
+                <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
+                    <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        <Topbar
+                            onMenuClick={() => setSidebarOpen(true)}
+                            userName="User"
+                        />
+                        <main className="flex-1 overflow-y-auto">
+                            <div className="animate-fade-in">
+                                {children}
+                            </div>
+                        </main>
                     </div>
-                </main>
-            </div>
-        </div>
+                    <AIChatPanel />
+                </div>
+            </AIChatProvider>
+        </ViewModeProvider>
     );
 }

@@ -31,7 +31,7 @@ import {
     X, Zap, Settings2, Database, Clock, Search, Info,
     Webhook as WebhookIcon, Calendar, Mail,
     BrainCircuit, Code2, SlidersHorizontal, Merge, Repeat,
-    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity,
+    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
@@ -47,6 +47,7 @@ import {
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
     Input, Label
 } from '@/components/workflow/NodeConfigs';
+import { PublishingPanel } from '@/components/workflow/PublishingPanel';
 
 // ─── Node type registration (custom components) ─────────────
 const nodeTypes: NodeTypes = customNodeTypes as unknown as NodeTypes;
@@ -348,6 +349,7 @@ function BuilderContent() {
     const [paletteSearch, setPaletteSearch] = useState('');
     const [consoleHeight, setConsoleHeight] = useState(300);
     const [isResizing, setIsResizing] = useState(false);
+    const [isPublishingPanelOpen, setIsPublishingPanelOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Resizing logic for console
@@ -935,6 +937,15 @@ function BuilderContent() {
                         <Save className={cn("w-4 h-4", isSaving && "animate-spin")} />
                         {isSaving ? 'Saving...' : 'Save'}
                     </Button>
+                    <Button
+                        size="sm"
+                        variant="gradient"
+                        onClick={() => setIsPublishingPanelOpen(true)}
+                        className="shadow-lg shadow-primary-500/20"
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        Publish
+                    </Button>
                     <div className="w-px h-6 bg-[var(--border)] mx-1" />
                     <Button
                         variant={showConsole ? "secondary" : "ghost"}
@@ -1389,6 +1400,16 @@ function BuilderContent() {
                     </div>
                 </div>
             )}
+
+            <PublishingPanel
+                isOpen={isPublishingPanelOpen}
+                onClose={() => setIsPublishingPanelOpen(false)}
+                workflowName={workflowName}
+                onPublish={(details) => {
+                    console.log('Publishing workflow:', details);
+                    // This is where you would call a Supabase function to insert into marketplace_listings
+                }}
+            />
         </div>
     );
 }

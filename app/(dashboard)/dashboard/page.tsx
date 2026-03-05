@@ -1,244 +1,144 @@
 'use client';
 
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
-    GitBranch,
     Play,
-    Store,
-    TrendingUp,
-    Plus,
     ArrowRight,
-    Activity,
+    Zap,
+    TrendingUp,
     Clock,
-    CheckCircle,
-    XCircle,
+    Mail,
+    MessageSquare,
+    ChevronRight,
+    Activity,
+    Settings
 } from 'lucide-react';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
 
 const stats = [
+    { label: 'Automations Saved', value: '42.5h', change: '+12% this week', icon: Clock, color: 'text-primary-400' },
+    { label: 'Tasks Completed', value: '1,284', change: '+243 today', icon: Zap, color: 'text-amber-400' },
+    { label: 'Value Generated', value: '$840', change: 'Estimated ROI', icon: TrendingUp, color: 'text-emerald-400' },
+];
+
+const activeInstances = [
     {
-        label: 'Total Workflows',
-        value: '12',
-        change: '+3 this week',
-        icon: GitBranch,
-        color: 'from-primary-500 to-primary-600',
+        id: '1',
+        name: 'Smart Email Triage',
+        status: 'running',
+        metric: '124 emails processed',
+        lastRun: '2 mins ago',
+        icon: Mail,
+        gradient: 'from-blue-500/20 to-indigo-500/20'
     },
     {
-        label: 'Total Runs',
-        value: '248',
-        change: '+52 this week',
-        icon: Play,
-        color: 'from-accent-500 to-accent-600',
-    },
-    {
-        label: 'Marketplace Sales',
-        value: '$1,240',
-        change: '+18% this month',
-        icon: Store,
-        color: 'from-emerald-500 to-emerald-600',
-    },
-    {
-        label: 'Success Rate',
-        value: '96.8%',
-        change: '+2.1% vs last month',
-        icon: TrendingUp,
-        color: 'from-amber-500 to-amber-600',
+        id: '2',
+        name: 'Discord Lead Multiplier',
+        status: 'running',
+        metric: '12 hot leads found',
+        lastRun: '15 mins ago',
+        icon: MessageSquare,
+        gradient: 'from-violet-500/20 to-purple-500/20'
     },
 ];
 
-const recentActivity = [
-    {
-        id: 1,
-        type: 'run',
-        title: 'Email Automation Flow',
-        status: 'success' as const,
-        time: '2 mins ago',
-    },
-    {
-        id: 2,
-        type: 'run',
-        title: 'Data Scraping Pipeline',
-        status: 'running' as const,
-        time: '12 mins ago',
-    },
-    {
-        id: 3,
-        type: 'publish',
-        title: 'Social Media Bot',
-        status: 'success' as const,
-        time: '1 hour ago',
-    },
-    {
-        id: 4,
-        type: 'run',
-        title: 'Report Generator',
-        status: 'failed' as const,
-        time: '3 hours ago',
-    },
-    {
-        id: 5,
-        type: 'run',
-        title: 'Customer Support Agent',
-        status: 'success' as const,
-        time: '5 hours ago',
-    },
-];
-
-const statusConfig = {
-    success: { icon: CheckCircle, variant: 'success' as const, label: 'Success' },
-    running: { icon: Activity, variant: 'info' as const, label: 'Running' },
-    failed: { icon: XCircle, variant: 'error' as const, label: 'Failed' },
-};
-
-export default function DashboardPage() {
+export default function ConsumerDashboard() {
     return (
-        <div className="p-6 lg:p-8 space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-[var(--fg)]">Dashboard</h1>
-                    <p className="text-[var(--muted-fg)] mt-1">
-                        Welcome back! Here&apos;s what&apos;s happening with your workflows.
+        <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-10">
+            {/* Hero Section */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-gradient-to-r from-primary-900/40 to-accent-900/20 border border-primary-500/20 rounded-3xl p-8 lg:p-12">
+                <div className="space-y-4">
+                    <Badge variant="primary" pulse dot>System Active</Badge>
+                    <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
+                        Good evening, <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400">Builder</span>
+                    </h1>
+                    <p className="text-[var(--muted-fg)] text-lg max-w-xl">
+                        Your AI agents have saved you <span className="text-[var(--fg)] font-semibold">42 hours</span> this month. Explore the marketplace to find your next productivity multiplier.
                     </p>
+                    <div className="flex gap-4 pt-2">
+                        <Link href="/marketplace">
+                            <Button size="lg" className="rounded-full px-8">
+                                Explore Marketplace
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
-                <Link href="/builder">
-                    <Button>
-                        <Plus className="w-4 h-4" />
-                        New Workflow
-                    </Button>
-                </Link>
+
+                <div className="flex gap-4 hidden xl:flex">
+                    <div className="w-32 h-32 rounded-3xl bg-primary-500/10 border border-primary-500/20 flex flex-col items-center justify-center p-4">
+                        <Activity className="w-8 h-8 text-primary-400 mb-2" />
+                        <span className="text-2xl font-bold">99%</span>
+                        <span className="text-[10px] uppercase text-[var(--muted-fg)]">Efficiency</span>
+                    </div>
+                </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+            {/* Value Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {stats.map((stat) => (
-                    <Card
-                        key={stat.label}
-                        className="hover:shadow-lg hover:-translate-y-1 cursor-default group"
-                    >
-                        <CardContent className="p-6">
-                            <div className="flex items-start justify-between mb-4">
-                                <div
-                                    className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}
-                                >
-                                    <stat.icon className="w-5 h-5 text-white" />
-                                </div>
+                    <Card key={stat.label} className="relative overflow-hidden group hover:border-primary-500/40">
+                        <div className="flex items-center gap-4">
+                            <div className={cn("p-4 rounded-2xl bg-[var(--muted)] group-hover:scale-110 transition-transform duration-300", stat.color)}>
+                                <stat.icon className="w-6 h-6" />
                             </div>
-                            <div className="text-2xl font-bold text-[var(--fg)] mb-1">
-                                {stat.value}
+                            <div>
+                                <p className="text-sm text-[var(--muted-fg)]">{stat.label}</p>
+                                <h3 className="text-2xl font-bold">{stat.value}</h3>
+                                <p className="text-xs text-emerald-400 font-medium">{stat.change}</p>
                             </div>
-                            <div className="text-sm text-[var(--muted-fg)]">{stat.label}</div>
-                            <div className="text-xs text-emerald-500 mt-2 font-medium">
-                                {stat.change}
-                            </div>
-                        </CardContent>
+                        </div>
                     </Card>
                 ))}
             </div>
 
-            {/* Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                {/* Recent Activity */}
-                <Card className="lg:col-span-3">
-                    <div className="p-6 border-b border-[var(--border)]">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-[var(--fg)]">
-                                Recent Activity
-                            </h2>
-                            <Link href="/runs">
-                                <Button variant="ghost" size="sm">
-                                    View all
-                                    <ArrowRight className="w-4 h-4" />
-                                </Button>
-                            </Link>
-                        </div>
-                    </div>
-                    <div className="divide-y divide-[var(--border)]">
-                        {recentActivity.map((activity) => {
-                            const config = statusConfig[activity.status];
-                            return (
-                                <div
-                                    key={activity.id}
-                                    className="flex items-center gap-4 px-6 py-4 hover:bg-[var(--muted)] transition-colors"
-                                >
-                                    <div className="flex-shrink-0">
-                                        <config.icon
-                                            className={`w-5 h-5 ${activity.status === 'success'
-                                                    ? 'text-emerald-500'
-                                                    : activity.status === 'running'
-                                                        ? 'text-blue-500 animate-pulse'
-                                                        : 'text-red-500'
-                                                }`}
-                                        />
+            {/* Active Automations */}
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-bold">Active Automations</h2>
+                    <Link href="/my-automations" className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 font-medium transition-colors">
+                        View all <ChevronRight className="w-4 h-4" />
+                    </Link>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {activeInstances.map((instance) => (
+                        <div key={instance.id} className="group relative bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 hover:border-primary-500/40 transition-all">
+                            <div className="flex items-start justify-between">
+                                <div className="flex gap-4">
+                                    <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br", instance.gradient)}>
+                                        <instance.icon className="w-7 h-7 text-white/90" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-[var(--fg)] truncate">
-                                            {activity.title}
-                                        </p>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <Clock className="w-3 h-3 text-[var(--muted-fg)]" />
-                                            <span className="text-xs text-[var(--muted-fg)]">{activity.time}</span>
+                                    <div className="space-y-1">
+                                        <h4 className="font-bold text-lg">{instance.name}</h4>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="success" dot pulse>Running</Badge>
+                                            <span className="text-xs text-[var(--muted-fg)]">{instance.lastRun}</span>
                                         </div>
                                     </div>
-                                    <Badge variant={config.variant} dot pulse={activity.status === 'running'}>
-                                        {config.label}
-                                    </Badge>
                                 </div>
-                            );
-                        })}
-                    </div>
-                </Card>
-
-                {/* Quick Actions */}
-                <Card className="lg:col-span-2">
-                    <div className="p-6 border-b border-[var(--border)]">
-                        <h2 className="text-lg font-semibold text-[var(--fg)]">Quick Actions</h2>
-                    </div>
-                    <div className="p-6 space-y-3">
-                        <Link href="/builder" className="block">
-                            <button className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] hover:bg-[var(--muted)] hover:border-primary-500/50 transition-all group text-left">
-                                <div className="w-10 h-10 rounded-lg bg-primary-50 dark:bg-primary-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <Plus className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                                <Button variant="ghost" size="icon">
+                                    <Settings className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="mt-6 pt-6 border-t border-[var(--border)] flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase tracking-widest text-[var(--muted-fg)]">Value Driven</span>
+                                    <span className="text-sm font-semibold">{instance.metric}</span>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-[var(--fg)]">Create Workflow</p>
-                                    <p className="text-xs text-[var(--muted-fg)]">
-                                        Build a new digital worker
-                                    </p>
-                                </div>
-                            </button>
-                        </Link>
-                        <Link href="/marketplace" className="block">
-                            <button className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] hover:bg-[var(--muted)] hover:border-primary-500/50 transition-all group text-left">
-                                <div className="w-10 h-10 rounded-lg bg-accent-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <Store className="w-5 h-5 text-accent-600 dark:text-accent-400" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-[var(--fg)]">Browse Marketplace</p>
-                                    <p className="text-xs text-[var(--muted-fg)]">
-                                        Discover community workflows
-                                    </p>
-                                </div>
-                            </button>
-                        </Link>
-                        <Link href="/workflows" className="block">
-                            <button className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] hover:bg-[var(--muted)] hover:border-primary-500/50 transition-all group text-left">
-                                <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <GitBranch className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-[var(--fg)]">My Workflows</p>
-                                    <p className="text-xs text-[var(--muted-fg)]">
-                                        Manage your creations
-                                    </p>
-                                </div>
-                            </button>
-                        </Link>
-                    </div>
-                </Card>
+                                <Button variant="secondary" size="sm" className="rounded-xl">
+                                    Analytics
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
+}
+
+function cn(...classes: any[]) {
+    return classes.filter(Boolean).join(' ');
 }
