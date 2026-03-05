@@ -172,7 +172,7 @@ registry.register({
                 const { apiKey, model, systemPrompt, userPrompt } = config;
                 if (!apiKey) throw new Error("Groq API Key is required");
 
-                const selectedModel = model || "llama-3.1-8b-instant";
+                const selectedModel = model || "llama-3.3-70b-versatile";
 
                 console.log(`🤖 GROQ INFERENCE: Model=${selectedModel}, API_KEY=${apiKey ? 'Present' : 'Missing'}`);
                 console.log(`💬 USER_PROMPT: "${userPrompt}"`);
@@ -394,19 +394,26 @@ registry.register({
                 }
 
                 // 2. Load Memory
+                // ── LOOP ISOLATION: Skip memory entirely when inside a loop ──
+                // Each iteration (e.g. each lead's proposal) must be fully independent.
+                // Loading past iterations into context causes quality degradation and
+                // cross-contamination between proposals.
+                const isInsideLoop = context?.trigger?._isLoopIteration === true;
                 let messages: any[] = [];
                 let sessionId = agentMemory?.sessionId || (agentMemory && context?.trigger?.chat_id ? String(context.trigger.chat_id) : undefined);
                 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
                 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
                 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-                if (sessionId && supabase) {
+                if (!isInsideLoop && sessionId && supabase) {
                     const { data: mem } = await supabase.from('workflow_memory').select('*').eq('session_id', sessionId).maybeSingle();
                     if (mem?.messages) {
                         // Keep only the last 6 messages (3 turns) to prevent exceeding LLM context windows (e.g. Groq 6000 TPM limit)
                         // plus we slice from the end to keep the *newest* messages
                         messages = mem.messages.slice(-6);
                     }
+                } else if (isInsideLoop) {
+                    console.log(`🧠 [AI AGENT] Loop iteration detected — skipping memory load for isolated proposal generation.`);
                 }
 
                 // Construct Prompt
@@ -468,7 +475,7 @@ registry.register({
                     if (!apiKey) throw new Error("Groq API Key missing");
 
                     const payload = {
-                        model: agentModel.model || 'llama-3.1-8b-instant',
+                        model: agentModel.model || 'llama-3.3-70b-versatile',
                         messages: [
                             { role: "system", content: finalSystemPrompt },
                             ...messages.map(m => ({
@@ -493,7 +500,7 @@ registry.register({
                     if (!apiKey) throw new Error("OpenAI API Key missing");
 
                     const payload = {
-                        model: agentModel.model || 'gpt-4o',
+                        model: agentModel.model || 'openai/gpt-oss-120b',
                         messages: [
                             { role: "system", content: finalSystemPrompt },
                             ...messages.map(m => ({
@@ -516,9 +523,9 @@ registry.register({
                     throw new Error(`Unsupported provider: ${agentModel.provider}`);
                 }
 
-                // 5. Save Memory
+                // 5. Save Memory — skip when inside a loop (each proposal is independent)
                 let memoryError = null;
-                if (sessionId && supabase) {
+                if (!isInsideLoop && sessionId && supabase) {
                     const aiRole = agentModel.provider === 'google_gemini' ? 'model' : 'assistant';
                     const newMessages = [
                         ...(messages || []),
@@ -542,6 +549,8 @@ registry.register({
                         });
                         if (insertErr) memoryError = insertErr.message;
                     }
+                } else if (isInsideLoop) {
+                    console.log(`🧠 [AI AGENT] Loop iteration — skipping memory save to keep proposals isolated.`);
                 }
 
                 return {
@@ -1680,6 +1689,26 @@ registry.register({
     ],
 });
 
+// ─── Utility: Delay ──────────────────────────────────────────
+registry.register({
+    id: "delay",
+    name: "Delay",
+    category: "utility",
+    actions: [
+        {
+            id: "wait",
+            name: "Wait",
+            description: "Wait for a specified number of seconds before continuing.",
+            execute: async (config) => {
+                const seconds = parseInt(config.seconds || "5");
+                console.log(`⏳ [DELAY] Waiting for ${seconds} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+                return { waited: seconds, unit: 'seconds' };
+            },
+        },
+    ],
+});
+
 // ─── Logic: Loop ─────────────────────────────────────────────
 registry.register({
     id: "loop",
@@ -1687,14 +1716,87 @@ registry.register({
     category: "logic",
     actions: [
         {
+
             id: "for_each",
             name: "For Each Item",
-            description: "Iterate over an array of items",
+            description: "Iterate over an array of items. Supports Google Sheets rows, JSON arrays, plain arrays.",
             execute: async (config) => {
-                const { inputArray } = config;
-                const arr = typeof inputArray === "string" ? JSON.parse(inputArray) : inputArray;
-                if (!Array.isArray(arr)) throw new Error("Input must be an array");
-                return { items: arr, count: arr.length, currentItem: arr[0] };
+                let { inputArray, hasHeaders } = config;
+
+                // If still an unresolved template, throw a helpful error
+                if (typeof inputArray === 'string' && inputArray.trim().startsWith('{{')) {
+                    throw new Error(`Loop: Could not resolve inputArray — the source node may not have run yet or the variable path is wrong.`);
+                }
+
+                let arr: any[];
+
+                // Parse string → array
+                if (typeof inputArray === 'string') {
+                    const trimmed = inputArray.trim();
+                    if (!trimmed) throw new Error('Loop: inputArray is empty. Use {{NodeName.values}} to pass data.');
+                    try {
+                        const parsed = JSON.parse(trimmed);
+                        arr = Array.isArray(parsed) ? parsed : [parsed];
+                    } catch (e: any) {
+                        throw new Error(`Loop: inputArray is not valid JSON. Got: "${trimmed.substring(0, 60)}...". Error: ${e.message}`);
+                    }
+                } else if (Array.isArray(inputArray)) {
+                    arr = inputArray;
+                } else if (inputArray && typeof inputArray === 'object') {
+                    // --- AUTO-RECOVERY ---
+                    // If they passed {{Google Sheets}} instead of {{Google Sheets.values}}
+                    if (Array.isArray((inputArray as any).values)) {
+                        arr = (inputArray as any).values;
+                    } else if (Array.isArray((inputArray as any).items)) {
+                        arr = (inputArray as any).items;
+                    } else {
+                        // Single object — wrap in array
+                        arr = [inputArray];
+                    }
+                } else {
+                    throw new Error(`Loop: Expected an array but got "${typeof inputArray}". Use {{NodeName.values}} for Google Sheets or {{NodeName.items}} for arrays.`);
+                }
+
+                if (arr.length === 0) {
+                    return { items: [], count: 0, currentItem: null, currentIndex: 0 };
+                }
+
+                // ── Google Sheets 2D array → convert rows to objects ──
+                // Detected when the first element is itself an array (e.g. [["Name","Email"],["John","j@..."]])
+                if (Array.isArray(arr[0])) {
+                    const useHeaders = hasHeaders === true || hasHeaders === 'true' || hasHeaders === undefined || hasHeaders === null;
+                    if (useHeaders && arr.length > 1) {
+                        // First row becomes property keys
+                        const headers: string[] = (arr[0] as any[]).map((h: any) => String(h).trim());
+                        const rows = arr.slice(1);
+                        arr = rows
+                            .filter((row: any[]) => row.some(cell => cell !== '' && cell !== null && cell !== undefined))
+                            .map((row: any[]) => {
+                                const obj: Record<string, any> = {};
+                                headers.forEach((h, i) => {
+                                    obj[h] = row[i] !== undefined ? row[i] : '';
+                                });
+                                return obj;
+                            });
+                    } else {
+                        // No headers — use col1, col2, col3...
+                        arr = arr.map((row: any[]) => {
+                            const obj: Record<string, any> = {};
+                            row.forEach((cell: any, i: number) => { obj[`col${i + 1}`] = cell; });
+                            return obj;
+                        });
+                    }
+                }
+
+                console.log(`🔁 [LOOP ACTION] Parsed ${arr.length} items. Sample:`, JSON.stringify(arr[0]).substring(0, 100));
+
+                return {
+                    items: arr,
+                    count: arr.length,
+                    currentItem: arr[0],
+                    currentIndex: 0,
+                    sampleItem: arr[0], // helpful for debugging in console
+                };
             },
         },
     ],

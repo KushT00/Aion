@@ -44,7 +44,7 @@ import {
     AIAgentConfig, IfElseConfig, SlackConfig, TelegramConfig,
     NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
-    GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig,
+    GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
     Input, Label
 } from '@/components/workflow/NodeConfigs';
 
@@ -346,7 +346,42 @@ function BuilderContent() {
     const [activeConsoleTab, setActiveConsoleTab] = useState<'logs' | 'history'>('logs');
     const [cloudRunHistory, setCloudRunHistory] = useState<any[]>([]);
     const [paletteSearch, setPaletteSearch] = useState('');
+    const [consoleHeight, setConsoleHeight] = useState(300);
+    const [isResizing, setIsResizing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Resizing logic for console
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizing(true);
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        setIsResizing(false);
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (!isResizing) return;
+        const newHeight = window.innerHeight - e.clientY;
+        // Min 100px, Max 80vh
+        if (newHeight > 100 && newHeight < window.innerHeight * 0.8) {
+            setConsoleHeight(newHeight);
+        }
+    }, [isResizing]);
+
+    useEffect(() => {
+        if (isResizing) {
+            window.addEventListener('mousemove', resize);
+            window.addEventListener('mouseup', stopResizing);
+        } else {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        }
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [isResizing, resize, stopResizing]);
 
     const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -558,6 +593,12 @@ function BuilderContent() {
                 : n
         ));
     }, [selectedNodeId, setNodes]);
+
+    // ─── Edge deletion handler ─────────────────────────────
+    const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+        toast.success('Connection removed');
+    }, [setEdges]);
 
     const onConnect = useCallback(
         (params: Connection) => {
@@ -964,6 +1005,8 @@ function BuilderContent() {
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
+                        onEdgeDoubleClick={onEdgeDoubleClick}
+                        deleteKeyCode={['Backspace', 'Delete']}
                         nodeTypes={nodeTypes}
                         fitView
                         minZoom={0.2}
@@ -1072,6 +1115,11 @@ function BuilderContent() {
                                         <IfElseConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
+                                    // Loop
+                                    if (integId === 'loop') return (
+                                        <LoopConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
                                     // Communication nodes
                                     if (nodeData.type === 'social_action') {
                                         if (integId === 'slack') return <SlackConfig node={selectedNode} updateNode={updateNode} />;
@@ -1146,186 +1194,198 @@ function BuilderContent() {
 
             {/* Console / Logs Overlay */}
             {showConsole && (
-                <div className="fixed bottom-0 left-0 right-0 h-1/3 bg-black/90 text-[var(--fg)] font-mono text-xs p-4 overflow-hidden border-t border-white/10 z-50 shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
-                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10 sticky top-0 bg-transparent shrink-0">
-                        <div className="flex items-center gap-6">
-                            <span className="font-bold flex items-center gap-2 text-green-400">
-                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                CONSOLE
-                            </span>
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={() => setActiveConsoleTab('logs')}
-                                    className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'logs' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
-                                >
-                                    Live Logs
-                                </button>
-                                <button
-                                    onClick={() => setActiveConsoleTab('history')}
-                                    className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'history' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
-                                >
-                                    Execution History {cloudRunHistory.length > 0 && `(${cloudRunHistory.length})`}
-                                </button>
+                <div
+                    style={{ height: consoleHeight }}
+                    className="fixed bottom-0 left-0 right-0 bg-black/95 text-[var(--fg)] font-mono text-xs overflow-hidden border-t border-white/10 z-50 shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col"
+                >
+                    {/* Resize Handle */}
+                    <div
+                        onMouseDown={startResizing}
+                        className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-primary-500/50 transition-colors z-[60]"
+                    />
+
+                    <div className="flex flex-col flex-1 p-4 overflow-hidden pt-3">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10 sticky top-0 bg-transparent shrink-0">
+
+                            <div className="flex items-center gap-6">
+                                <span className="font-bold flex items-center gap-2 text-green-400">
+                                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                    CONSOLE
+                                </span>
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setActiveConsoleTab('logs')}
+                                        className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'logs' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
+                                    >
+                                        Live Logs
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveConsoleTab('history')}
+                                        className={cn("pb-2 border-b-2 transition-colors", activeConsoleTab === 'history' ? "border-primary-500 text-primary-500" : "border-transparent text-white/40 hover:text-white/60")}
+                                    >
+                                        Execution History {cloudRunHistory.length > 0 && `(${cloudRunHistory.length})`}
+                                    </button>
+                                </div>
+                                {activeConsoleTab === 'history' && cloudRunHistory.length > 0 && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (!workflowId) return;
+                                            if (!confirm('Clear all run history for this workflow?')) return;
+
+                                            const { error } = await supabase
+                                                .from('workflow_runs')
+                                                .delete()
+                                                .eq('workflow_id', workflowId);
+
+                                            if (error) {
+                                                toast.error('Failed to clear history');
+                                            } else {
+                                                setCloudRunHistory([]);
+                                                toast.success('History cleared');
+                                            }
+                                        }}
+                                        className="h-7 px-2 text-[10px] text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 gap-1.5 ml-4"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                        Clear History
+                                    </Button>
+                                )}
                             </div>
-                            {activeConsoleTab === 'history' && cloudRunHistory.length > 0 && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={async () => {
-                                        if (!workflowId) return;
-                                        if (!confirm('Clear all run history for this workflow?')) return;
+                            <button onClick={() => setShowConsole(false)} className="text-white/50 hover:text-white">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-2 pt-2">
+                            {activeConsoleTab === 'logs' ? (
+                                <>
+                                    {executionLogs.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center h-full opacity-30 text-white">
+                                            <Terminal className="w-8 h-8 mb-2" />
+                                            <p>No local logs yet. Click 'Run' to test.</p>
+                                        </div>
+                                    )}
+                                    {executionLogs.map((log, i) => (
+                                        <div key={i} className={cn(
+                                            "flex flex-col gap-1 border-l-2 pl-3 py-2 transition-colors",
+                                            log.status === 'running' ? "border-primary-500 bg-primary-500/5" :
+                                                log.status === 'error' ? "border-red-500 bg-red-500/5" : "border-emerald-500 bg-emerald-500/5"
+                                        )}>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-[var(--muted-fg)] min-w-[80px] font-mono">{log.timestamp}</span>
+                                                <span className={cn(
+                                                    "font-bold uppercase text-[10px] px-1.5 py-0.5 rounded",
+                                                    log.status === 'running' ? "bg-primary-500/20 text-primary-500" :
+                                                        log.status === 'error' ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-500"
+                                                )}>
+                                                    {log.status}
+                                                </span>
+                                                <span className="text-[var(--fg)] font-medium">
+                                                    Node <span className="text-primary-400">{log.nodeId}</span>
+                                                </span>
+                                            </div>
+                                            <div className="text-[11px] mt-1">
+                                                {log.status === 'running' && <span className="text-[var(--muted-fg)]">Processing node logic...</span>}
+                                                {log.status === 'success' && <span className="text-emerald-500/80">Execution completed successfully.</span>}
+                                                {log.status === 'error' && (
+                                                    <div className="space-y-1">
+                                                        <span className="text-red-500 font-bold">Error:</span>
+                                                        <p className="text-red-400 bg-red-950/20 p-2 rounded border border-red-500/20 break-words">
+                                                            {log.error || 'Unknown error occurred'}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {log.output && (
+                                                <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
+                                                    <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
+                                                    <pre>{JSON.stringify(log.output, null, 2)}</pre>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </>
+                            ) : (
+                                <div className="space-y-3">
+                                    {cloudRunHistory.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center h-full opacity-30 text-white min-h-[140px]">
+                                            <Activity className="w-8 h-8 mb-2" />
+                                            <p>No remote executions detected for this workflow.</p>
+                                        </div>
+                                    )}
+                                    {cloudRunHistory.map((run: any) => {
+                                        let logs: any[] = [];
+                                        try { logs = typeof run.logs === 'string' ? JSON.parse(run.logs) : (run.logs || []); } catch (e) { }
 
-                                        const { error } = await supabase
-                                            .from('workflow_runs')
-                                            .delete()
-                                            .eq('workflow_id', workflowId);
+                                        const getStatusColor = (s: string) => {
+                                            if (s === 'success') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
+                                            if (s === 'failed') return 'bg-rose-500/10 text-rose-500 border-rose-500/30';
+                                            return 'bg-blue-500/10 text-blue-500 border-blue-500/30';
+                                        };
 
-                                        if (error) {
-                                            toast.error('Failed to clear history');
-                                        } else {
-                                            setCloudRunHistory([]);
-                                            toast.success('History cleared');
-                                        }
-                                    }}
-                                    className="h-7 px-2 text-[10px] text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 gap-1.5 ml-4"
-                                >
-                                    <Trash2 className="w-3 h-3" />
-                                    Clear History
-                                </Button>
+                                        return (
+                                            <div key={run.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden hover:border-violet-500/30 transition-all shadow-sm">
+                                                <div className="p-4 flex items-center justify-between border-b border-[var(--border)] bg-gray-500/5">
+                                                    <div className="flex items-center gap-3">
+                                                        <Badge className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase", getStatusColor(run.status))}>
+                                                            {run.status === 'running' && <Activity className="w-2.5 h-2.5 mr-1.5 animate-pulse" />}
+                                                            {run.status}
+                                                        </Badge>
+                                                        <span className="text-xs font-mono text-[var(--muted-fg)]">{new Date(run.started_at).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="text-[10px] font-mono text-[var(--muted-fg)] opacity-50 uppercase tracking-tighter">ID: {run.id.slice(-8)}</div>
+                                                </div>
+
+                                                {run.error && (
+                                                    <div className="p-3 bg-rose-500/10 border-b border-[var(--border)] text-rose-500 text-[10px] font-mono flex items-start gap-2">
+                                                        <X className="w-3 h-3 mt-0.5 shrink-0" />
+                                                        <div className="flex-1 font-bold">{run.error}</div>
+                                                    </div>
+                                                )}
+
+                                                <div className="p-4 space-y-3">
+                                                    {logs.length > 0 ? (
+                                                        <div className="space-y-1.5">
+                                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Execution Steps</p>
+                                                            {logs.map((log: any, i: number) => (
+                                                                <div key={i} className="flex items-center gap-3 text-xs border-l-2 border-violet-500/10 pl-3 py-0.5">
+                                                                    <div className={cn(
+                                                                        "w-1.5 h-1.5 rounded-full",
+                                                                        log.status === 'success' ? 'bg-emerald-500' : (log.status === 'failed' ? 'bg-rose-500' : 'bg-blue-500 animate-pulse')
+                                                                    )} />
+                                                                    <span className="font-semibold text-[var(--fg)] min-w-[120px]">
+                                                                        {(nodes.find(n => n.id === log.nodeId)?.data as any)?.label || 'Node'}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-[var(--muted-fg)] italic">{log.status}</span>
+                                                                    {log.output && <span className="text-[9px] text-violet-400 opacity-70 ml-auto font-mono">Output: {typeof log.output === 'object' ? 'JSON' : log.output.toString().slice(0, 20)}</span>}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center justify-center p-8 bg-[var(--muted)]/30 rounded-lg border border-dashed border-[var(--border)]">
+                                                            <div className="text-center">
+                                                                <Activity className="w-5 h-5 text-[var(--muted-fg)] mx-auto mb-2 animate-pulse opacity-50" />
+                                                                <p className="text-[10px] font-medium text-[var(--muted-fg)]">Waiting for background session logs...</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {run.output && (
+                                                        <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Final Output</p>
+                                                            <pre className="text-[10px] bg-[var(--muted)] p-3 rounded-lg overflow-x-auto font-mono text-violet-400 border border-[var(--border)]">
+                                                                {JSON.stringify(run.output, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             )}
                         </div>
-                        <button onClick={() => setShowConsole(false)} className="text-white/50 hover:text-white">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-2 pt-2">
-                        {activeConsoleTab === 'logs' ? (
-                            <>
-                                {executionLogs.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center h-full opacity-30 text-white">
-                                        <Terminal className="w-8 h-8 mb-2" />
-                                        <p>No local logs yet. Click 'Run' to test.</p>
-                                    </div>
-                                )}
-                                {executionLogs.map((log, i) => (
-                                    <div key={i} className={cn(
-                                        "flex flex-col gap-1 border-l-2 pl-3 py-2 transition-colors",
-                                        log.status === 'running' ? "border-primary-500 bg-primary-500/5" :
-                                            log.status === 'error' ? "border-red-500 bg-red-500/5" : "border-emerald-500 bg-emerald-500/5"
-                                    )}>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-[var(--muted-fg)] min-w-[80px] font-mono">{log.timestamp}</span>
-                                            <span className={cn(
-                                                "font-bold uppercase text-[10px] px-1.5 py-0.5 rounded",
-                                                log.status === 'running' ? "bg-primary-500/20 text-primary-500" :
-                                                    log.status === 'error' ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-500"
-                                            )}>
-                                                {log.status}
-                                            </span>
-                                            <span className="text-[var(--fg)] font-medium">
-                                                Node <span className="text-primary-400">{log.nodeId}</span>
-                                            </span>
-                                        </div>
-                                        <div className="text-[11px] mt-1">
-                                            {log.status === 'running' && <span className="text-[var(--muted-fg)]">Processing node logic...</span>}
-                                            {log.status === 'success' && <span className="text-emerald-500/80">Execution completed successfully.</span>}
-                                            {log.status === 'error' && (
-                                                <div className="space-y-1">
-                                                    <span className="text-red-500 font-bold">Error:</span>
-                                                    <p className="text-red-400 bg-red-950/20 p-2 rounded border border-red-500/20 break-words">
-                                                        {log.error || 'Unknown error occurred'}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {log.output && (
-                                            <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
-                                                <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
-                                                <pre>{JSON.stringify(log.output, null, 2)}</pre>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </>
-                        ) : (
-                            <div className="space-y-3">
-                                {cloudRunHistory.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center h-full opacity-30 text-white min-h-[140px]">
-                                        <Activity className="w-8 h-8 mb-2" />
-                                        <p>No remote executions detected for this workflow.</p>
-                                    </div>
-                                )}
-                                {cloudRunHistory.map((run: any) => {
-                                    let logs: any[] = [];
-                                    try { logs = typeof run.logs === 'string' ? JSON.parse(run.logs) : (run.logs || []); } catch (e) { }
-
-                                    const getStatusColor = (s: string) => {
-                                        if (s === 'success') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
-                                        if (s === 'failed') return 'bg-rose-500/10 text-rose-500 border-rose-500/30';
-                                        return 'bg-blue-500/10 text-blue-500 border-blue-500/30';
-                                    };
-
-                                    return (
-                                        <div key={run.id} className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden hover:border-violet-500/30 transition-all shadow-sm">
-                                            <div className="p-4 flex items-center justify-between border-b border-[var(--border)] bg-gray-500/5">
-                                                <div className="flex items-center gap-3">
-                                                    <Badge className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase", getStatusColor(run.status))}>
-                                                        {run.status === 'running' && <Activity className="w-2.5 h-2.5 mr-1.5 animate-pulse" />}
-                                                        {run.status}
-                                                    </Badge>
-                                                    <span className="text-xs font-mono text-[var(--muted-fg)]">{new Date(run.started_at).toLocaleString()}</span>
-                                                </div>
-                                                <div className="text-[10px] font-mono text-[var(--muted-fg)] opacity-50 uppercase tracking-tighter">ID: {run.id.slice(-8)}</div>
-                                            </div>
-
-                                            {run.error && (
-                                                <div className="p-3 bg-rose-500/10 border-b border-[var(--border)] text-rose-500 text-[10px] font-mono flex items-start gap-2">
-                                                    <X className="w-3 h-3 mt-0.5 shrink-0" />
-                                                    <div className="flex-1 font-bold">{run.error}</div>
-                                                </div>
-                                            )}
-
-                                            <div className="p-4 space-y-3">
-                                                {logs.length > 0 ? (
-                                                    <div className="space-y-1.5">
-                                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Execution Steps</p>
-                                                        {logs.map((log: any, i: number) => (
-                                                            <div key={i} className="flex items-center gap-3 text-xs border-l-2 border-violet-500/10 pl-3 py-0.5">
-                                                                <div className={cn(
-                                                                    "w-1.5 h-1.5 rounded-full",
-                                                                    log.status === 'success' ? 'bg-emerald-500' : (log.status === 'failed' ? 'bg-rose-500' : 'bg-blue-500 animate-pulse')
-                                                                )} />
-                                                                <span className="font-semibold text-[var(--fg)] min-w-[120px]">
-                                                                    {(nodes.find(n => n.id === log.nodeId)?.data as any)?.label || 'Node'}
-                                                                </span>
-                                                                <span className="text-[10px] text-[var(--muted-fg)] italic">{log.status}</span>
-                                                                {log.output && <span className="text-[9px] text-violet-400 opacity-70 ml-auto font-mono">Output: {typeof log.output === 'object' ? 'JSON' : log.output.toString().slice(0, 20)}</span>}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center justify-center p-8 bg-[var(--muted)]/30 rounded-lg border border-dashed border-[var(--border)]">
-                                                        <div className="text-center">
-                                                            <Activity className="w-5 h-5 text-[var(--muted-fg)] mx-auto mb-2 animate-pulse opacity-50" />
-                                                            <p className="text-[10px] font-medium text-[var(--muted-fg)]">Waiting for background session logs...</p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {run.output && (
-                                                    <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Final Output</p>
-                                                        <pre className="text-[10px] bg-[var(--muted)] p-3 rounded-lg overflow-x-auto font-mono text-violet-400 border border-[var(--border)]">
-                                                            {JSON.stringify(run.output, null, 2)}
-                                                        </pre>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
                     </div>
                 </div>
             )}
