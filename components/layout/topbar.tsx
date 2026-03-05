@@ -1,20 +1,22 @@
-import { Menu, Search, Hammer, Store } from 'lucide-react';
+import { Menu, Search, Hammer } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/utils';
 import { useViewMode } from '@/components/view-mode-context';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 interface TopbarProps {
     onMenuClick: () => void;
-    userName?: string | null;
-    avatarUrl?: string | null;
 }
 
-export function Topbar({ onMenuClick, userName, avatarUrl }: TopbarProps) {
+export function Topbar({ onMenuClick }: TopbarProps) {
     const { mode } = useViewMode();
+    const { profile } = useAuth();
     const isCreator = mode === 'creator';
+    const userName = profile?.full_name || 'User';
+    const avatarUrl = profile?.avatar_url;
 
     return (
         <header
@@ -69,7 +71,7 @@ export function Topbar({ onMenuClick, userName, avatarUrl }: TopbarProps) {
                     {avatarUrl ? (
                         <img
                             src={avatarUrl}
-                            alt={userName || 'User'}
+                            alt={userName}
                             className="w-8 h-8 rounded-full object-cover ring-2 ring-[var(--border)]"
                         />
                     ) : (
