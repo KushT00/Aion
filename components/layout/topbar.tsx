@@ -1,9 +1,10 @@
-'use client';
-
-import { Menu, Search } from 'lucide-react';
+import { Menu, Search, Hammer, Store } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/utils';
+import { useViewMode } from '@/components/view-mode-context';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 interface TopbarProps {
     onMenuClick: () => void;
@@ -12,6 +13,9 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick, userName, avatarUrl }: TopbarProps) {
+    const { mode } = useViewMode();
+    const isCreator = mode === 'creator';
+
     return (
         <header
             className={cn(
@@ -46,12 +50,22 @@ export function Topbar({ onMenuClick, userName, avatarUrl }: TopbarProps) {
                 </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+                {/* Mode Switcher Shortcut */}
+                {!isCreator && (
+                    <Link href="/creator/dashboard">
+                        <Button variant="outline" size="sm" className="hidden sm:flex h-9 rounded-xl font-black uppercase tracking-widest text-[10px] gap-2 border-dashed hover:border-primary-500/50">
+                            <Hammer className="w-3.5 h-3.5 text-primary-400" />
+                            Become a Creator
+                        </Button>
+                    </Link>
+                )}
+
                 {/* Theme toggle */}
                 <ThemeToggle />
 
                 {/* Avatar */}
-                <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--muted)] transition-colors">
+                <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--muted)] transition-colors shrink-0">
                     {avatarUrl ? (
                         <img
                             src={avatarUrl}

@@ -58,11 +58,12 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
     const pathname = usePathname();
-    const { mode, toggleMode } = useViewMode();
     const { toggle: toggleChat } = useAIChat();
     const [collapsed, setCollapsed] = useState(false);
 
-    const navItems = mode === 'consumer' ? consumerNav : creatorNav;
+    // Determine if we are in "Creator Studio" based on URL
+    const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows');
+    const navItems = isCreatorPath ? creatorNav : consumerNav;
 
     return (
         <>
@@ -77,8 +78,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <aside
                 className={cn(
                     'fixed top-0 left-0 z-50 h-screen flex flex-col',
-                    'bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)]',
-                    'transition-all duration-300 ease-in-out',
+                    'bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] transition-all duration-300 ease-in-out',
                     'lg:translate-x-0 lg:static lg:z-auto',
                     open ? 'translate-x-0' : '-translate-x-full',
                     collapsed ? 'w-20' : 'w-64'
@@ -94,7 +94,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             <Zap className="w-4 h-4 text-white" />
                         </div>
                         {!collapsed && (
-                            <span className="text-lg font-bold bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent truncate animate-in fade-in duration-500">
+                            <span className="text-lg font-bold bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent truncate">
                                 AION
                             </span>
                         )}
@@ -109,48 +109,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     )}
                 </div>
 
-                {/* Mode Toggle */}
-                <div className={cn("px-3 pt-4 pb-2 transition-all", collapsed ? "px-2" : "px-3")}>
-                    <div className={cn(
-                        "relative bg-[var(--muted)] rounded-xl p-1 flex",
-                        collapsed ? "flex-col gap-1" : "flex-row"
-                    )}>
-                        <button
-                            onClick={() => mode !== 'consumer' && toggleMode()}
-                            title={collapsed ? "Consumer Mode" : ""}
-                            className={cn(
-                                'flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all duration-300',
-                                mode === 'consumer'
-                                    ? 'bg-[var(--card)] text-[var(--fg)] shadow-sm'
-                                    : 'text-[var(--muted-fg)] hover:text-[var(--fg)]',
-                                collapsed ? "w-full" : "flex-1"
-                            )}
-                        >
-                            <Play className="w-3.5 h-3.5 shrink-0" />
-                            {!collapsed && <span className="truncate">Consumer</span>}
-                        </button>
-                        <button
-                            onClick={() => mode !== 'creator' && toggleMode()}
-                            title={collapsed ? "Creator Mode" : ""}
-                            className={cn(
-                                'flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all duration-300',
-                                mode === 'creator'
-                                    ? 'bg-gradient-to-r from-primary-500 to-accent-500 text-white shadow-sm'
-                                    : 'text-[var(--muted-fg)] hover:text-[var(--fg)]',
-                                collapsed ? "w-full" : "flex-1"
-                            )}
-                        >
-                            <Hammer className="w-3.5 h-3.5 shrink-0" />
-                            {!collapsed && <span className="truncate">Creator</span>}
-                        </button>
-                    </div>
-                </div>
 
                 {/* Section Label */}
                 {!collapsed && (
                     <div className="px-5 pt-3 pb-1 animate-in fade-in scale-95 origin-left duration-300">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted-fg)]">
-                            {mode === 'consumer' ? 'Explore' : 'Build & Earn'}
+                            {isCreatorPath ? 'Build & Monetize' : 'Explore Marketplace'}
                         </span>
                     </div>
                 )}
@@ -168,49 +132,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 onClick={onClose}
                                 title={collapsed ? item.label : ""}
                                 className={cn(
-                                    'flex items-center rounded-lg text-sm font-medium',
-                                    'transition-all duration-200',
+                                    'flex items-center rounded-lg text-sm font-medium transition-all duration-200',
                                     collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
                                     isHighlighted && !isActive && 'bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20 text-primary-600 dark:text-primary-400 hover:from-primary-500/20 hover:to-accent-500/20',
                                     isActive && !isHighlighted
                                         ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                                        : !isHighlighted && 'text-[var(--muted-fg)] hover:text-[var(--fg)] hover:bg-[var(--muted)]',
+                                        : !isHighlighted && 'text-[var(--muted-fg)] hover:text-[var(--fg)] hover:bg-[var(--muted)] transition-colors',
                                     isActive && isHighlighted && 'bg-gradient-to-r from-primary-500 to-accent-500 text-white shadow-lg shadow-primary-500/25',
                                 )}
                             >
                                 <item.icon className="w-[18px] h-[18px] shrink-0" />
                                 {!collapsed && <span className="truncate">{item.label}</span>}
                                 {!collapsed && isHighlighted && !isActive && (
-                                    <span className="ml-auto text-xs bg-primary-500 text-white px-2 py-0.5 rounded-full">
-                                        New
-                                    </span>
+                                    <span className="ml-auto text-xs bg-primary-500 text-white px-2 py-0.5 rounded-full">New</span>
                                 )}
                             </Link>
                         );
                     })}
                 </nav>
 
-                {/* AI Agent Button */}
-                <div className="px-3 pb-2">
-                    <button
-                        onClick={toggleChat}
-                        title={collapsed ? "AI Agent" : ""}
-                        className={cn(
-                            "flex items-center rounded-xl text-sm font-medium bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20 text-primary-400 hover:from-primary-500/20 hover:to-accent-500/20 transition-all duration-200",
-                            collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
-                        )}
-                    >
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shrink-0">
-                            <MessageSquare className="w-3.5 h-3.5 text-white" />
-                        </div>
-                        {!collapsed && <span className="truncate">AI Agent</span>}
-                        {!collapsed && <span className="ml-auto text-[10px] text-[var(--muted-fg)] bg-[var(--muted)] px-1.5 py-0.5 rounded">⌘K</span>}
-                    </button>
-                </div>
-
                 {/* Bottom items */}
                 <div className="px-3 py-4 space-y-1 border-t border-[var(--sidebar-border)] relative">
-                    {/* Collapse Toggle Button - Desktop Only */}
                     <button
                         onClick={() => setCollapsed(!collapsed)}
                         className={cn(
@@ -230,8 +172,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 onClick={onClose}
                                 title={collapsed ? item.label : ""}
                                 className={cn(
-                                    'flex items-center rounded-lg text-sm font-medium',
-                                    'transition-all duration-200',
+                                    'flex items-center rounded-lg text-sm font-medium transition-all duration-200',
                                     collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
                                     isActive
                                         ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'

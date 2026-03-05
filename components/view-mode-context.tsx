@@ -1,28 +1,30 @@
-'use client';
-
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 
 export type ViewMode = 'consumer' | 'creator';
 
 interface ViewModeContextValue {
     mode: ViewMode;
-    setMode: (mode: ViewMode) => void;
-    toggleMode: () => void;
 }
 
 const ViewModeContext = createContext<ViewModeContextValue>({
     mode: 'consumer',
-    setMode: () => { },
-    toggleMode: () => { },
 });
 
 export function ViewModeProvider({ children }: { children: ReactNode }) {
+    const pathname = usePathname();
     const [mode, setMode] = useState<ViewMode>('consumer');
 
-    const toggleMode = () => setMode((prev) => (prev === 'consumer' ? 'creator' : 'consumer'));
+    useEffect(() => {
+        if (pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows')) {
+            setMode('creator');
+        } else {
+            setMode('consumer');
+        }
+    }, [pathname]);
 
     return (
-        <ViewModeContext.Provider value={{ mode, setMode, toggleMode }}>
+        <ViewModeContext.Provider value={{ mode }}>
             {children}
         </ViewModeContext.Provider>
     );
