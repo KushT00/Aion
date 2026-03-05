@@ -1476,6 +1476,135 @@ registry.register({
     ],
 });
 
+registry.register({
+    id: "google_docs",
+    name: "Google Docs",
+    category: "utility",
+    actions: [
+        {
+            id: "create_doc",
+            name: "Create Document",
+            description: "Create a new Google Document",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { title, content } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+
+                // 1. Create the Doc
+                const res = await fetch("https://docs.googleapis.com/v1/documents", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ title: title || "Untitled Document" }),
+                });
+
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Docs Error: ${error.error?.message || res.statusText}`);
+                }
+                const doc = await res.json();
+
+                // 2. If content is provided, append it immediately
+                if (content && doc.documentId) {
+                    await fetch(`https://docs.googleapis.com/v1/documents/${doc.documentId}:batchUpdate`, {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            requests: [
+                                {
+                                    insertText: {
+                                        text: content,
+                                        endOfSegmentLocation: {},
+                                    },
+                                },
+                            ],
+                        }),
+                    });
+                }
+
+                return { ...doc, url: `https://docs.google.com/document/d/${doc.documentId}/edit` };
+            },
+        },
+        {
+            id: "append_text",
+            name: "Append Text",
+            description: "Append text to an existing Google Document",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { documentId, text } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+                if (!documentId) throw new Error("Document ID is required");
+
+                const res = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        requests: [
+                            {
+                                insertText: {
+                                    text: text || "",
+                                    endOfSegmentLocation: {},
+                                },
+                            },
+                        ],
+                    }),
+                });
+
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Docs Error: ${error.error?.message || res.statusText}`);
+                }
+                return await res.json();
+            },
+        },
+        {
+            id: "get_doc",
+            name: "Get Document",
+            description: "Read the content of a Google Document",
+            execute: async (config, input) => {
+                const accessToken = config.accessToken || input?.env?.GOOGLE_ACCESS_TOKEN;
+                const { documentId } = config;
+                if (!accessToken) throw new Error("Google Access Token is required");
+                if (!documentId) throw new Error("Document ID is required");
+
+                const res = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(`Docs Error: ${error.error?.message || res.statusText}`);
+                }
+                const doc = await res.json();
+
+                // Extract plain text from the document structural elements
+                let text = "";
+                if (doc.body && doc.body.content) {
+                    doc.body.content.forEach((element: any) => {
+                        if (element.paragraph) {
+                            element.paragraph.elements.forEach((el: any) => {
+                                if (el.textRun) {
+                                    text += el.textRun.content;
+                                }
+                            });
+                        }
+                    });
+                }
+
+                return { ...doc, text };
+            }
+        }
+    ],
+});
+
 // ─── OpenRouter (300+ AI Models) ─────────────────────────────
 registry.register({
     id: "openrouter",

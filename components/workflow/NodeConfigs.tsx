@@ -621,6 +621,169 @@ export function SheetsConfig({ node, updateNode, googleIntegration, onConnectGoo
     );
 }
 
+// ─── Google Docs Configuration ──────────────────────────────
+export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogle, onDisconnect, getAccessToken }: {
+    node: any; updateNode: (d: any) => void; googleIntegration: any; onConnectGoogle: () => void; onDisconnect: () => void; getAccessToken: (p: string) => Promise<string | null>;
+}) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const [docs, setDocs] = useState<{ id: string; name: string; modifiedTime?: string }[] | null>(null);
+    const [fetching, setFetching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    const fetchDocs = async (nameFilter?: string) => {
+        setFetching(true);
+        try {
+            const token = await getAccessToken('google');
+            if (!token) throw new Error("No token found. Please re-connect.");
+            // mimeType for Google Docs
+            let q = "mimeType='application/vnd.google-apps.document' and trashed=false";
+            if (nameFilter) {
+                const sanitized = nameFilter.replace(/'/g, "\\'");
+                q += ` and name contains '${sanitized}'`;
+            }
+            const encodedQ = encodeURIComponent(q);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodedQ}&orderBy=modifiedTime desc&pageSize=30&fields=files(id, name, modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&spaces=drive`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const body = await res.json();
+            if (body.error) throw new Error(body.error.message || "Google Drive API Error");
+            setDocs(body.files || []);
+        } catch (e: any) { alert(e.message || "Failed to fetch docs."); }
+        finally { setFetching(false); }
+    };
+
+    const actionID = config.actionId || 'create_doc';
+
+    return (
+        <div className="space-y-4">
+            <GoogleConnectButton
+                isConnected={!!googleIntegration}
+                isValid={googleIntegration?.is_valid}
+                accountEmail={googleIntegration?.account_email}
+                onConnect={onConnectGoogle}
+                onDisconnect={onDisconnect}
+            />
+
+            {googleIntegration && (
+                <div className="space-y-3">
+                    <Section title="Operation Mode" icon={Zap} color="text-amber-400">
+                        <div className="flex gap-2 p-1 bg-[var(--muted)] rounded-lg">
+                            <button
+                                onClick={() => updateNode({ config: { ...config, actionId: 'create_doc' } })}
+                                className={cn(
+                                    "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
+                                    actionID === 'create_doc' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                )}
+                            >
+                                <Plus className="w-3 h-3 inline-block mr-1 mb-0.5" />
+                                Create New
+                            </button>
+                            <button
+                                onClick={() => updateNode({ config: { ...config, actionId: 'append_text' } })}
+                                className={cn(
+                                    "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
+                                    actionID === 'append_text' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                )}
+                            >
+                                <BookOpen className="w-3 h-3 inline-block mr-1 mb-0.5" />
+                                Update Existing
+                            </button>
+                        </div>
+                    </Section>
+
+                    {actionID === 'create_doc' ? (
+                        <Section title="New Document Details" icon={Plus} color="text-violet-400">
+                            <div className="space-y-2">
+                                <Label>Document Title</Label>
+                                <Input
+                                    placeholder="e.g. Generated Report"
+                                    value={data.title || ''}
+                                    onChange={(e: any) => updateData({ title: e.target.value })}
+                                />
+                                <Label>Initial Content</Label>
+                                <Textarea
+                                    className="h-24"
+                                    placeholder="Content to add upon creation... use {{ai_node.text}}"
+                                    value={data.content || ''}
+                                    onChange={(e: any) => updateData({ content: e.target.value })}
+                                />
+                            </div>
+                        </Section>
+                    ) : (
+                        <Section title="Select Document" icon={BookOpen} color="text-emerald-400">
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Input
+                                            placeholder="Search docs..."
+                                            value={searchQuery}
+                                            onChange={(e: any) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e: any) => e.key === 'Enter' && fetchDocs(searchQuery)}
+                                        />
+                                        {fetching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />}
+                                    </div>
+                                    <button
+                                        disabled={fetching}
+                                        onClick={() => fetchDocs(searchQuery)}
+                                        className="p-2 bg-violet-500 text-white rounded-lg hover:bg-violet-600 disabled:opacity-50 transition-colors"
+                                    >
+                                        <Globe className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {docs && (
+                                    <div className="border border-violet-500/30 rounded-lg p-1 bg-violet-500/5 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {docs.length === 0 && <p className="p-3 text-[10px] text-center opacity-50 italic">No docs found.</p>}
+                                        {docs.map(d => (
+                                            <button
+                                                key={d.id}
+                                                onClick={() => {
+                                                    updateData({ documentId: d.id, documentName: d.name });
+                                                    setDocs(null);
+                                                }}
+                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] hover:bg-violet-500/10 transition-colors truncate flex flex-col mb-1"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold truncate">{d.name}</span>
+                                                    {d.modifiedTime && <span className="text-[8px] opacity-30">{new Date(d.modifiedTime).toLocaleDateString()}</span>}
+                                                </div>
+                                                <span className="opacity-40 text-[8px]">{d.id}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!docs && data.documentId && (
+                                    <div className="flex items-center gap-2 p-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-emerald-400 truncate">{data.documentName || 'Connected Document'}</p>
+                                            <p className="text-[8px] opacity-40 truncate">{data.documentId}</p>
+                                        </div>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    </div>
+                                )}
+
+                                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
+                                    <Label>Text to Append</Label>
+                                    <Textarea
+                                        className="h-24"
+                                        placeholder="Add content here... use {{ai_node.text}}"
+                                        value={data.text || ''}
+                                        onChange={(e: any) => updateData({ text: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </Section>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─── Google Calendar Config ───────────────────────────
 export function GoogleCalendarConfig({ node, updateNode, googleIntegration, onConnect, onDisconnect }: any) {
     const config = node.data.config || {};

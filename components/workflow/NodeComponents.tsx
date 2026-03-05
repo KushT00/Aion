@@ -44,7 +44,7 @@ export function CustomNode({ data, selected }: { data: any; selected?: boolean }
 
     // Sub-label for integration
     const integrationLabel: Record<string, string> = {
-        google_gmail: 'Gmail', google_calendar: 'Calendar', google_sheets: 'Sheets',
+        google_gmail: 'Gmail', google_calendar: 'Calendar', google_sheets: 'Sheets', google_docs: 'Google Docs',
         google_gemini: 'Gemini', openai: 'OpenAI', groq: 'Groq', openrouter: 'OpenRouter',
         discord: 'Discord', slack: 'Slack', telegram: 'Telegram',
         notion: 'Notion', cron: 'Schedule', webhook: 'Webhook',

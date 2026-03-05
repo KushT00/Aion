@@ -42,7 +42,7 @@ import { useIntegrations } from '@/hooks/useIntegrations';
 import { GoogleConnectButton } from '@/components/workflow/GoogleConnectButton';
 import {
     AIAgentConfig, IfElseConfig, SlackConfig, TelegramConfig,
-    NotionConfig, SheetsConfig, CodeConfig, ModelSelector,
+    NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig,
     Input, Label
@@ -95,6 +95,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'data_tool', label: 'Gmail', icon: Mail, integrationId: 'google_gmail', nodeType: 'custom', actionId: 'send_email' },
             { type: 'data_tool', label: 'Google Calendar', icon: Calendar, integrationId: 'google_calendar', nodeType: 'custom', actionId: 'get_events' },
             { type: 'data_tool', label: 'Google Sheets', icon: FileSpreadsheet, integrationId: 'google_sheets', nodeType: 'custom', actionId: 'append_row' },
+            { type: 'data_tool', label: 'Google Docs', icon: FileText, integrationId: 'google_docs', nodeType: 'custom', actionId: 'create_doc' },
         ],
     },
     {
@@ -1089,6 +1090,16 @@ function BuilderContent() {
                                     );
                                     if (integId === 'google_sheets') return (
                                         <SheetsConfig
+                                            node={selectedNode}
+                                            updateNode={updateNode}
+                                            googleIntegration={googleIntegration}
+                                            onConnectGoogle={() => connectGoogle('all')}
+                                            onDisconnect={() => disconnectIntegration('google')}
+                                            getAccessToken={getAccessToken}
+                                        />
+                                    );
+                                    if (integId === 'google_docs') return (
+                                        <DocsConfig
                                             node={selectedNode}
                                             updateNode={updateNode}
                                             googleIntegration={googleIntegration}
