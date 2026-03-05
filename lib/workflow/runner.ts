@@ -162,6 +162,12 @@ export class WorkflowRunner {
         this.context.trigger = triggerData;
 
         try {
+            console.log(`📡 [RUNNER] Loaded ${this.nodes.length} nodes and ${this.edges.length} edges.`);
+            this.edges.forEach(e => {
+                const anyEdge = e as any;
+                console.log(`   🔸 EDGE: ${e.source_node_id} -> ${e.target_node_id} (Handle: ${anyEdge.target_handle || anyEdge.targetHandle || anyEdge.target_id || anyEdge.targetId})`);
+            });
+
             const sortedNodes = this.getSortedNodes();
 
             if (sortedNodes.length === 0) {
@@ -196,8 +202,9 @@ export class WorkflowRunner {
                         let resolvedConfig = this.resolveVariables(node.config);
 
                         // --- AI AGENT DYNAMIC RESOLUTION ---
-                        if (node.type === 'ai_action' || node.config?.originalType === 'ai_action') {
+                        if (node.type === 'ai_action' || node.type === 'ai_agent' || node.config?.originalType === 'ai_action') {
                             const incomingEdges = this.edges.filter(e => e.target_node_id === node.id);
+                            console.log(`🧠 [RUNNER] Resolving AI Agent context for ${node.id} (${incomingEdges.length} connections)`);
 
                             // DB items store handles in JSON label. Extract them for matching.
                             const getHandle = (edge: any, type: 'source' | 'target') => {
@@ -209,10 +216,20 @@ export class WorkflowRunner {
                                 } catch (e) { return null; }
                             };
 
-                            const chatModelEdge = incomingEdges.find(e => getHandle(e, 'target') === 'chat_model');
+                            const chatModelEdge = incomingEdges.find(e => {
+                                const h = getHandle(e, 'target');
+                                console.log(`   🔗 INBOUND: ${e.source_node_id} -> ${h}`);
+                                return h === 'chat_model';
+                            });
                             const memoryEdge = incomingEdges.find(e => getHandle(e, 'target') === 'memory');
-                            const kbEdges = incomingEdges.filter(e => getHandle(e, 'target') === 'knowledge');
+                            const kbEdges = incomingEdges.filter(e => {
+                                const h = getHandle(e, 'target');
+                                // ONLY match explicit knowledge port or null (backward compatibility)
+                                // Do NOT match 'main-in' as it's the primary user prompt input
+                                return h === 'knowledge' || !h;
+                            });
                             const toolEdges = incomingEdges.filter(e => getHandle(e, 'target') === 'tools');
+                            console.log(`   ✅ Matched: ChatModel=${!!chatModelEdge}, Memory=${!!memoryEdge}, KB=${kbEdges.length}, Tools=${toolEdges.length}`);
 
                             let modelConfig = chatModelEdge ? this.context.nodes[chatModelEdge.source_node_id] : null;
                             const memoryConfig = memoryEdge ? this.context.nodes[memoryEdge.source_node_id] : null;

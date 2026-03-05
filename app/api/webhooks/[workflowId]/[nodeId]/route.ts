@@ -47,10 +47,49 @@ export async function POST(
         const nodes = nodesRes.data as WorkflowNode[];
         const edges = edgesRes.data as WorkflowEdge[];
 
+        console.log(`📦 [DB DEBUG] Loaded ${nodes.length} nodes and ${edges.length} edges from DB`);
+        edges.forEach(e => console.log(`   🔸 DB EDGE: ${e.source_node_id} -> ${e.target_node_id} (Label: ${e.label})`));
+
         // 3. Get incoming data (collect any random JSON structure)
         const triggerData = await request.json().catch(() => ({}));
 
-        // 4. Create a run record in Supabase
+        // --- COMMAND: CLEAR SESSION ---
+        const userText = triggerData.text || triggerData.message?.text;
+        const chat_id = triggerData.chat_id || triggerData.message?.chat?.id;
+
+        if (userText === '/clear' && chat_id) {
+            console.log(`🧹 [COMMAND] Clearing session for chat ${chat_id}...`);
+            await supabase.from('workflow_memory').delete().eq('session_id', String(chat_id));
+            return NextResponse.json({
+                message: 'Session cleared successfully.',
+                output: { text: "Your session has been cleared! You can now start fresh." }
+            });
+        }
+
+        // 4. Fetch Google Access Token if needed
+        let googleAccessToken: string | null = null;
+        const needsGoogle = nodes.some(n => {
+            const iId = (n.config as any)?.integrationId;
+            return (typeof iId === 'string' && iId.startsWith('google')) ||
+                (typeof n.type === 'string' && n.type.startsWith('google'));
+        });
+
+        if (needsGoogle) {
+            console.log(`🔑 [WEBHOOK] Fetching Google Token for user ${workflow.user_id}...`);
+            const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: workflow.user_id, provider: 'google' })
+            });
+            if (tokenRes.ok) {
+                const tokenData = await tokenRes.json();
+                googleAccessToken = tokenData.access_token;
+            } else {
+                console.warn(`⚠️ [WEBHOOK] Could not fetch Google Token:`, await tokenRes.text());
+            }
+        }
+
+        // 5. Create a run record in Supabase
         const { data: run, error: runError } = await supabase
             .from('workflow_runs')
             .insert({
@@ -66,8 +105,12 @@ export async function POST(
             return NextResponse.json({ error: 'Failed to create run record' }, { status: 500 });
         }
 
-        // 5. Execute runner (await it to ensure DB update happens before response)
-        const runner = new WorkflowRunner(nodes, edges, process.env as Record<string, string>);
+        // 6. Execute runner (await it to ensure DB update happens before response)
+        const env = {
+            ...process.env as Record<string, string>,
+            GOOGLE_ACCESS_TOKEN: googleAccessToken || ''
+        };
+        const runner = new WorkflowRunner(nodes, edges, env);
         console.log(`🚀 [WEBHOOK] Starting execution for run ${run.id}...`);
 
         try {
