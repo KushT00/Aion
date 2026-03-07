@@ -713,22 +713,11 @@ function BuilderContent() {
 
         const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms));
 
-        // Use the component client, but create a fresh one if it's stale
-        let db = supabase;
+        // Always use a fresh client for save operations to avoid stale connections
+        const db = createClient();
 
         try {
-            // 0. Ensure session is fresh and client is "awake"
-            //    If getSession hangs (stale client after tab switch), create a fresh client
-            console.log('💾 [SAVE] Checking session health...');
-            try {
-                await Promise.race([db.auth.getSession(), timeout(5000)]);
-            } catch {
-                console.warn('⚠️ [SAVE] Session check timed out — recreating Supabase client...');
-                db = createClient();
-                await Promise.race([db.auth.getSession(), timeout(5000)]);
-                console.log('💾 [SAVE] Fresh client session OK.');
-            }
-
+            // 0. Validate user from auth state (no getSession call needed)
             console.log('💾 [SAVE] Validating user from state...');
             if (!user) throw new Error('User not authenticated');
             console.log('💾 [SAVE] User validated:', user.id);
