@@ -711,108 +711,39 @@ function BuilderContent() {
         const toastId = toast.loading('Saving workflow...');
         console.log('💾 [SAVE] Starting save process...');
 
-        // Always use a fresh client for save operations to avoid stale connections
-        const db = createClient();
-
         try {
             // 0. Validate user from auth state
-            console.log('💾 [SAVE] Validating user from state...');
             if (!user) throw new Error('User not authenticated');
-            console.log('💾 [SAVE] User validated:', user.id);
 
-            let currentWfId = workflowId;
+            // --- Server-Side Save Call ---
+            console.log('💾 [SAVE] Calling server-side save API...');
+            const response = await fetch('/api/workflows/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workflowId,
+                    workflowName,
+                    nodes,
+                    edges
+                })
+            });
 
-            // 1. Create or Update Workflow metadata
-            if (!currentWfId) {
-                console.log('💾 [SAVE] Creating NEW workflow...');
-                const { data: wf, error: wfErr } = await db
-                    .from('workflows')
-                    .insert({ user_id: user.id, name: workflowName, status: 'draft' })
-                    .select()
-                    .single();
+            const result = await response.json();
 
-                if (wfErr) throw wfErr;
-                currentWfId = wf.id;
-                console.log('💾 [SAVE] Created workflow:', currentWfId);
-            } else {
-                console.log('💾 [SAVE] Updating workflow metadata:', currentWfId);
-                const { error: updErr } = await db
-                    .from('workflows')
-                    .update({ name: workflowName })
-                    .eq('id', currentWfId);
-                if (updErr) throw updErr;
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to save workflow');
             }
 
-            // 2. Sync Nodes
-            console.log('💾 [SAVE] Deleting old nodes...');
-            const { error: delNodesErr } = await db
-                .from('workflow_nodes')
-                .delete()
-                .eq('workflow_id', currentWfId);
-            if (delNodesErr) throw delNodesErr;
-
-            const nodesToInsert = nodes.map(n => {
-                const realType = (n.data as any).type;
-                const rfType = n.type;
-                const config = (n.data as any).config || {};
-                const newConfig = { ...config, originalType: realType, rfType };
-
-                return {
-                    id: n.id,
-                    workflow_id: currentWfId,
-                    type: 'input',
-                    label: (n.data as any).label,
-                    position_x: n.position.x,
-                    position_y: n.position.y,
-                    config: newConfig
-                };
-            });
-
-            console.log('💾 [SAVE] Upserting', nodesToInsert.length, 'nodes...');
-            const { error: nodesErr } = await db
-                .from('workflow_nodes')
-                .upsert(nodesToInsert, { onConflict: 'id' });
-            if (nodesErr) throw nodesErr;
-
-            // 3. Sync Edges
-            console.log('💾 [SAVE] Deleting old edges...');
-            const { error: delEdgesErr } = await db
-                .from('workflow_edges')
-                .delete()
-                .eq('workflow_id', currentWfId);
-            if (delEdgesErr) throw delEdgesErr;
-
-            const edgesToInsert = edges.map(e => {
-                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
-                return {
-                    id: isUUID ? e.id : crypto.randomUUID(),
-                    workflow_id: currentWfId,
-                    source_node_id: e.source,
-                    target_node_id: e.target,
-                    label: JSON.stringify({
-                        __is_handle_data: true,
-                        sourceHandle: e.sourceHandle || null,
-                        targetHandle: e.targetHandle || null,
-                        label: typeof e.label === 'string' ? e.label : null
-                    })
-                };
-            });
-
-            console.log('💾 [SAVE] Upserting', edgesToInsert.length, 'edges...');
-            const { error: edgesErr } = await db
-                .from('workflow_edges')
-                .upsert(edgesToInsert, { onConflict: 'id' });
-            if (edgesErr) throw edgesErr;
+            console.log('✅ [SAVE] server-side save complete:', result.workflowId);
 
             localStorage.removeItem('builder_nodes');
             localStorage.removeItem('builder_edges');
 
             if (!workflowId) {
-                setWorkflowId(currentWfId);
-                router.replace(`/builder?id=${currentWfId}`);
+                setWorkflowId(result.workflowId);
+                router.replace(`/builder?id=${result.workflowId}`);
             }
 
-            console.log('✅ [SAVE] Process completed successfully.');
             toast.success('Workflow saved!', { id: toastId });
         } catch (error: any) {
             console.error('❌ [SAVE] Process failed:', error);
