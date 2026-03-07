@@ -1430,9 +1430,77 @@ function BuilderContent() {
                 isOpen={isPublishingPanelOpen}
                 onClose={() => setIsPublishingPanelOpen(false)}
                 workflowName={workflowName}
+                workflowId={workflowId}
+                onSaveFirst={async () => {
+                    // Auto-save the workflow and return the ID
+                    try {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) throw new Error('Not authenticated');
+
+                        let currentWfId = workflowId;
+                        if (!currentWfId) {
+                            const { data: wf, error: wfErr } = await supabase
+                                .from('workflows')
+                                .insert({ user_id: user.id, name: workflowName, status: 'draft' })
+                                .select()
+                                .single();
+                            if (wfErr) throw wfErr;
+                            currentWfId = wf.id;
+                        } else {
+                            await supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId);
+                        }
+
+                        // Sync nodes
+                        await supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId);
+                        const nodesToInsert = nodes.map(n => {
+                            const realType = (n.data as any).type;
+                            const rfType = n.type;
+                            const config = (n.data as any).config || {};
+                            return {
+                                id: n.id,
+                                workflow_id: currentWfId,
+                                type: 'input',
+                                label: (n.data as any).label,
+                                position_x: n.position.x,
+                                position_y: n.position.y,
+                                config: { ...config, originalType: realType, rfType }
+                            };
+                        });
+                        await supabase.from('workflow_nodes').insert(nodesToInsert);
+
+                        // Sync edges
+                        await supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId);
+                        const edgesToInsert = edges.map(e => {
+                            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
+                            return {
+                                id: isUUID ? e.id : crypto.randomUUID(),
+                                workflow_id: currentWfId,
+                                source_node_id: e.source,
+                                target_node_id: e.target,
+                                label: JSON.stringify({
+                                    __is_handle_data: true,
+                                    sourceHandle: e.sourceHandle || null,
+                                    targetHandle: e.targetHandle || null,
+                                    label: typeof e.label === 'string' ? e.label : null
+                                })
+                            };
+                        });
+                        await supabase.from('workflow_edges').insert(edgesToInsert);
+
+                        // Update local state
+                        if (!workflowId) {
+                            setWorkflowId(currentWfId);
+                            router.replace(`/builder?id=${currentWfId}`);
+                        }
+
+                        return currentWfId;
+                    } catch (err: any) {
+                        console.error('Auto-save for publish failed:', err);
+                        return null;
+                    }
+                }}
                 onPublish={(details) => {
-                    console.log('Publishing workflow:', details);
-                    // This is where you would call a Supabase function to insert into marketplace_listings
+                    console.log('Published to marketplace:', details);
                 }}
             />
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,78 +19,136 @@ import {
     Globe,
     MessageCircle,
     Mail,
-    ChevronDown
+    ChevronDown,
+    Loader2,
+    Bot,
+    Package,
+    RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-const categories = ['All', 'Lead Gen', 'Social Media', 'E-commerce', 'Utility', 'SaaS Sync'];
+const categories = ['All', 'Lead Gen', 'Social Media', 'E-commerce', 'Utility', 'SaaS Sync', 'Support', 'Finance'];
 
-const listings = [
-    {
-        id: '1',
-        title: 'LinkedIn Lead Magnet Pro',
-        description: 'Auto-find and engage with high-intent leads using AI-driven personalization. Perfect for sales teams.',
-        price: '$49/mo',
-        rating: 4.9,
-        reviews: 124,
-        users: '1.2k',
-        impact: 'ROI: 12x',
-        category: 'Lead Gen',
-        icon: Globe,
-        color: 'text-sky-400',
-        bg: 'bg-sky-500/10',
-        tags: ['Sales', 'Automation']
-    },
-    {
-        id: '2',
-        title: 'Social Multiplier v2',
-        description: 'Publish across 5 platforms with AI-generated voice consistent content. One-click scheduling.',
-        price: '$29/mo',
-        rating: 4.7,
-        reviews: 86,
-        users: '850',
-        impact: 'Saved: 20h/wk',
-        category: 'Social Media',
-        icon: MessageCircle,
-        color: 'text-violet-400',
-        bg: 'bg-violet-500/10',
-        tags: ['Content', 'AI Video']
-    },
-    {
-        id: '3',
-        title: 'Smart Support Triage',
-        description: 'Classify and draft replies for Tier-1 support tickets in real-time. Direct Zendesk sync.',
-        price: '$0/mo',
-        rating: 4.8,
-        reviews: 210,
-        users: '3.4k',
-        impact: 'Success: 92%',
-        category: 'Utility',
-        icon: Mail,
-        color: 'text-emerald-400',
-        bg: 'bg-emerald-500/10',
-        tags: ['Support', 'Email']
-    },
-    {
-        id: '4',
-        title: 'Market Pulse Tracker',
-        description: 'Real-time competitive analysis and social sentiment monitoring. Custom AI signals.',
-        price: '$99/mo',
-        rating: 4.6,
-        reviews: 42,
-        users: '120',
-        impact: 'Alpha: 15%',
-        category: 'Lead Gen',
-        icon: TrendingUp,
-        color: 'text-amber-400',
-        bg: 'bg-amber-500/10',
-        tags: ['Finance', 'Data']
-    }
+const SORT_OPTIONS = [
+    { value: 'newest', label: 'Newest' },
+    { value: 'popular', label: 'Most Popular' },
+    { value: 'rating', label: 'Top Rated' },
+    { value: 'price_low', label: 'Price: Low → High' },
+    { value: 'price_high', label: 'Price: High → Low' },
 ];
+
+// Category → color mapping for dynamic cards
+const categoryColors: Record<string, { color: string; bg: string }> = {
+    'Lead Gen': { color: 'text-sky-400', bg: 'bg-sky-500/10' },
+    'Social Media': { color: 'text-violet-400', bg: 'bg-violet-500/10' },
+    'E-commerce': { color: 'text-pink-400', bg: 'bg-pink-500/10' },
+    'Utility': { color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    'SaaS Sync': { color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    'Support': { color: 'text-orange-400', bg: 'bg-orange-500/10' },
+    'Finance': { color: 'text-amber-400', bg: 'bg-amber-500/10' },
+};
+
+const categoryIcons: Record<string, any> = {
+    'Lead Gen': Globe,
+    'Social Media': MessageCircle,
+    'E-commerce': Package,
+    'Utility': Zap,
+    'SaaS Sync': RefreshCw,
+    'Support': Mail,
+    'Finance': TrendingUp,
+};
+
+interface Listing {
+    id: string;
+    title: string;
+    description: string;
+    price: number;
+    currency: string;
+    category: string;
+    tags: string[];
+    usage_count: number;
+    rating_avg: number;
+    rating_count: number;
+    is_active: boolean;
+    created_at: string;
+    seller?: {
+        id: string;
+        full_name: string | null;
+        avatar_url: string | null;
+    };
+}
 
 export default function MarketplacePage() {
     const [selectedCategory, setSelectedCategory] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sort, setSort] = useState('newest');
+    const [showSortDropdown, setShowSortDropdown] = useState(false);
+    const [listings, setListings] = useState<Listing[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+
+    const fetchListings = useCallback(async (signal?: AbortSignal) => {
+        setIsLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (selectedCategory !== 'All') params.set('category', selectedCategory);
+            if (searchQuery.trim()) params.set('search', searchQuery.trim());
+            params.set('sort', sort);
+            params.set('page', page.toString());
+            params.set('limit', '12');
+
+            const res = await fetch(`/api/marketplace/listings?${params}`, { signal });
+            const data = await res.json();
+
+            if (res.ok) {
+                setListings(data.listings || []);
+                setTotal(data.total || 0);
+                setTotalPages(data.totalPages || 1);
+            } else {
+                console.error('Failed to fetch listings:', data.error);
+            }
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                console.error('Error fetching listings:', err);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedCategory, searchQuery, sort, page]);
+
+    // Fetch on mount and filter changes
+    useEffect(() => {
+        const controller = new AbortController();
+        fetchListings(controller.signal);
+        return () => controller.abort();
+    }, [fetchListings]);
+
+    // Reset page when filters change
+    useEffect(() => {
+        setPage(1);
+    }, [selectedCategory, searchQuery, sort]);
+
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        setPage(1);
+        fetchListings();
+    };
+
+    const formatPrice = (price: number) => {
+        if (price === 0) return 'Free';
+        return `$${(price / 100).toFixed(0)}/mo`;
+    };
+
+    const getCardStyle = (category: string) => {
+        return categoryColors[category] || { color: 'text-primary-400', bg: 'bg-primary-500/10' };
+    };
+
+    const getIcon = (category: string) => {
+        return categoryIcons[category] || Bot;
+    };
 
     return (
         <div className="p-0 space-y-0 min-h-screen bg-[var(--bg)]">
@@ -109,19 +167,21 @@ export default function MarketplacePage() {
                         Plug-and-play automations. Zero configuration. <br className="hidden md:block" /> 100% Secure.
                     </p>
 
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+                    <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
                         <div className="relative w-full max-w-lg group">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-fg)] group-focus-within:text-primary-400 transition-colors" />
                             <input
                                 type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search the workforce..."
                                 className="w-full bg-[var(--card)] border border-[var(--border)] rounded-2xl pl-14 pr-6 py-5 text-sm shadow-2xl shadow-primary-500/5 focus:ring-2 ring-primary-500/20 transition-all outline-none font-bold"
                             />
                         </div>
-                        <Button size="lg" className="rounded-2xl px-12 h-[60px] font-black uppercase tracking-widest italic shadow-2xl shadow-primary-500/20">
+                        <Button type="submit" size="lg" className="rounded-2xl px-12 h-[60px] font-black uppercase tracking-widest italic shadow-2xl shadow-primary-500/20">
                             Search
                         </Button>
-                    </div>
+                    </form>
                 </div>
             </div>
 
@@ -145,9 +205,39 @@ export default function MarketplacePage() {
                         ))}
                     </div>
                     <div className="flex items-center gap-3 ml-6">
-                        <Button variant="ghost" size="sm" className="hidden lg:flex text-[10px] font-black uppercase tracking-widest text-[var(--muted-fg)]">
-                            Sort By <ChevronDown className="w-3.5 h-3.5 ml-2" />
-                        </Button>
+                        {/* Sort Dropdown */}
+                        <div className="relative">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="hidden lg:flex text-[10px] font-black uppercase tracking-widest text-[var(--muted-fg)]"
+                                onClick={() => setShowSortDropdown(!showSortDropdown)}
+                            >
+                                {SORT_OPTIONS.find(o => o.value === sort)?.label || 'Sort By'}
+                                <ChevronDown className="w-3.5 h-3.5 ml-2" />
+                            </Button>
+                            {showSortDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowSortDropdown(false)} />
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl z-20 py-2">
+                                        {SORT_OPTIONS.map(option => (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => { setSort(option.value); setShowSortDropdown(false); }}
+                                                className={cn(
+                                                    "w-full text-left px-4 py-2.5 text-xs font-bold transition-colors",
+                                                    sort === option.value
+                                                        ? "text-primary-400 bg-primary-500/10"
+                                                        : "text-[var(--fg)] hover:bg-[var(--muted)]"
+                                                )}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                         <div className="h-6 w-[1px] bg-[var(--border)] mx-1 hidden lg:block" />
                         <div className="flex bg-[var(--muted)] p-1 rounded-xl">
                             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg bg-[var(--card)] shadow-sm">
@@ -163,68 +253,162 @@ export default function MarketplacePage() {
 
             {/* Listings Grid */}
             <div className="max-w-7xl mx-auto p-6 lg:p-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-                    {listings.map((item) => (
-                        <Card key={item.id} className="group flex flex-col p-0 border-[var(--border)] hover:border-primary-500/30 hover:shadow-2xl hover:shadow-primary-500/5 transition-all duration-500 rounded-[2.5rem] overflow-hidden bg-[var(--card)] relative">
-                            {/* Card Decoration */}
-                            <div className="absolute top-0 right-0 p-5">
-                                <Badge variant="primary" className="bg-primary-500 text-white text-[8px] font-black tracking-[0.1em] px-2.5 py-1 rounded-lg shadow-lg shadow-primary-500/20 uppercase">
-                                    {item.impact}
-                                </Badge>
-                            </div>
-
-                            {/* Image / Icon Section */}
-                            <div className="p-8 pb-4">
-                                <div className={cn("w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-xl", item.bg, "border border-white/5")}>
-                                    <item.icon className={cn("w-7 h-7", item.color)} />
-                                </div>
-                            </div>
-
-                            {/* Content */}
-                            <div className="px-8 pb-8 space-y-5 flex-1 flex flex-col">
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-primary-400">{item.category}</span>
-                                        <div className="flex items-center text-[10px] font-bold text-amber-400 ml-auto bg-amber-400/10 px-2 py-0.5 rounded-full">
-                                            <Star className="w-3 h-3 fill-current mr-1" /> {item.rating}
-                                        </div>
-                                    </div>
-                                    <h3 className="text-xl font-black leading-tight group-hover:text-primary-400 transition-colors uppercase italic tracking-tighter">{item.title}</h3>
-                                    <p className="text-xs text-[var(--muted-fg)] leading-relaxed line-clamp-2 font-medium opacity-80 min-h-[2.5rem]">
-                                        {item.description}
-                                    </p>
-                                </div>
-
-                                <div className="flex gap-2 flex-wrap">
-                                    {item.tags.map(t => (
-                                        <span key={t} className="text-[9px] font-black uppercase tracking-widest bg-[var(--muted)]/50 px-2.5 py-1 rounded-lg border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors">
-                                            {t}
-                                        </span>
-                                    ))}
-                                </div>
-
-                                <div className="pt-5 border-t border-[var(--border)] mt-auto flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Monthly</span>
-                                        <span className="text-xl font-black italic text-primary-400">{item.price}</span>
-                                    </div>
-                                    <div className="flex flex-col text-right">
-                                        <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Adoption</span>
-                                        <span className="text-sm font-black flex items-center gap-1 justify-end uppercase">
-                                            <Users className="w-3 h-3" /> {item.users}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <Link href={`/marketplace/${item.id}`} className="block">
-                                    <Button className="w-full rounded-2xl h-12 font-black italic uppercase tracking-widest group-hover:shadow-xl group-hover:shadow-primary-500/30 transform transition-all active:scale-95 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 border-none">
-                                        Deploy AI <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                                    </Button>
-                                </Link>
-                            </div>
-                        </Card>
-                    ))}
+                {/* Results count */}
+                <div className="flex items-center justify-between mb-8">
+                    <p className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-widest">
+                        {isLoading ? 'Loading...' : `${total} automation${total !== 1 ? 's' : ''} found`}
+                    </p>
                 </div>
+
+                {/* Loading State */}
+                {isLoading && (
+                    <div className="flex items-center justify-center py-32">
+                        <div className="flex flex-col items-center gap-4">
+                            <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+                            <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-widest">Loading marketplace...</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Empty State */}
+                {!isLoading && listings.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-32 gap-6">
+                        <div className="w-24 h-24 rounded-[3rem] bg-primary-500/10 flex items-center justify-center">
+                            <Bot className="w-12 h-12 text-primary-400" />
+                        </div>
+                        <div className="text-center space-y-3">
+                            <h3 className="text-2xl font-black uppercase italic tracking-tight">No Automations Yet</h3>
+                            <p className="text-sm text-[var(--muted-fg)] font-bold max-w-md">
+                                {searchQuery
+                                    ? `No results for "${searchQuery}". Try a different search term.`
+                                    : 'Be the first to publish an automation! Head to the Builder to create one.'}
+                            </p>
+                        </div>
+                        {!searchQuery && (
+                            <Link href="/builder">
+                                <Button className="rounded-2xl px-8 h-12 font-black uppercase tracking-widest italic shadow-xl shadow-primary-500/20">
+                                    <Sparkles className="w-4 h-4 mr-2" /> Create Automation
+                                </Button>
+                            </Link>
+                        )}
+                    </div>
+                )}
+
+                {/* Listings */}
+                {!isLoading && listings.length > 0 && (
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                            {listings.map((item) => {
+                                const style = getCardStyle(item.category);
+                                const Icon = getIcon(item.category);
+                                return (
+                                    <Card key={item.id} className="group flex flex-col p-0 border-[var(--border)] hover:border-primary-500/30 hover:shadow-2xl hover:shadow-primary-500/5 transition-all duration-500 rounded-[2.5rem] overflow-hidden bg-[var(--card)] relative">
+                                        {/* Card Decoration */}
+                                        <div className="absolute top-0 right-0 p-5">
+                                            {item.rating_avg > 0 && (
+                                                <Badge variant="primary" className="bg-primary-500 text-white text-[8px] font-black tracking-[0.1em] px-2.5 py-1 rounded-lg shadow-lg shadow-primary-500/20 uppercase">
+                                                    ★ {item.rating_avg.toFixed(1)}
+                                                </Badge>
+                                            )}
+                                        </div>
+
+                                        {/* Icon Section */}
+                                        <div className="p-8 pb-4">
+                                            <div className={cn("w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-xl", style.bg, "border border-white/5")}>
+                                                <Icon className={cn("w-7 h-7", style.color)} />
+                                            </div>
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="px-8 pb-8 space-y-5 flex-1 flex flex-col">
+                                            <div className="space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary-400">{item.category}</span>
+                                                    {item.rating_count > 0 && (
+                                                        <div className="flex items-center text-[10px] font-bold text-amber-400 ml-auto bg-amber-400/10 px-2 py-0.5 rounded-full">
+                                                            <Star className="w-3 h-3 fill-current mr-1" /> {item.rating_avg.toFixed(1)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <h3 className="text-xl font-black leading-tight group-hover:text-primary-400 transition-colors uppercase italic tracking-tighter">{item.title}</h3>
+                                                <p className="text-xs text-[var(--muted-fg)] leading-relaxed line-clamp-2 font-medium opacity-80 min-h-[2.5rem]">
+                                                    {item.description}
+                                                </p>
+                                            </div>
+
+                                            {/* Tags */}
+                                            {item.tags && item.tags.length > 0 && (
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {item.tags.slice(0, 3).map(t => (
+                                                        <span key={t} className="text-[9px] font-black uppercase tracking-widest bg-[var(--muted)]/50 px-2.5 py-1 rounded-lg border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors">
+                                                            {t}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Creator */}
+                                            {item.seller?.full_name && (
+                                                <div className="flex items-center gap-2 text-[10px] text-[var(--muted-fg)]">
+                                                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-[8px] font-bold">
+                                                        {item.seller.full_name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className="font-bold">by {item.seller.full_name}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="pt-5 border-t border-[var(--border)] mt-auto flex items-center justify-between">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Monthly</span>
+                                                    <span className={cn("text-xl font-black italic", item.price === 0 ? "text-emerald-400" : "text-primary-400")}>
+                                                        {formatPrice(item.price)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-col text-right">
+                                                    <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Adoption</span>
+                                                    <span className="text-sm font-black flex items-center gap-1 justify-end uppercase">
+                                                        <Users className="w-3 h-3" /> {item.usage_count}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <Link href={`/marketplace/${item.id}`} className="block">
+                                                <Button className="w-full rounded-2xl h-12 font-black italic uppercase tracking-widest group-hover:shadow-xl group-hover:shadow-primary-500/30 transform transition-all active:scale-95 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 border-none">
+                                                    Deploy AI <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                                </Button>
+                                            </Link>
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-3 mt-16">
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl font-bold"
+                                    disabled={page <= 1}
+                                    onClick={() => setPage(p => p - 1)}
+                                >
+                                    Previous
+                                </Button>
+                                <span className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-widest px-4">
+                                    Page {page} of {totalPages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl font-bold"
+                                    disabled={page >= totalPages}
+                                    onClick={() => setPage(p => p + 1)}
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        )}
+                    </>
+                )}
 
                 {/* Secure Badge */}
                 <div className="mt-24 py-12 border-t border-[var(--border)] flex flex-col items-center gap-8 bg-gradient-to-b from-transparent to-primary-500/[0.02] rounded-[3rem]">
