@@ -780,7 +780,7 @@ function BuilderContent() {
             });
 
             const { error: nodesErr } = (await Promise.race([
-                db.from('workflow_nodes').insert(nodesToInsert),
+                db.from('workflow_nodes').upsert(nodesToInsert, { onConflict: 'id' }),
                 timeout(10000)
             ])) as any;
             if (nodesErr) throw nodesErr;
@@ -810,7 +810,7 @@ function BuilderContent() {
             });
 
             const { error: edgesErr } = (await Promise.race([
-                db.from('workflow_edges').insert(edgesToInsert),
+                db.from('workflow_edges').upsert(edgesToInsert, { onConflict: 'id' }),
                 timeout(10000)
             ])) as any;
             if (edgesErr) throw edgesErr;
