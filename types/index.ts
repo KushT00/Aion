@@ -43,6 +43,9 @@ export type NodeType =
   | 'social_action'
   | 'logic_gate'
   | 'data_tool'
+  | 'chat_model'
+  | 'memory'
+  | 'tool'
   | 'output';
 
 export interface WorkflowNode {

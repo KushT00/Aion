@@ -149,6 +149,3 @@ export default function BillingPage() {
     );
 }
 
-function cn(...classes: any[]) {
-    return classes.filter(Boolean).join(' ');
-}

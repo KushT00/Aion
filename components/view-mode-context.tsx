@@ -16,7 +16,13 @@ export function ViewModeProvider({ children }: { children: ReactNode }) {
     const [mode, setMode] = useState<ViewMode>('consumer');
 
     useEffect(() => {
-        if (pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows')) {
+        if (
+            pathname.startsWith('/creator') ||
+            pathname === '/builder' ||
+            pathname.startsWith('/workflows') ||
+            pathname.startsWith('/runs') ||
+            pathname.startsWith('/agent-wizard')
+        ) {
             setMode('creator');
         } else {
             setMode('consumer');

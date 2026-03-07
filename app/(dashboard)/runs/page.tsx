@@ -46,7 +46,6 @@ const statusConfig: Record<
 };
 
 export default function RunsPage() {
-    const supabase = createClient();
     const [runs, setRuns] = useState<RunItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -57,6 +56,7 @@ export default function RunsPage() {
         const fetchRuns = async () => {
             setIsLoading(true);
             try {
+                const supabase = createClient();
                 const { data: runsData, error } = await supabase
                     .from('workflow_runs')
                     .select('*, workflows(name)')
@@ -82,7 +82,7 @@ export default function RunsPage() {
         };
 
         fetchRuns();
-    }, [supabase]);
+    }, []);
 
     const filtered = runs.filter((r) => {
         const matchesSearch = r.workflowName.toLowerCase().includes(search.toLowerCase());
