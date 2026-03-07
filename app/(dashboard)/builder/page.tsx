@@ -31,7 +31,7 @@ import {
     X, Zap, Settings2, Database, Clock, Search, Info,
     Webhook as WebhookIcon, Calendar, Mail,
     BrainCircuit, Code2, SlidersHorizontal, Merge, Repeat,
-    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity, Sparkles,
+    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity, Sparkles, RotateCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
@@ -39,9 +39,10 @@ import { WorkflowRunner, RunLog } from '@/lib/workflow/runner';
 import { WorkflowNode, WorkflowEdge, NodeType } from '@/types';
 import { nodeTypes as customNodeTypes, nodeColors, nodeIcons } from '@/components/workflow/NodeComponents';
 import { useIntegrations } from '@/hooks/useIntegrations';
+import { useAuth } from '@/hooks/use-auth';
 import { GoogleConnectButton } from '@/components/workflow/GoogleConnectButton';
 import {
-    AIAgentConfig, IfElseConfig, SlackConfig, TelegramConfig,
+    AIAgentConfig, IfElseConfig, SwitchConfig, FilterConfig, ParallelConfig, ConditionGroupConfig, RetryConfig, SlackConfig, TelegramConfig,
     NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
@@ -104,7 +105,12 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
         color: 'text-orange-400',
         items: [
             { type: 'logic_gate', label: 'IF / ELSE', icon: GitFork, integrationId: 'if_else', nodeType: 'if_else', actionId: 'condition' },
+            { type: 'logic_gate', label: 'Switch', icon: GitFork, integrationId: 'switch', nodeType: 'switch', actionId: 'evaluate' },
+            { type: 'logic_gate', label: 'Filter', icon: Activity, integrationId: 'filter', nodeType: 'custom', actionId: 'filter' },
+            { type: 'logic_gate', label: 'Parallel', icon: GitFork, integrationId: 'parallel', nodeType: 'custom', actionId: 'split' },
+            { type: 'logic_gate', label: 'Condition Group', icon: SlidersHorizontal, integrationId: 'condition_group', nodeType: 'custom', actionId: 'evaluate' },
             { type: 'logic_gate', label: 'Loop', icon: Repeat, integrationId: 'loop', nodeType: 'custom', actionId: 'for_each' },
+            { type: 'logic_gate', label: 'Retry', icon: Repeat, integrationId: 'retry', nodeType: 'custom', actionId: 'retry' },
             { type: 'data_tool', label: 'Merge', icon: Merge, integrationId: 'merge', nodeType: 'custom', actionId: 'combine' },
         ],
     },
@@ -333,7 +339,10 @@ export default function BuilderPage() {
 function BuilderContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const supabase = createClient();
+    const { user } = useAuth();
+
+    // Stable, component-scoped Supabase client
+    const supabase = useMemo(() => createClient(), []);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -466,14 +475,26 @@ function BuilderContent() {
         }
 
         const loadWorkflow = async () => {
-            const { data: wf } = await supabase.from('workflows').select('name').eq('id', workflowId).single();
-            if (wf) setWorkflowName(wf.name);
+            if (!user) {
+                console.warn("No authenticated user found while loading workflow.");
+                return;
+            }
 
-            const { data: wfNodes } = await supabase.from('workflow_nodes').select('*').eq('workflow_id', workflowId);
-            const { data: wfEdges } = await supabase.from('workflow_edges').select('*').eq('workflow_id', workflowId);
+            const { data: wfList, error: wfError } = await supabase.from('workflows').select('name').eq('id', workflowId);
+            if (wfError) {
+                console.error('Error loading workflow name:', wfError);
+            } else if (wfList && wfList.length > 0) {
+                setWorkflowName(wfList[0].name);
+            }
+
+            const { data: wfNodes, error: nodesError } = await supabase.from('workflow_nodes').select('*').eq('workflow_id', workflowId);
+            if (nodesError) console.error('Error loading workflow nodes:', nodesError);
+
+            const { data: wfEdges, error: edgesError } = await supabase.from('workflow_edges').select('*').eq('workflow_id', workflowId);
+            if (edgesError) console.error('Error loading workflow edges:', edgesError);
 
             if (wfNodes && wfNodes.length > 0) {
-                setNodes(wfNodes.map(n => {
+                setNodes(wfNodes.map((n: any) => {
                     const config = n.config as any || {};
                     const integId = config?.integrationId;
 
@@ -481,6 +502,7 @@ function BuilderContent() {
                     if (!config?.rfType) {
                         // fallback for older records without rfType
                         if (integId === 'if_else') rfType = 'if_else';
+                        else if (integId === 'switch') rfType = 'switch';
                         else if (config?.originalType === 'ai_action') rfType = 'ai_agent';
                         else if (config?.originalType === 'ai_agent') rfType = 'ai_agent';
                     }
@@ -497,7 +519,7 @@ function BuilderContent() {
                         else if (['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
                         else if (['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
                         else if (integId === 'api') logicType = 'api_action';
-                        else if (integId === 'if_else') logicType = 'logic_gate';
+                        else if (integId === 'if_else' || integId === 'switch') logicType = 'logic_gate';
                         else logicType = 'data_tool'; // generic fallback
                     }
 
@@ -510,7 +532,7 @@ function BuilderContent() {
                 }));
             }
             if (wfEdges) {
-                setEdges(wfEdges.map(e => {
+                setEdges(wfEdges.map((e: any) => {
                     let sourceH: string | null = null;
                     let targetH: string | null = null;
                     let realLabel: string | null = null;
@@ -543,7 +565,7 @@ function BuilderContent() {
         };
 
         loadWorkflow();
-    }, [workflowId, supabase, setNodes, setEdges]);
+    }, [workflowId, supabase, user, setNodes, setEdges]);
 
     // Real-time Cloud Run History & Initial Load
     useEffect(() => {
@@ -568,7 +590,7 @@ function BuilderContent() {
                 schema: 'public',
                 table: 'workflow_runs',
                 filter: `workflow_id=eq.${workflowId}`
-            }, (payload) => {
+            }, (payload: any) => {
                 setCloudRunHistory(prev => [payload.new, ...prev]);
                 // Automatically open console on new cloud run
                 setShowConsole(true);
@@ -580,7 +602,7 @@ function BuilderContent() {
                 schema: 'public',
                 table: 'workflow_runs',
                 filter: `workflow_id=eq.${workflowId}`
-            }, (payload) => {
+            }, (payload: any) => {
                 setCloudRunHistory(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
             })
             .subscribe();
@@ -687,52 +709,58 @@ function BuilderContent() {
     const handleSave = async () => {
         setIsSaving(true);
         const toastId = toast.loading('Saving workflow...');
+        console.log('💾 [SAVE] Starting save process...');
+
+        const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms));
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            // 0. Ensure session is fresh and client is "awake"
+            console.log('💾 [SAVE] Checking session health...');
+            await Promise.race([supabase.auth.getSession(), timeout(3000)]);
+
+            console.log('💾 [SAVE] Validating user from state...');
             if (!user) throw new Error('User not authenticated');
+            console.log('💾 [SAVE] User validated:', user.id);
 
             let currentWfId = workflowId;
 
             // 1. Create or Update Workflow metadata
             if (!currentWfId) {
-                const { data: wf, error: wfErr } = await supabase
-                    .from('workflows')
-                    .insert({
-                        user_id: user.id,
-                        name: workflowName,
-                        status: 'draft'
-                    })
-                    .select()
-                    .single();
+                console.log('💾 [SAVE] Creating NEW workflow...');
+                const { data: wf, error: wfErr } = (await Promise.race([
+                    supabase.from('workflows').insert({ user_id: user.id, name: workflowName, status: 'draft' }).select().single(),
+                    timeout(5000)
+                ])) as any;
 
                 if (wfErr) throw wfErr;
                 currentWfId = wf.id;
             } else {
-                // Update Workflow metadata (name)
-                await supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId);
+                console.log('💾 [SAVE] Updating workflow metadata:', currentWfId);
+                const { error: updErr } = (await Promise.race([
+                    supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId),
+                    timeout(5000)
+                ])) as any;
+                if (updErr) throw updErr;
             }
 
             // 2. Sync Nodes (Upsert)
-            // For simplicity, we delete and re-insert for now to ensure consistency with ReactFlow state
-            await supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId);
+            console.log('💾 [SAVE] Syncing nodes...');
+            const { error: delNodesErr } = (await Promise.race([
+                supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId),
+                timeout(5000)
+            ])) as any;
+            if (delNodesErr) throw delNodesErr;
 
-            // DB CONSTRAINT HACK:
-            // The database type CHECK constraint only allows certain values. We map everything to 'input'
-            // and store the real type + rfType in config so we can fully restore on load.
             const nodesToInsert = nodes.map(n => {
                 const realType = (n.data as any).type;
-                const rfType = n.type; // React Flow component type (e.g. 'ai_agent', 'if_else', 'custom')
+                const rfType = n.type;
                 const config = (n.data as any).config || {};
-
-                // Store both the core execution type and ReactFlow type in config
-                // to circumvent constraints that force generic 'input' schemas locally.
                 const newConfig = { ...config, originalType: realType, rfType };
 
                 return {
                     id: n.id,
                     workflow_id: currentWfId,
-                    type: 'input', // safe fallback for DB constraint
+                    type: 'input',
                     label: (n.data as any).label,
                     position_x: n.position.x,
                     position_y: n.position.y,
@@ -740,22 +768,27 @@ function BuilderContent() {
                 };
             });
 
-            const { error: nodesErr } = await supabase.from('workflow_nodes').insert(nodesToInsert);
+            const { error: nodesErr } = (await Promise.race([
+                supabase.from('workflow_nodes').insert(nodesToInsert),
+                timeout(5000)
+            ])) as any;
             if (nodesErr) throw nodesErr;
 
             // 3. Sync Edges
-            await supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId);
-            const edgesToInsert = edges.map(e => {
-                // Supabase requires a valid UUID. ReactFlow's default IDs (xy-edge__...) are NOT valid UUIDs.
-                // We check if the ID is a valid UUID format; if not, we generate a new one.
-                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
+            console.log('💾 [SAVE] Syncing edges...');
+            const { error: delEdgesErr } = (await Promise.race([
+                supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId),
+                timeout(5000)
+            ])) as any;
+            if (delEdgesErr) throw delEdgesErr;
 
+            const edgesToInsert = edges.map(e => {
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id);
                 return {
                     id: isUUID ? e.id : crypto.randomUUID(),
                     workflow_id: currentWfId,
                     source_node_id: e.source,
                     target_node_id: e.target,
-                    // Pack sourceHandle + targetHandle into label column (schema workaround)
                     label: JSON.stringify({
                         __is_handle_data: true,
                         sourceHandle: e.sourceHandle || null,
@@ -765,24 +798,25 @@ function BuilderContent() {
                 };
             });
 
-            const { error: edgesErr } = await supabase.from('workflow_edges').insert(edgesToInsert);
+            const { error: edgesErr } = (await Promise.race([
+                supabase.from('workflow_edges').insert(edgesToInsert),
+                timeout(5000)
+            ])) as any;
             if (edgesErr) throw edgesErr;
 
-            // Clear local draft on successful cloud save to prevent confusion
             localStorage.removeItem('builder_nodes');
             localStorage.removeItem('builder_edges');
 
-            // Update URL & Local State ONLY AFTER everything has safely committed
-            // to avoid useEffect wiping the canvas by fetching half-saved edges.
             if (!workflowId) {
                 setWorkflowId(currentWfId);
                 router.replace(`/builder?id=${currentWfId}`);
             }
 
-            toast.success('Workflow saved to cloud!', { id: toastId });
+            console.log('✅ [SAVE] Process completed successfully.');
+            toast.success('Workflow saved!', { id: toastId });
         } catch (error: any) {
-            console.error('Save error details:', JSON.stringify(error, null, 2));
-            const errorMessage = error.message || (error.details ? JSON.stringify(error.details) : 'Unknown error');
+            console.error('❌ [SAVE] Process failed:', error);
+            const errorMessage = error.message || 'Unknown error';
             toast.error(`Save failed: ${errorMessage}`, { id: toastId });
         } finally {
             setIsSaving(false);
@@ -809,21 +843,37 @@ function BuilderContent() {
                 created_at: new Date().toISOString()
             }));
 
-            const engineEdges: WorkflowEdge[] = edges.map(e => ({
+            const engineEdges: WorkflowEdge[] = edges.map(e => {
+                // FAIL-SAFE: Check every possible property ReactFlow might use
+                let sH = e.sourceHandle || (e as any).source_id || (e as any).src_handle || null;
+                const tH = e.targetHandle || (e as any).target_id || (e as any).tgt_handle || null;
+
+                // Polyfill for IF/ELSE nodes if sourceHandle is missing
+                const srcNode = nodes.find(n => n.id === e.source);
+                const srcType = (srcNode?.data as any)?.type || srcNode?.type;
+
+                if (!sH && (srcType === 'if_else' || srcType === 'logic_gate')) {
+                    console.warn(`⚠️ [BUILDER] Edge ${e.id} from IF/ELSE node ${e.source} is missing a handle ID. Output may be dual-path.`);
+                }
+
+                return {
+                    id: e.id,
+                    workflow_id: 'local',
+                    source_node_id: e.source,
+                    target_node_id: e.target,
+                    source_handle: sH ? String(sH) : null,
+                    target_handle: tH ? String(tH) : null,
+                    label: e.label?.toString() || null,
+                    created_at: new Date().toISOString()
+                };
+            });
+
+            console.log("🚀 [BUILDER] engineEdges (Repaired):", engineEdges.map(e => ({
                 id: e.id,
-                workflow_id: 'local',
-                source_node_id: e.source,
-                target_node_id: e.target,
-                source_handle: e.sourceHandle || null,
-                target_handle: e.targetHandle || null,
-                label: JSON.stringify({
-                    __is_handle_data: true,
-                    sourceHandle: e.sourceHandle || null,
-                    targetHandle: e.targetHandle || null,
-                    label: e.label || null
-                }),
-                created_at: new Date().toISOString()
-            }));
+                src: e.source_node_id,
+                tgt: e.target_node_id,
+                sH: e.source_handle
+            })));
 
             // 2. Extract Trigger Data
             // We look for 'input' (manual) or 'trigger' (webhook/cron) nodes
@@ -845,9 +895,14 @@ function BuilderContent() {
             }
 
             // 3. Initialize Runner with environment context (tokens)
-            const googleToken = await getAccessToken('google');
+            console.log('🚀 [RUNNER] Fetching auth tokens...');
+            const googleToken = await Promise.race([
+                getAccessToken('google'),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+            ]);
             const env: Record<string, string> = {};
             if (googleToken) {
+                console.log('🚀 [RUNNER] Google Token acquired.');
                 env.GOOGLE_ACCESS_TOKEN = googleToken;
             }
 
@@ -953,12 +1008,12 @@ function BuilderContent() {
                         variant="outline"
                         size="sm"
                         onClick={handleRun}
-                        disabled={isExecuting}
+                        disabled={isExecuting || isSaving}
                     >
                         <Play className={cn("w-4 h-4", isExecuting && "animate-pulse text-primary-500")} />
                         {isExecuting ? 'Running...' : 'Run'}
                     </Button>
-                    <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                    <Button size="sm" onClick={handleSave} disabled={isSaving || isExecuting}>
                         <Save className={cn("w-4 h-4", isSaving && "animate-spin")} />
                         {isSaving ? 'Saving...' : 'Save'}
                     </Button>
@@ -1151,9 +1206,34 @@ function BuilderContent() {
                                         <IfElseConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
+                                    // Filter
+                                    if (integId === 'filter') return (
+                                        <FilterConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
+                                    // Parallel
+                                    if (integId === 'parallel') return (
+                                        <ParallelConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
+                                    // Condition Group
+                                    if (integId === 'condition_group') return (
+                                        <ConditionGroupConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
+                                    // Retry
+                                    if (integId === 'retry') return (
+                                        <RetryConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
                                     // Loop
                                     if (integId === 'loop') return (
                                         <LoopConfig node={selectedNode} updateNode={updateNode} />
+                                    );
+
+                                    // Switch
+                                    if (integId === 'switch' || (selectedNode.type as string) === 'switch') return (
+                                        <SwitchConfig node={selectedNode} updateNode={updateNode} />
                                     );
 
                                     // Communication nodes
