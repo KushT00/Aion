@@ -90,11 +90,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     collapsed ? "justify-center px-0" : "justify-between px-5"
                 )}>
                     <Link href="/dashboard" className="flex items-center gap-2.5 group">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-lg shadow-primary-500/25 group-hover:shadow-primary-500/40 transition-shadow shrink-0">
-                            <Zap className="w-4 h-4 text-white" />
+                        <div className="w-9 h-9 rounded-xl overflow-hidden shadow-lg shadow-primary-500/20 group-hover:shadow-primary-500/40 transition-all duration-300 shrink-0 border border-white/10 p-0.5 bg-neutral-900">
+                            <img
+                                src="/logo.png"
+                                alt="AION Logo"
+                                className="w-full h-full object-cover rounded-lg"
+                            />
                         </div>
                         {!collapsed && (
-                            <span className="text-lg font-bold bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent truncate">
+                            <span className="text-xl font-black bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent truncate tracking-tight">
                                 AION
                             </span>
                         )}
