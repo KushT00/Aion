@@ -711,13 +711,11 @@ function BuilderContent() {
         const toastId = toast.loading('Saving workflow...');
         console.log('💾 [SAVE] Starting save process...');
 
-        const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms));
-
         // Always use a fresh client for save operations to avoid stale connections
         const db = createClient();
 
         try {
-            // 0. Validate user from auth state (no getSession call needed)
+            // 0. Validate user from auth state
             console.log('💾 [SAVE] Validating user from state...');
             if (!user) throw new Error('User not authenticated');
             console.log('💾 [SAVE] User validated:', user.id);
@@ -727,28 +725,30 @@ function BuilderContent() {
             // 1. Create or Update Workflow metadata
             if (!currentWfId) {
                 console.log('💾 [SAVE] Creating NEW workflow...');
-                const { data: wf, error: wfErr } = (await Promise.race([
-                    db.from('workflows').insert({ user_id: user.id, name: workflowName, status: 'draft' }).select().single(),
-                    timeout(10000)
-                ])) as any;
+                const { data: wf, error: wfErr } = await db
+                    .from('workflows')
+                    .insert({ user_id: user.id, name: workflowName, status: 'draft' })
+                    .select()
+                    .single();
 
                 if (wfErr) throw wfErr;
                 currentWfId = wf.id;
+                console.log('💾 [SAVE] Created workflow:', currentWfId);
             } else {
                 console.log('💾 [SAVE] Updating workflow metadata:', currentWfId);
-                const { error: updErr } = (await Promise.race([
-                    db.from('workflows').update({ name: workflowName }).eq('id', currentWfId),
-                    timeout(10000)
-                ])) as any;
+                const { error: updErr } = await db
+                    .from('workflows')
+                    .update({ name: workflowName })
+                    .eq('id', currentWfId);
                 if (updErr) throw updErr;
             }
 
-            // 2. Sync Nodes (Upsert)
-            console.log('💾 [SAVE] Syncing nodes...');
-            const { error: delNodesErr } = (await Promise.race([
-                db.from('workflow_nodes').delete().eq('workflow_id', currentWfId),
-                timeout(10000)
-            ])) as any;
+            // 2. Sync Nodes
+            console.log('💾 [SAVE] Deleting old nodes...');
+            const { error: delNodesErr } = await db
+                .from('workflow_nodes')
+                .delete()
+                .eq('workflow_id', currentWfId);
             if (delNodesErr) throw delNodesErr;
 
             const nodesToInsert = nodes.map(n => {
@@ -768,18 +768,18 @@ function BuilderContent() {
                 };
             });
 
-            const { error: nodesErr } = (await Promise.race([
-                db.from('workflow_nodes').upsert(nodesToInsert, { onConflict: 'id' }),
-                timeout(10000)
-            ])) as any;
+            console.log('💾 [SAVE] Upserting', nodesToInsert.length, 'nodes...');
+            const { error: nodesErr } = await db
+                .from('workflow_nodes')
+                .upsert(nodesToInsert, { onConflict: 'id' });
             if (nodesErr) throw nodesErr;
 
             // 3. Sync Edges
-            console.log('💾 [SAVE] Syncing edges...');
-            const { error: delEdgesErr } = (await Promise.race([
-                db.from('workflow_edges').delete().eq('workflow_id', currentWfId),
-                timeout(10000)
-            ])) as any;
+            console.log('💾 [SAVE] Deleting old edges...');
+            const { error: delEdgesErr } = await db
+                .from('workflow_edges')
+                .delete()
+                .eq('workflow_id', currentWfId);
             if (delEdgesErr) throw delEdgesErr;
 
             const edgesToInsert = edges.map(e => {
@@ -798,10 +798,10 @@ function BuilderContent() {
                 };
             });
 
-            const { error: edgesErr } = (await Promise.race([
-                db.from('workflow_edges').upsert(edgesToInsert, { onConflict: 'id' }),
-                timeout(10000)
-            ])) as any;
+            console.log('💾 [SAVE] Upserting', edgesToInsert.length, 'edges...');
+            const { error: edgesErr } = await db
+                .from('workflow_edges')
+                .upsert(edgesToInsert, { onConflict: 'id' });
             if (edgesErr) throw edgesErr;
 
             localStorage.removeItem('builder_nodes');
