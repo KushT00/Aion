@@ -447,9 +447,9 @@ function BuilderContent() {
                 },
                 {
                     id: id2,
-                    type: 'custom',
+                    type: 'ai_agent',
                     position: { x: 300, y: 200 },
-                    data: { label: 'Google Gemini', type: 'ai_action', config: { integrationId: 'google_gemini', actionId: 'chat' } },
+                    data: { label: 'AI Agent', type: 'ai_action', config: { integrationId: 'google_gemini', actionId: 'chat' } },
                 },
                 {
                     id: id3,
@@ -474,21 +474,38 @@ function BuilderContent() {
 
             if (wfNodes && wfNodes.length > 0) {
                 setNodes(wfNodes.map(n => {
-                    const cfg = n.config as any || {};
-                    const integId = cfg?.integrationId;
-                    // Restore real data type from saved config.originalType
-                    const realDataType = cfg?.originalType || n.type;
-                    // Restore React Flow node component type
-                    let rfType = 'custom';
-                    if (integId === 'if_else') rfType = 'if_else';
-                    else if (cfg?.rfType === 'ai_agent') rfType = 'ai_agent';
-                    else if (realDataType === 'ai_agent') rfType = 'ai_agent';
+                    const config = n.config as any || {};
+                    const integId = config?.integrationId;
+
+                    let rfType = config?.rfType || 'custom';
+                    if (!config?.rfType) {
+                        // fallback for older records without rfType
+                        if (integId === 'if_else') rfType = 'if_else';
+                        else if (config?.originalType === 'ai_action') rfType = 'ai_agent';
+                        else if (config?.originalType === 'ai_agent') rfType = 'ai_agent';
+                    }
+
+                    // The 'input' dbType bypass requires us to load visual state from originalType
+                    let logicType = config?.originalType || n.type;
+
+                    // Recover lost types from older saves where everything was forced to 'input'
+                    if (logicType === 'input' && !config?.originalType) {
+                        if (config?.actionId === 'model') logicType = 'chat_model';
+                        else if (integId === 'memory') logicType = 'memory';
+                        else if (integId === 'tool') logicType = 'tool';
+                        else if (config?.actionId === 'chat') logicType = 'ai_action';
+                        else if (['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
+                        else if (['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
+                        else if (integId === 'api') logicType = 'api_action';
+                        else if (integId === 'if_else') logicType = 'logic_gate';
+                        else logicType = 'data_tool'; // generic fallback
+                    }
+
                     return {
                         id: n.id,
                         type: rfType,
                         position: { x: n.position_x, y: n.position_y },
-                        // Use restored real data type, not the DB 'input' placeholder
-                        data: { label: n.label, type: realDataType, config: n.config }
+                        data: { label: n.label, type: logicType, config }
                     };
                 }));
             }
@@ -576,6 +593,8 @@ function BuilderContent() {
     // Auto-save local draft
     useEffect(() => {
         if (!workflowId) {
+            // Prevent immediate overlap destroying cache before react flow initializes layout
+            if (nodes.length === 0 && edges.length === 0) return;
             try {
                 localStorage.setItem('builder_nodes', JSON.stringify(nodes));
                 localStorage.setItem('builder_edges', JSON.stringify(edges));
@@ -611,24 +630,24 @@ function BuilderContent() {
             if (targetNode && (targetNode.data as any).type === 'ai_action') {
                 const sourceType = (sourceNode?.data as any).type;
                 if (params.targetHandle === 'chat_model' && sourceType !== 'chat_model') {
-                    toast.error('Only a Chat Model node can be connected here');
+                    toast.error(`Only a Chat Model node can be connected here (Found: ${sourceType})`);
                     return;
                 }
                 if (params.targetHandle === 'memory' && sourceType !== 'memory') {
-                    toast.error('Only a Memory node can be connected here');
+                    toast.error(`Only a Memory node can be connected here (Found: ${sourceType})`);
                     return;
                 }
                 if (params.targetHandle === 'knowledge') {
                     const allowedKBTypes = ['data_tool', 'tool', 'api_action'];
                     if (!allowedKBTypes.includes(sourceType)) {
-                        toast.error('Only Data/Tool nodes can be connected to Knowledge');
+                        toast.error(`Only Data/Tool nodes can be connected to Knowledge (Found: ${sourceType})`);
                         return;
                     }
                 }
                 if (params.targetHandle === 'tools') {
                     const allowedToolTypes = ['tool', 'api_action', 'social_action', 'data_tool'];
                     if (!allowedToolTypes.includes(sourceType)) {
-                        toast.error('Only Tool or Action nodes can be connected here');
+                        toast.error(`Only Tool or Action nodes can be connected here (Found: ${sourceType})`);
                         return;
                     }
                 }
@@ -689,8 +708,6 @@ function BuilderContent() {
 
                 if (wfErr) throw wfErr;
                 currentWfId = wf.id;
-                setWorkflowId(currentWfId);
-                router.replace(`/builder?id=${currentWfId}`);
             } else {
                 // Update Workflow metadata (name)
                 await supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId);
@@ -708,7 +725,8 @@ function BuilderContent() {
                 const rfType = n.type; // React Flow component type (e.g. 'ai_agent', 'if_else', 'custom')
                 const config = (n.data as any).config || {};
 
-                // Store both real data type and RF component type in config
+                // Store both the core execution type and ReactFlow type in config
+                // to circumvent constraints that force generic 'input' schemas locally.
                 const newConfig = { ...config, originalType: realType, rfType };
 
                 return {
@@ -753,6 +771,13 @@ function BuilderContent() {
             // Clear local draft on successful cloud save to prevent confusion
             localStorage.removeItem('builder_nodes');
             localStorage.removeItem('builder_edges');
+
+            // Update URL & Local State ONLY AFTER everything has safely committed
+            // to avoid useEffect wiping the canvas by fetching half-saved edges.
+            if (!workflowId) {
+                setWorkflowId(currentWfId);
+                router.replace(`/builder?id=${currentWfId}`);
+            }
 
             toast.success('Workflow saved to cloud!', { id: toastId });
         } catch (error: any) {
@@ -959,7 +984,7 @@ function BuilderContent() {
                 </div>
             </div>
 
-            <div className="flex-1 flex">
+            <div className="flex-1 flex overflow-hidden">
                 {/* Node Palette — categorized with search */}
                 <div className="w-56 border-r border-[var(--border)] bg-[var(--card)]/50 flex flex-col hidden md:flex">
                     {/* Search */}

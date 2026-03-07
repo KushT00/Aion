@@ -50,7 +50,7 @@ async function performTelegramSend(config: any, context: any) {
 
     // 0. Clean inputs
     if (typeof botToken === 'string') botToken = botToken.trim();
-    if (typeof chatId === 'string') chatId = chatId.trim();
+    if (chatId) chatId = String(chatId).trim();
 
     // 1. Fallback to Context Chat ID if available (Smart Reply)
     // If the variable couldn't resolve, it might literally be the string "{{chat_id}}"
@@ -67,35 +67,62 @@ async function performTelegramSend(config: any, context: any) {
         return { success: true, messageId: -1, mock: true };
     }
 
-    // 3. Construct Payload
-    const payload: any = {
-        chat_id: chatId,
-        text: content
-    };
+    // 3. Chunking to handle Telegram's 4096 character limit
+    const MAX_LENGTH = 4000;
+    const chunks = [];
+    let currentContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
-    if (replyToMessageId) {
-        payload.reply_to_message_id = replyToMessageId;
-    } else if (context?.trigger?.message_id && config.autoReply) {
-        payload.reply_to_message_id = context.trigger.message_id;
+    while (currentContent.length > 0) {
+        if (currentContent.length <= MAX_LENGTH) {
+            chunks.push(currentContent);
+            break;
+        }
+
+        // Try to break at a newline near the end of the limit
+        let breakPoint = currentContent.lastIndexOf('\n', MAX_LENGTH);
+        if (breakPoint === -1 || breakPoint < MAX_LENGTH - 1000) {
+            // Try to break at a space if no good newline exists
+            breakPoint = currentContent.lastIndexOf(' ', MAX_LENGTH);
+        }
+        if (breakPoint === -1) {
+            breakPoint = MAX_LENGTH; // Hard break mid-word
+        }
+
+        chunks.push(currentContent.substring(0, breakPoint));
+        currentContent = currentContent.substring(breakPoint).trimStart();
     }
 
-    console.log(`📡 TELEGRAM ATTEMPT: Chat=${chatId}, Mock=${chatId === "123456789"}`);
-    console.log(`🚀 TELEGRAM FULL PAYLOAD:`, JSON.stringify(payload));
-    console.log(`🔄 CONTEXT TRIGGER:`, JSON.stringify(context?.trigger));
+    console.log(`📡 TELEGRAM ATTEMPT: Chat=${chatId}, Chunks=${chunks.length}`);
+    let lastMessageId = -1;
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    });
+    for (const chunk of chunks) {
+        const payload: any = {
+            chat_id: chatId,
+            text: chunk
+        };
 
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Telegram Error: ${error.description || response.statusText} | Payload sent: ${JSON.stringify(payload)} | Raw ChatID config: ${config.chatId}`);
+        if (replyToMessageId) {
+            payload.reply_to_message_id = replyToMessageId;
+        } else if (context?.trigger?.message_id && config.autoReply) {
+            payload.reply_to_message_id = context.trigger.message_id;
+        }
+
+        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(`Telegram Error: ${error.description || response.statusText} | Chunk length: ${chunk.length}`);
+        }
+
+        const data = await response.json();
+        lastMessageId = data.result.message_id;
     }
 
-    const data = await response.json();
-    return { success: true, messageId: data.result.message_id };
+    return { success: true, messageId: lastMessageId };
 }
 
 // Google Gemini
@@ -355,7 +382,30 @@ registry.register({
                                                 const ext = cleanPath.split('.').pop()?.toLowerCase();
                                                 let isOfficeOrPdf = cleanPath.match(/\.(docx|pptx|xlsx|pdf|odt|odp|ods)$/i);
 
-                                                if (isOfficeOrPdf) {
+                                                if (ext === 'pdf') {
+                                                    try {
+                                                        const pdfjsLib = await import("pdfjs-dist");
+                                                        // Point worker to a dummy instance to prevent loading errors in edge/server runtimes
+                                                        pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/build/pdf.worker.min.mjs');
+
+                                                        const dataBuffer = new Uint8Array(fs.readFileSync(cleanPath));
+                                                        const loadingTask = pdfjsLib.getDocument({ data: dataBuffer });
+                                                        const pdfDocument = await loadingTask.promise;
+
+                                                        let fullText = "";
+                                                        for (let i = 1; i <= pdfDocument.numPages; i++) {
+                                                            const page = await pdfDocument.getPage(i);
+                                                            const textContent: any = await page.getTextContent();
+                                                            const pageText = textContent.items.map((item: any) => item.str).join(" ");
+                                                            fullText += pageText + "\n";
+                                                        }
+                                                        text = fullText;
+                                                        console.log(`[FILE TOOL] Successfully parsed PDF using pdfjs-dist: ${text.length} characters.\n`);
+                                                    } catch (parseErr: any) {
+                                                        console.warn(`[FILE TOOL] Failed to parse PDF: ${parseErr.message}`);
+                                                        text = typeof fs !== 'undefined' ? fs.readFileSync(cleanPath, "utf-8") : ""; // Ultimate Fallback
+                                                    }
+                                                } else if (isOfficeOrPdf) {
                                                     try {
                                                         const officeParser = await import("officeparser");
                                                         // @ts-ignore
