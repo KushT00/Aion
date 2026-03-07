@@ -713,10 +713,21 @@ function BuilderContent() {
 
         const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms));
 
+        // Use the component client, but create a fresh one if it's stale
+        let db = supabase;
+
         try {
             // 0. Ensure session is fresh and client is "awake"
+            //    If getSession hangs (stale client after tab switch), create a fresh client
             console.log('💾 [SAVE] Checking session health...');
-            await Promise.race([supabase.auth.getSession(), timeout(8000)]);
+            try {
+                await Promise.race([db.auth.getSession(), timeout(5000)]);
+            } catch {
+                console.warn('⚠️ [SAVE] Session check timed out — recreating Supabase client...');
+                db = createClient();
+                await Promise.race([db.auth.getSession(), timeout(5000)]);
+                console.log('💾 [SAVE] Fresh client session OK.');
+            }
 
             console.log('💾 [SAVE] Validating user from state...');
             if (!user) throw new Error('User not authenticated');
@@ -728,7 +739,7 @@ function BuilderContent() {
             if (!currentWfId) {
                 console.log('💾 [SAVE] Creating NEW workflow...');
                 const { data: wf, error: wfErr } = (await Promise.race([
-                    supabase.from('workflows').insert({ user_id: user.id, name: workflowName, status: 'draft' }).select().single(),
+                    db.from('workflows').insert({ user_id: user.id, name: workflowName, status: 'draft' }).select().single(),
                     timeout(10000)
                 ])) as any;
 
@@ -737,7 +748,7 @@ function BuilderContent() {
             } else {
                 console.log('💾 [SAVE] Updating workflow metadata:', currentWfId);
                 const { error: updErr } = (await Promise.race([
-                    supabase.from('workflows').update({ name: workflowName }).eq('id', currentWfId),
+                    db.from('workflows').update({ name: workflowName }).eq('id', currentWfId),
                     timeout(10000)
                 ])) as any;
                 if (updErr) throw updErr;
@@ -746,7 +757,7 @@ function BuilderContent() {
             // 2. Sync Nodes (Upsert)
             console.log('💾 [SAVE] Syncing nodes...');
             const { error: delNodesErr } = (await Promise.race([
-                supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId),
+                db.from('workflow_nodes').delete().eq('workflow_id', currentWfId),
                 timeout(10000)
             ])) as any;
             if (delNodesErr) throw delNodesErr;
@@ -769,7 +780,7 @@ function BuilderContent() {
             });
 
             const { error: nodesErr } = (await Promise.race([
-                supabase.from('workflow_nodes').insert(nodesToInsert),
+                db.from('workflow_nodes').insert(nodesToInsert),
                 timeout(10000)
             ])) as any;
             if (nodesErr) throw nodesErr;
@@ -777,7 +788,7 @@ function BuilderContent() {
             // 3. Sync Edges
             console.log('💾 [SAVE] Syncing edges...');
             const { error: delEdgesErr } = (await Promise.race([
-                supabase.from('workflow_edges').delete().eq('workflow_id', currentWfId),
+                db.from('workflow_edges').delete().eq('workflow_id', currentWfId),
                 timeout(10000)
             ])) as any;
             if (delEdgesErr) throw delEdgesErr;
@@ -799,7 +810,7 @@ function BuilderContent() {
             });
 
             const { error: edgesErr } = (await Promise.race([
-                supabase.from('workflow_edges').insert(edgesToInsert),
+                db.from('workflow_edges').insert(edgesToInsert),
                 timeout(10000)
             ])) as any;
             if (edgesErr) throw edgesErr;
