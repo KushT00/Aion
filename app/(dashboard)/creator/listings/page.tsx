@@ -156,6 +156,3 @@ export default function CreatorListingsPage() {
     );
 }
 
-function cn(...classes: any[]) {
-    return classes.filter(Boolean).join(' ');
-}
