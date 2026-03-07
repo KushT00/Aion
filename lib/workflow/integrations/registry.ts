@@ -357,6 +357,7 @@ registry.register({
 
                                                 if (isOfficeOrPdf) {
                                                     try {
+                                                        // @ts-ignore - officeparser is an optional server-only dependency
                                                         const officeParser = await import("officeparser");
                                                         // @ts-ignore
                                                         const ast = await officeParser.parseOffice(cleanPath);

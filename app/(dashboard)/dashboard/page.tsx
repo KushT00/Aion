@@ -22,6 +22,7 @@ import {
     Globe
 } from 'lucide-react';
 import Link from 'next/link';
+import { useMemo } from 'react';
 
 const stats = [
     { label: 'Workforce Impact', value: '42.5h', change: '+12% this week', icon: Clock, color: 'text-primary-400' },
@@ -62,6 +63,13 @@ export default function ConsumerDashboard() {
 
     const firstName = profile?.full_name?.split(' ')[0] || 'Partner';
 
+    const greeting = useMemo(() => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good morning';
+        if (hour < 18) return 'Good afternoon';
+        return 'Good evening';
+    }, []);
+
     return (
         <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-12">
             {/* Hero Section */}
@@ -77,7 +85,7 @@ export default function ConsumerDashboard() {
                             Digital Workforce Active
                         </div>
                         <h1 className="text-5xl lg:text-7xl font-black tracking-tight leading-[0.9] uppercase italic">
-                            Good evening, <br />
+                            {greeting}, <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400">{firstName}</span>
                         </h1>
                         <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-xl font-bold uppercase tracking-tight opacity-80">

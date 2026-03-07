@@ -42,6 +42,7 @@
   --animate-fade-in: fade-in 0.3s ease-out;
   --animate-scale-in: scale-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
+  --animate-gradient-x: gradient-x 3s ease infinite;
 }
 
 /* ─── CSS Custom Properties ─────────────────────────────── */
@@ -223,4 +224,46 @@ body {
 
 .react-flow__background {
   background: var(--bg) !important;
+}
+
+/* ─── Gradient Animation Keyframe ──────────────────────── */
+@keyframes gradient-x {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* ─── Scroll Utilities ─────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
 }

@@ -62,7 +62,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
 
     // Determine if we are in "Creator Studio" based on URL
-    const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows');
+    const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows') || pathname.startsWith('/runs') || pathname.startsWith('/agent-wizard');
     const navItems = isCreatorPath ? creatorNav : consumerNav;
 
     return (
