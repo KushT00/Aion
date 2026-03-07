@@ -5,7 +5,7 @@ import {
     Cpu, Globe, MessageSquare, GitFork, Database, Upload,
     ArrowRightCircle, Zap, Code2, Clock, Merge, Repeat,
     SlidersHorizontal, Mail, Calendar, FileText,
-    CheckCircle2, XCircle, BrainCircuit, BookOpen, Wrench, Webhook as WebhookIcon
+    CheckCircle2, XCircle, BrainCircuit, BookOpen, Wrench, RotateCw, Webhook as WebhookIcon
 } from 'lucide-react';
 
 // ─── Color Palette per node type ───────────────────────────
@@ -48,7 +48,7 @@ export function CustomNode({ data, selected }: { data: any; selected?: boolean }
         google_gemini: 'Gemini', openai: 'OpenAI', groq: 'Groq', openrouter: 'OpenRouter',
         discord: 'Discord', slack: 'Slack', telegram: 'Telegram',
         notion: 'Notion', cron: 'Schedule', webhook: 'Webhook',
-        if_else: 'IF/ELSE', loop: 'Loop', delay: 'Delay', code: 'Code',
+        if_else: 'IF/ELSE', switch: 'Switch', filter: 'Filter', parallel: 'Parallel', condition_group: 'Condition Group', loop: 'Loop', delay: 'Delay', code: 'Code',
         set_variable: 'Set Var', merge: 'Merge', transform: 'Transform',
     };
 
@@ -80,6 +80,63 @@ export function CustomNode({ data, selected }: { data: any; selected?: boolean }
 
             <Handle type="source" position={Position.Bottom}
                 className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-violet-500')} />
+        </div>
+    );
+}
+
+// ─── Switch Node (dynamic multi-outputs) ────────────────────
+export function SwitchNode({ data, selected }: { data: any; selected?: boolean }) {
+    const colors = nodeColors.logic_gate;
+    const rules = data.config?.rules || [];
+
+    return (
+        <div className={cn(
+            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[180px] cursor-pointer',
+            'transition-all duration-200',
+            colors.border,
+            selected && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-orange-500 shadow-md shadow-orange-500/20',
+        )}>
+            <Handle type="target" position={Position.Top}
+                className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-orange-500')} />
+
+            <div className="p-2 flex items-center gap-2">
+                <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0', colors.bg)}>
+                    <GitFork className={cn('w-3.5 h-3.5', colors.icon)} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
+                    <p className="text-[9px] text-[var(--muted-fg)]">Switch Node ({rules.length} cases)</p>
+                </div>
+            </div>
+
+            {/* Dynamic output handles - Vertical list with Right handles */}
+            <div className="border-t border-[var(--border)] py-1 flex flex-col">
+                {rules.map((rule: any, idx: number) => (
+                    <div key={rule.id} className="relative flex items-center justify-between px-3 py-1.5 hover:bg-orange-500/5 transition-colors">
+                        <span className="text-[8px] font-bold text-orange-400 uppercase truncate">
+                            Case {idx + 1}
+                        </span>
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id={rule.id}
+                            style={{ top: '50%', right: -6, transform: 'translateY(-50%)' }}
+                            className={cn(handleStyle, '!bg-orange-500 !border-[var(--card)]')}
+                        />
+                    </div>
+                ))}
+
+                <div className="relative flex items-center justify-between px-3 py-1.5 border-t border-[var(--border)]/50 bg-slate-500/5 mt-0.5">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">Default</span>
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="default"
+                        style={{ top: '50%', right: -6, transform: 'translateY(-50%)' }}
+                        className={cn(handleStyle, '!bg-slate-500 !border-[var(--card)]')}
+                    />
+                </div>
+            </div>
         </div>
     );
 }
@@ -245,9 +302,141 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
     );
 }
 
+// ─── Parallel Node (dynamic multi-outputs) ──────────────────
+export function ParallelNode({ data, selected }: { data: any; selected?: boolean }) {
+    const colors = nodeColors.logic_gate;
+    const branches = data.config?.branches || [{ id: 'branch_1', label: 'Branch 1' }];
+
+    return (
+        <div className={cn(
+            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[180px] cursor-pointer',
+            'transition-all duration-200',
+            colors.border,
+            selected && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-violet-500 shadow-md shadow-violet-500/20',
+        )}>
+            <Handle type="target" position={Position.Top}
+                className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-violet-500')} />
+
+            <div className="p-2 flex items-center gap-2">
+                <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0 bg-violet-500/10')}>
+                    <SlidersHorizontal className={cn('w-3.5 h-3.5 text-violet-400')} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
+                    <p className="text-[9px] text-[var(--muted-fg)]">Parallel Node ({branches.length} branches)</p>
+                </div>
+            </div>
+
+            {/* Dynamic output handles */}
+            <div className="border-t border-[var(--border)] py-1 flex flex-col">
+                {branches.map((branch: any, idx: number) => (
+                    <div key={branch.id} className="relative flex items-center justify-between px-3 py-1.5 hover:bg-violet-500/5 transition-colors">
+                        <span className="text-[8px] font-bold text-violet-400 uppercase truncate">
+                            {branch.label || `Branch ${idx + 1}`}
+                        </span>
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id={branch.id}
+                            style={{ top: '50%', right: -6, transform: 'translateY(-50%)' }}
+                            className={cn(handleStyle, '!bg-violet-500 !border-[var(--card)]')}
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ─── Condition Group Node ──────────────────────────────────
+export function ConditionGroupNode({ data, selected }: { data: any; selected?: boolean }) {
+    const colors = nodeColors.logic_gate;
+    const conditions = data.config?.data?.conditions || [];
+    const logicalOperator = data.config?.data?.logicalOperator || 'and';
+
+    return (
+        <div className={cn(
+            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[180px] cursor-pointer',
+            'transition-all duration-200',
+            colors.border,
+            selected && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-violet-500 shadow-md shadow-violet-500/20',
+        )}>
+            <Handle type="target" position={Position.Top}
+                className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-violet-500')} />
+
+            <div className="p-2 flex items-center gap-2">
+                <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0 bg-violet-500/10')}>
+                    <GitFork className={cn('w-3.5 h-3.5 text-violet-400')} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
+                    <p className="text-[9px] text-[var(--muted-fg)] uppercase font-bold">{logicalOperator} Group ({conditions.length})</p>
+                </div>
+            </div>
+
+            {/* True / False handles */}
+            <div className="flex justify-between px-4 pb-1 pt-1 border-t border-[var(--border)]">
+                <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-[8px] font-bold text-emerald-500 uppercase">True</span>
+                    <Handle
+                        type="source" position={Position.Bottom} id="true"
+                        style={{ left: '30%', bottom: -5, transform: 'translateX(-50%)' }}
+                        className={cn(handleStyle, '!bg-emerald-500 !border-[var(--card)]')}
+                    />
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-[8px] font-bold text-rose-500 uppercase">False</span>
+                    <Handle
+                        type="source" position={Position.Bottom} id="false"
+                        style={{ left: '70%', bottom: -5, transform: 'translateX(-50%)' }}
+                        className={cn(handleStyle, '!bg-rose-500 !border-[var(--card)]')}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Retry Node ─────────────────────────────────────────────
+export function RetryNode({ data, selected }: { data: any; selected?: boolean }) {
+    const colors = nodeColors.logic_gate;
+    const config = data.config?.data || {};
+    const maxAttempts = config.maxAttempts || 3;
+    const delay = config.delay || 2;
+
+    return (
+        <div className={cn(
+            'relative bg-[var(--card)] border shadow-sm rounded-lg min-w-[150px] cursor-pointer',
+            'transition-all duration-200',
+            colors.border,
+            selected && 'ring-1 ring-offset-1 ring-offset-[var(--bg)] ring-amber-500 shadow-md shadow-amber-500/20',
+        )}>
+            <Handle type="target" position={Position.Top}
+                className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-amber-500')} />
+
+            <div className="p-2 flex items-center gap-2">
+                <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0 bg-amber-500/10')}>
+                    <RotateCw className={cn('w-3.5 h-3.5 text-amber-400')} />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--fg)] truncate">{data.label}</p>
+                    <p className="text-[9px] text-[var(--muted-fg)] uppercase font-bold">{maxAttempts} Retries ({delay}s delay)</p>
+                </div>
+            </div>
+
+            <Handle type="source" position={Position.Bottom}
+                className={cn(handleStyle, '!bg-[var(--border)] hover:!bg-amber-500')} />
+        </div>
+    );
+}
+
 // ─── Node Type Registration Map ─────────────────────────────
 export const nodeTypes = {
     custom: CustomNode,
     if_else: IfElseNode,
+    switch: SwitchNode,
+    parallel: ParallelNode,
+    condition_group: ConditionGroupNode,
+    retry: RetryNode,
     ai_agent: AIAgentNode,
 };

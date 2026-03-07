@@ -55,6 +55,11 @@ export class WorkflowRunner {
                     const nodeByLabel = this.nodes.find(n => normalize(n.label || '') === target);
                     if (nodeByLabel) {
                         nodeResult = this.context.nodes[nodeByLabel.id];
+                        if (nodeResult) {
+                            console.log(`🔍 [VAR] Matched label "${identifier}" to node ID "${nodeByLabel.id}"`);
+                        } else {
+                            console.warn(`⚠️ [VAR] Node label "${identifier}" matched ID "${nodeByLabel.id}", but NO output data found yet. Is it connected?`);
+                        }
                     }
                 }
 
@@ -81,6 +86,8 @@ export class WorkflowRunner {
                 // Debug log
                 if (nodeResult || value !== undefined) {
                     console.log(`✅ RESOLVED: "${path}" -> ${typeof value === 'object' ? '[Object]' : value}`);
+                } else {
+                    console.error(`❌ FAILED TO RESOLVE: "{{${path}}}"`);
                 }
 
                 // 3. Resolve parts
@@ -321,6 +328,48 @@ export class WorkflowRunner {
         }
     }
 
+    private getRetryNodeFor(node: WorkflowNode): WorkflowNode | null {
+        const edges = this.edges.filter(e => e.source_node_id === node.id);
+        for (const edge of edges) {
+            const targetNode = this.nodes.find(n => n.id === edge.target_node_id);
+            const config = (targetNode?.config as any) || {};
+            if (config.integrationId === 'retry' || (targetNode?.type as string) === 'retry' || config.originalType === 'retry') {
+                return targetNode as WorkflowNode;
+            }
+        }
+        return null;
+    }
+
+    private async handleRetry(node: WorkflowNode, retryNode: WorkflowNode, error: any, onLog?: (log: RunLog) => void): Promise<boolean> {
+        const config = (retryNode.config as any)?.data || {};
+        const maxAttempts = parseInt(config.maxAttempts || "3");
+        const delay = parseInt(config.delay || "2"); // Default 2s for safety
+
+        const nodeData = this.context.nodes[node.id] || {};
+        const currentAttempts = (nodeData._retryAttempts || 0) + 1;
+
+        // Update attempts in context
+        this.context.nodes[node.id] = { ...nodeData, _retryAttempts: currentAttempts };
+
+        if (currentAttempts <= maxAttempts) {
+            const log: RunLog = {
+                nodeId: retryNode.id,
+                status: "running",
+                timestamp: new Date().toISOString(),
+                error: `[Retry ${currentAttempts}/${maxAttempts}] Previous node "${node.label || node.id}" failed: ${error.message}. Waiting ${delay}s...`
+            };
+            this.logs.push(log);
+            onLog?.(log);
+
+            console.log(`🔄 [RETRY] Node "${node.label || node.id}" failed. Attempt ${currentAttempts}/${maxAttempts}. Waiting ${delay}s...`);
+            await new Promise(resolve => setTimeout(resolve, delay * 1000));
+            return true;
+        }
+
+        console.error(`❌ [RETRY] Node "${node.label || node.id}" failed after ${maxAttempts} attempts.`);
+        return false;
+    }
+
     async execute(triggerData: any = {}, onLog?: (log: RunLog) => void): Promise<any> {
         this.context.trigger = triggerData;
 
@@ -328,7 +377,9 @@ export class WorkflowRunner {
             console.log(`📡 [RUNNER] Loaded ${this.nodes.length} nodes and ${this.edges.length} edges.`);
             this.edges.forEach(e => {
                 const anyEdge = e as any;
-                console.log(`   🔸 EDGE: ${e.source_node_id} -> ${e.target_node_id} (Handle: ${anyEdge.target_handle || anyEdge.targetHandle || anyEdge.target_id || anyEdge.targetId})`);
+                const sH = anyEdge.source_handle || anyEdge.sourceHandle || anyEdge.source_id || anyEdge.sourceId;
+                const tH = anyEdge.target_handle || anyEdge.targetHandle || anyEdge.target_id || anyEdge.targetId;
+                console.log(`   🔸 EDGE: ${e.source_node_id} -> ${e.target_node_id} (S-Handle: ${sH}, T-Handle: ${tH})`);
             });
 
             const sortedNodes = this.getSortedNodes();
@@ -338,112 +389,191 @@ export class WorkflowRunner {
                 return {};
             }
 
-            // Track which node IDs have already been handled (by loop bodies)
+            const prunedNodeIds = new Set<string>();
             const handledNodeIds = new Set<string>();
 
-            for (const node of sortedNodes) {
-                if (!node) continue;
+            for (let i = 0; i < sortedNodes.length; i++) {
+                const node = sortedNodes[i];
+                if (!node || handledNodeIds.has(node.id)) continue;
 
-                // Skip nodes already executed inside a loop body
-                if (handledNodeIds.has(node.id)) continue;
+                if (prunedNodeIds.has(node.id)) {
+                    console.log(`🚫 [RUNNER] Skipping pruned node: ${node.label || node.id}`);
+                    continue;
+                }
 
-                const isLoopNode = node.config?.integrationId === 'loop' || node.config?.actionId === 'for_each';
+                console.log(`🚀 [RUNNER] Executing node: ${node.label || node.id} (${node.type})`);
 
-                if (isLoopNode) {
-                    // ─── LOOP EXECUTION ──────────────────────────────────────
-                    console.log(`🔁 [RUNNER] Loop node detected: ${node.id} (${node.label})`);
+                try {
+                    const isLoopNode = node.config?.integrationId === 'loop' || node.config?.actionId === 'for_each';
 
-                    // 1. Execute the loop node itself to get the items array
-                    const shouldStop = await this.executeNodeOnce(node, onLog);
-                    if (shouldStop) break;
+                    if (isLoopNode) {
+                        // ─── LOOP EXECUTION ──────────────────────────────────────
+                        console.log(`🔁 [RUNNER] Loop node detected: ${node.id} (${node.label})`);
 
-                    const loopResult = this.context.nodes[node.id];
-                    const items: any[] = loopResult?.items;
+                        // 1. Execute the loop node itself to get the items array
+                        const shouldStop = await this.executeNodeOnce(node, onLog);
+                        if (shouldStop) break;
 
-                    if (!Array.isArray(items) || items.length === 0) {
-                        console.log(`🔁 [LOOP] No items to iterate. Skipping downstream nodes.`);
-                        // Mark downstream nodes as handled so they don't run again
-                        const downstreamIds = this.getDownstreamNodeIds(node.id);
-                        downstreamIds.forEach(id => handledNodeIds.add(id));
-                        continue;
-                    }
+                        const loopResult = this.context.nodes[node.id];
+                        const items: any[] = loopResult?.items;
 
-                    console.log(`🔁 [LOOP] Starting iteration over ${items.length} items.`);
-
-                    // 2. Identify downstream subgraph (nodes reachable from the loop node)
-                    const downstreamIds = this.getDownstreamNodeIds(node.id);
-                    // Preserve topological order by filtering sortedNodes
-                    const downstreamNodes = sortedNodes.filter(n => downstreamIds.includes(n.id));
-                    // Mark all downstream nodes as "handled" so the main loop skips them
-                    downstreamIds.forEach(id => handledNodeIds.add(id));
-
-                    // 3. Save the base trigger context so we can restore it between iterations
-                    const baseTrigger = { ...this.context.trigger };
-                    const iterationResults: any[] = [];
-
-                    // 4. Execute downstream subgraph once per item
-                    for (let i = 0; i < items.length; i++) {
-                        const currentItem = items[i];
-                        console.log(`🔁 [LOOP] Iteration ${i + 1}/${items.length}:`, JSON.stringify(currentItem).substring(0, 100));
-
-                        // ── CRITICAL: Clear downstream node outputs from previous iteration ──
-                        // Without this, variable resolution for downstream nodes (e.g. Google Docs)
-                        // picks up stale AI output from the previous iteration.
-                        downstreamNodes.forEach(dn => {
-                            delete this.context.nodes[dn.id];
-                        });
-
-                        // Inject currentItem into both the loop node context and trigger context
-                        // so {{currentItem.FieldName}} resolves correctly in all downstream nodes.
-                        // _isLoopIteration=true tells the AI agent to skip memory save/load
-                        // so each proposal is generated fully independently.
-                        this.context.nodes[node.id] = { ...loopResult, currentItem, currentIndex: i };
-                        this.context.trigger = {
-                            ...baseTrigger,
-                            currentItem,
-                            currentIndex: i,
-                            loop: { item: currentItem, index: i, total: items.length },
-                            _isLoopIteration: true,
-                        };
-
-                        let lastNodeOutput: any = null;
-                        let iterationFailed = false;
-
-                        for (const downNode of downstreamNodes) {
-                            try {
-                                const shouldStopDown = await this.executeNodeOnce(downNode, onLog);
-                                lastNodeOutput = this.context.nodes[downNode.id];
-                                if (shouldStopDown) break;
-                            } catch (iterErr: any) {
-                                console.error(`🔁 [LOOP] Iteration ${i + 1} failed at node "${downNode.label}": ${iterErr.message}`);
-                                iterationFailed = true;
-                                break; // Skip to next iteration; don't abort whole workflow
-                            }
+                        if (!Array.isArray(items) || items.length === 0) {
+                            console.log(`🔁 [LOOP] No items to iterate. Skipping downstream nodes.`);
+                            // Mark downstream nodes as handled so they don't run again
+                            const downstreamIds = this.getDownstreamNodeIds(node.id);
+                            downstreamIds.forEach(id => handledNodeIds.add(id));
+                            continue;
                         }
 
-                        iterationResults.push({
-                            index: i,
-                            item: currentItem,
-                            result: lastNodeOutput,
-                            success: !iterationFailed,
-                        });
+                        console.log(`🔁 [LOOP] Starting iteration over ${items.length} items.`);
+
+                        // 2. Identify downstream subgraph (nodes reachable from the loop node)
+                        const downstreamIds = this.getDownstreamNodeIds(node.id);
+                        // Preserve topological order by filtering sortedNodes
+                        const downstreamNodes = sortedNodes.filter(n => downstreamIds.includes(n.id));
+                        // Mark all downstream nodes as "handled" so the main loop skips them
+                        downstreamIds.forEach(id => handledNodeIds.add(id));
+
+                        // 3. Save the base trigger context so we can restore it between iterations
+                        const baseTrigger = { ...this.context.trigger };
+                        const iterationResults: any[] = [];
+
+                        // 4. Execute downstream subgraph once per item
+                        for (let j = 0; j < items.length; j++) {
+                            const currentItem = items[j];
+                            console.log(`🔁 [LOOP] Iteration ${j + 1}/${items.length}:`, JSON.stringify(currentItem).substring(0, 100));
+
+                            // ── CRITICAL: Clear downstream node outputs from previous iteration ──
+                            downstreamNodes.forEach(dn => {
+                                delete this.context.nodes[dn.id];
+                            });
+
+                            // Inject currentItem 
+                            this.context.nodes[node.id] = { ...loopResult, currentItem, currentIndex: j };
+                            this.context.trigger = {
+                                ...baseTrigger,
+                                currentItem,
+                                currentIndex: j,
+                                loop: { item: currentItem, index: j, total: items.length },
+                                _isLoopIteration: true,
+                            };
+
+                            let lastNodeOutput: any = null;
+                            let iterationFailed = false;
+
+                            for (const downNode of downstreamNodes) {
+                                try {
+                                    const shouldStopDown = await this.executeNodeOnce(downNode, onLog);
+                                    lastNodeOutput = this.context.nodes[downNode.id];
+                                    if (shouldStopDown) break;
+                                } catch (iterErr: any) {
+                                    console.error(`🔁 [LOOP] Iteration ${j + 1} failed at node "${downNode.label}": ${iterErr.message}`);
+                                    iterationFailed = true;
+                                    break;
+                                }
+                            }
+
+                            iterationResults.push({
+                                index: j,
+                                item: currentItem,
+                                result: lastNodeOutput,
+                                success: !iterationFailed,
+                            });
+                        }
+
+                        // 5. Restore trigger and store aggregated loop results
+                        this.context.trigger = baseTrigger;
+                        this.context.nodes[node.id] = {
+                            ...loopResult,
+                            results: iterationResults,
+                            completedIterations: iterationResults.length,
+                            successCount: iterationResults.filter(r => r.success).length,
+                        };
+
+                        console.log(`🔁 [LOOP] Completed. ${iterationResults.filter(r => r.success).length}/${items.length} succeeded.`);
+
+                    } else {
+                        // ─── NORMAL, IF/ELSE OR SWITCH EXECUTION ────────────────
+                        const config = node.config || {};
+                        const isIntegIfElse = config?.integrationId === 'if_else' || config?.actionId === 'condition';
+                        const isIntegSwitch = config?.integrationId === 'switch' || config?.actionId === 'evaluate';
+
+                        const isLogicBranchNode = node.type === 'if_else' || (node.type as string) === 'switch' ||
+                            node.config?.originalType === 'if_else' || node.config?.originalType === 'switch' ||
+                            ((node.type as string) === 'logic_gate' && (isIntegIfElse || isIntegSwitch));
+
+                        if (isLogicBranchNode) {
+                            // --- BRANCHING LOGIC EVALUATION ---
+                            const shouldStop = await this.executeNodeOnce(node, onLog);
+                            if (shouldStop) break;
+
+                            const result = this.context.nodes[node.id];
+                            const selectedBranch = result?.branch || 'default';
+
+                            console.log(`⚖️ [LOGIC] Node: ${node.label || node.id}, Selected Branch: "${selectedBranch}"`);
+
+                            const debugInfo: any = {
+                                selectedBranch,
+                                edgesFound: [],
+                                allEdgesForNode: this.edges.filter(e => e.source_node_id === node.id).map(e => ({
+                                    tgt: e.target_node_id,
+                                    sH: (e as any).source_handle || (e as any).sourceHandle
+                                }))
+                            };
+
+                            const pruneEdges = this.edges.filter(e => {
+                                if (e.source_node_id !== node.id) return false;
+
+                                let sHandle = (e as any).source_handle || (e as any).sourceHandle;
+                                if (!sHandle) {
+                                    try {
+                                        const parsed = JSON.parse(e.label || '{}');
+                                        sHandle = parsed.sourceHandle;
+                                    } catch (err) { }
+                                }
+
+                                const normalizedHandle = String(sHandle || '').toLowerCase().trim();
+                                // Logic: Prune if the edge handle DOES NOT match the selected branch handle
+                                const shouldPrune = normalizedHandle !== String(selectedBranch).toLowerCase().trim();
+
+                                debugInfo.edgesFound.push({
+                                    target: e.target_node_id,
+                                    handle: sHandle,
+                                    normalizedHandle,
+                                    shouldPrune
+                                });
+
+                                return shouldPrune;
+                            });
+
+                            if (pruneEdges.length > 0) {
+                                const gatherDownstream = (nId: string) => {
+                                    if (prunedNodeIds.has(nId)) return;
+                                    prunedNodeIds.add(nId);
+                                    this.edges.filter(e => e.source_node_id === nId).forEach(e => gatherDownstream(e.target_node_id));
+                                };
+
+                                pruneEdges.forEach(e => gatherDownstream(e.target_node_id));
+                                console.log(`✂️ [LOGIC] Pruning ${pruneEdges.length} unused branches. Total pruned nodes:`, Array.from(prunedNodeIds).length);
+                                this.context.nodes[node.id]._debug = debugInfo;
+                            }
+                        } else {
+                            // NORMAL SEQUENTIAL
+                            const shouldStop = await this.executeNodeOnce(node, onLog);
+                            if (shouldStop) break;
+                        }
                     }
-
-                    // 5. Restore trigger and store aggregated loop results
-                    this.context.trigger = baseTrigger;
-                    this.context.nodes[node.id] = {
-                        ...loopResult,
-                        results: iterationResults,
-                        completedIterations: iterationResults.length,
-                        successCount: iterationResults.filter(r => r.success).length,
-                    };
-
-                    console.log(`🔁 [LOOP] Completed. ${iterationResults.filter(r => r.success).length}/${items.length} succeeded.`);
-
-                } else {
-                    // ─── NORMAL SEQUENTIAL EXECUTION ────────────────────────
-                    const shouldStop = await this.executeNodeOnce(node, onLog);
-                    if (shouldStop) break;
+                } catch (nodeErr: any) {
+                    const retryNode = this.getRetryNodeFor(node);
+                    if (retryNode) {
+                        const shouldRetry = await this.handleRetry(node, retryNode, nodeErr, onLog);
+                        if (shouldRetry) {
+                            i--; // RE-RUN THIS NODE
+                            continue;
+                        }
+                    }
+                    // Final failure or no retry configured
+                    throw nodeErr;
                 }
             }
         } catch (err) {

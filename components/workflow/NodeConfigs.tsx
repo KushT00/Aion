@@ -4,13 +4,13 @@ import { GoogleConnectButton } from './GoogleConnectButton';
 import {
     Plus, Trash2, BookOpen, Wrench, Globe, Link2,
     ChevronDown, ChevronRight, BrainCircuit, CheckCircle2,
-    FileSpreadsheet, Zap,
+    FileSpreadsheet, Zap, RotateCw
 } from 'lucide-react';
 import { useState } from 'react';
 
 // ─── Shared helpers ─────────────────────────────────────────
-export const Label = ({ children }: { children: React.ReactNode }) => (
-    <label className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider block mb-1 ml-0.5">{children}</label>
+export const Label = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
+    <label className={cn("text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider block mb-1 ml-0.5", className)}>{children}</label>
 );
 export const Input = ({ className = '', ...props }: any) => (
     <input className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 transition-shadow", className)} {...props} />
@@ -184,6 +184,112 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
     );
 }
 
+// ─── Switch Configuration ───────────────────────────────────
+export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const rules = config.rules || [];
+    const updateRules = (newRules: any[]) => updateNode({ config: { ...config, rules: newRules, actionId: 'evaluate', integrationId: 'switch' } });
+
+    const operators = [
+        { value: 'equals', label: '= equals' },
+        { value: 'not_equals', label: '≠ not equals' },
+        { value: 'greater_than', label: '> greater than' },
+        { value: 'less_than', label: '< less than' },
+        { value: 'contains', label: '⊃ contains' },
+        { value: 'not_contains', label: '⊅ not contains' },
+        { value: 'starts_with', label: '↦ starts with' },
+        { value: 'is_empty', label: '∅ is empty' },
+        { value: 'is_not_empty', label: '◉ is not empty' },
+    ];
+
+    const addRule = () => {
+        const newRule = {
+            id: `rule_${Math.random().toString(36).substr(2, 9)}`,
+            leftValue: '',
+            operator: 'equals',
+            rightValue: '',
+        };
+        updateRules([...rules, newRule]);
+    };
+
+    const removeRule = (id: string) => {
+        updateRules(rules.filter((r: any) => r.id !== id));
+    };
+
+    const updateRule = (id: string, kv: any) => {
+        updateRules(rules.map((r: any) => r.id === id ? { ...r, ...kv } : r));
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="p-2 bg-orange-500/5 border border-orange-500/20 rounded-lg">
+                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                    Workflow will follow the first matching case. Add cases below.
+                </p>
+            </div>
+
+            <div className="space-y-3">
+                {rules.map((rule: any, idx: number) => (
+                    <div key={rule.id} className="p-3 border border-[var(--border)] rounded-lg bg-[var(--muted)]/30 space-y-2 relative group/rule">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-orange-400 uppercase">Case {idx + 1}</span>
+                            <button onClick={() => removeRule(rule.id)} className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors">
+                                <Trash2 className="w-3 h-3" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Left Value</Label>
+                            <Input
+                                placeholder="{{node.field}} or value"
+                                value={rule.leftValue || ''}
+                                onChange={(e: any) => updateRule(rule.id, { leftValue: e.target.value })}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1.5">
+                                <Label>Operator</Label>
+                                <Select
+                                    value={rule.operator || 'equals'}
+                                    onChange={(e: any) => updateRule(rule.id, { operator: e.target.value })}
+                                >
+                                    {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+                                </Select>
+                            </div>
+                            {!['is_empty', 'is_not_empty'].includes(rule.operator) && (
+                                <div className="space-y-1.5">
+                                    <Label>Right Value</Label>
+                                    <Input
+                                        placeholder="Compare to..."
+                                        value={rule.rightValue || ''}
+                                        onChange={(e: any) => updateRule(rule.id, { rightValue: e.target.value })}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <button
+                onClick={addRule}
+                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-orange-500/40 hover:text-orange-400 transition-all uppercase"
+            >
+                <Plus className="w-3 h-3" />
+                Add Case
+            </button>
+
+            <div className="p-2.5 bg-[var(--muted)] rounded-lg border border-[var(--border)]">
+                <p className="text-[9px] text-[var(--muted-fg)] flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+                    If no cases match, execution follows <b>Default</b>.
+                </p>
+            </div>
+        </div>
+    );
+}
+
 // ─── IF / ELSE Configuration ────────────────────────────────
 export function IfElseConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
     const config = node.data.config || {};
@@ -225,6 +331,330 @@ export function IfElseConfig({ node, updateNode }: { node: any; updateNode: (d: 
                     <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: any) => updateData({ rightValue: e.target.value })} />
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─── Filter Configuration ───────────────────────────────────
+export function FilterConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv }, integrationId: 'filter', actionId: 'evaluate' } });
+
+    const operators = [
+        { value: 'equals', label: '= equals' },
+        { value: 'not_equals', label: '≠ not equals' },
+        { value: 'greater_than', label: '> greater than' },
+        { value: 'less_than', label: '< less than' },
+        { value: 'contains', label: '⊃ contains' },
+        { value: 'not_contains', label: '⊅ not contains' },
+        { value: 'starts_with', label: '↦ starts with' },
+        { value: 'is_empty', label: '∅ is empty' },
+        { value: 'is_not_empty', label: '◉ is not empty' },
+    ];
+
+    return (
+        <div className="space-y-3">
+            <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                    Workflow will <span className="text-violet-400 font-bold uppercase">Stop</span> if the condition below is not met.
+                </p>
+            </div>
+            <div className="space-y-2">
+                <Label>Left Value</Label>
+                <Input placeholder="{{node_label.field}} or literal value" value={data.leftValue || ''} onChange={(e: any) => updateData({ leftValue: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+                <Label>Operator</Label>
+                <Select value={data.operator || 'equals'} onChange={(e: any) => updateData({ operator: e.target.value })}>
+                    {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+                </Select>
+            </div>
+            {!['is_empty', 'is_not_empty'].includes(data.operator) && (
+                <div className="space-y-2">
+                    <Label>Right Value</Label>
+                    <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: any) => updateData({ rightValue: e.target.value })} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Parallel Configuration ─────────────────────────────────
+export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const branches = config.branches || [{ id: 'branch_1', label: 'Branch 1' }];
+
+    const updateBranches = (newBranches: any[]) => {
+        updateNode({
+            config: {
+                ...config,
+                branches: newBranches,
+                integrationId: 'parallel',
+                actionId: 'distribute'
+            }
+        });
+    };
+
+    const addBranch = () => {
+        const id = `branch_${Date.now()}`;
+        updateBranches([...branches, { id, label: `Branch ${branches.length + 1}` }]);
+    };
+
+    const removeBranch = (id: string) => {
+        if (branches.length <= 1) return;
+        updateBranches(branches.filter((b: any) => b.id !== id));
+    };
+
+    const updateBranchLabel = (id: string, label: string) => {
+        updateBranches(branches.map((b: any) => b.id === id ? { ...b, label } : b));
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                    This node sends the exact same input data to <span className="text-violet-400 font-bold uppercase">All</span> connected branches.
+                </p>
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                    <Label>Output Branches</Label>
+                    <span className="text-[10px] font-bold text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">{branches.length}</span>
+                </div>
+
+                <div className="space-y-2">
+                    {branches.map((branch: any, idx: number) => (
+                        <div key={branch.id} className="flex items-center gap-2 group">
+                            <div className="flex-1 relative">
+                                <Input
+                                    value={branch.label}
+                                    onChange={(e: any) => updateBranchLabel(branch.id, e.target.value)}
+                                    className="pr-8 h-8 text-[11px]"
+                                    placeholder={`Branch ${idx + 1} Name`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-mono opacity-20 group-hover:opacity-40 transition-opacity">
+                                    #{idx + 1}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => removeBranch(branch.id)}
+                                disabled={branches.length <= 1}
+                                className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors disabled:opacity-30"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                <button
+                    onClick={addBranch}
+                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-2"
+                >
+                    <Plus className="w-3 h-3" />
+                    Add Branch
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Condition Group Configuration ──────────────────────────
+export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const conditions = data.conditions || [{ id: `cond_${Date.now()}`, leftValue: '', operator: 'equals', rightValue: '' }];
+    const logicalOperator = data.logicalOperator || 'and';
+
+    const updateData = (kv: any) => {
+        updateNode({
+            config: {
+                ...config,
+                data: { ...data, ...kv },
+                integrationId: 'condition_group',
+                actionId: 'evaluate'
+            }
+        });
+    };
+
+    const operators = [
+        { value: 'equals', label: '= equals' },
+        { value: 'not_equals', label: '≠ not equals' },
+        { value: 'greater_than', label: '> greater than' },
+        { value: 'less_than', label: '< less than' },
+        { value: 'contains', label: '⊃ contains' },
+        { value: 'not_contains', label: '⊅ not contains' },
+        { value: 'starts_with', label: '↦ starts with' },
+        { value: 'is_empty', label: '∅ is empty' },
+        { value: 'is_not_empty', label: '◉ is not empty' },
+    ];
+
+    const addCondition = () => {
+        const newCondition = {
+            id: `cond_${Math.random().toString(36).substr(2, 9)}`,
+            leftValue: '',
+            operator: 'equals',
+            rightValue: '',
+        };
+        updateData({ conditions: [...conditions, newCondition] });
+    };
+
+    const removeCondition = (id: string) => {
+        if (conditions.length <= 1) return;
+        updateData({ conditions: conditions.filter((c: any) => c.id !== id) });
+    };
+
+    const updateCondition = (id: string, kv: any) => {
+        updateData({
+            conditions: conditions.map((c: any) => c.id === id ? { ...c, ...kv } : c)
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                    Evaluate multiple conditions. Branch to <span className="text-emerald-400 font-bold">TRUE</span> if the logic below passes.
+                </p>
+            </div>
+
+            <div className="space-y-2">
+                <Label>Logical Operator</Label>
+                <div className="flex gap-2">
+                    {['and', 'or'].map(op => (
+                        <button
+                            key={op}
+                            onClick={() => updateData({ logicalOperator: op })}
+                            className={cn(
+                                "flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all border",
+                                logicalOperator === op
+                                    ? "bg-violet-500 border-violet-600 text-white shadow-sm"
+                                    : "bg-[var(--muted)] border-[var(--border)] text-[var(--muted-fg)] hover:border-violet-500/50"
+                            )}
+                        >
+                            {op}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <Label>Conditions</Label>
+                {conditions.map((cond: any, idx: number) => (
+                    <div key={cond.id} className="p-3 border border-[var(--border)] rounded-lg bg-[var(--muted)]/30 space-y-2 relative group/cond">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold text-violet-400 uppercase">Condition {idx + 1}</span>
+                            <button onClick={() => removeCondition(cond.id)} className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors">
+                                <Trash2 className="w-3 h-3" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Input
+                                placeholder="Left side (e.g. {{node.field}})"
+                                value={cond.leftValue || ''}
+                                onChange={(e: any) => updateCondition(cond.id, { leftValue: e.target.value })}
+                                className="h-8"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <Select
+                                value={cond.operator || 'equals'}
+                                onChange={(e: any) => updateCondition(cond.id, { operator: e.target.value })}
+                                className="h-8"
+                            >
+                                {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+                            </Select>
+                            {!['is_empty', 'is_not_empty'].includes(cond.operator) && (
+                                <Input
+                                    placeholder="Right side"
+                                    value={cond.rightValue || ''}
+                                    onChange={(e: any) => updateCondition(cond.id, { rightValue: e.target.value })}
+                                    className="h-8"
+                                />
+                            )}
+                        </div>
+                    </div>
+                ))}
+
+                <button
+                    onClick={addCondition}
+                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-1"
+                >
+                    <Plus className="w-3 h-3" />
+                    Add Condition
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Retry Configuration ────────────────────────────────────
+export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const maxAttempts = data.maxAttempts || '3';
+    const delay = data.delay || '2';
+
+    const updateData = (kv: any) => {
+        updateNode({
+            config: {
+                ...config,
+                data: { ...data, ...kv },
+                integrationId: 'retry',
+                actionId: 'handle'
+            }
+        });
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg flex gap-3">
+                <RotateCw className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                    <p className="text-[11px] font-bold text-[var(--fg)]">Retry Mechanism</p>
+                    <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                        If the preceding node fails, this node will trigger a re-execution.
+                    </p>
+                </div>
+            </div>
+
+            <div className="space-y-3 p-3 border border-[var(--border)] rounded-lg bg-[var(--muted)]/20">
+                <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold uppercase text-amber-500/80">Max Attempts</Label>
+                    <Input
+                        type="number"
+                        min="1"
+                        max="10"
+                        placeholder="e.g. 3"
+                        value={maxAttempts}
+                        onChange={(e: any) => updateData({ maxAttempts: e.target.value })}
+                        className="h-8 border-amber-500/20 focus:border-amber-500/50"
+                    />
+                    <p className="text-[9px] text-[var(--muted-fg)]">Maximum number of retries before giving up.</p>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-[var(--border)]">
+                    <Label className="text-[10px] font-bold uppercase text-amber-500/80">Retry Delay (Seconds)</Label>
+                    <Input
+                        type="number"
+                        min="0"
+                        max="60"
+                        placeholder="e.g. 2"
+                        value={delay}
+                        onChange={(e: any) => updateData({ delay: e.target.value })}
+                        className="h-8 border-amber-500/20 focus:border-amber-500/50"
+                    />
+                    <p className="text-[9px] text-[var(--muted-fg)]">Wait time between attempts.</p>
+                </div>
+            </div>
+
+            <div className="text-[9px] text-[var(--muted-fg)] italic px-1">
+                Note: This node effectively wraps the execution of the node connected to its input.
+            </div>
         </div>
     );
 }
