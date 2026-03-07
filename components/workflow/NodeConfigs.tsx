@@ -51,15 +51,14 @@ export function ModelSelector({ value, onChange, integrationId }: { value: strin
         ]
         : integrationId === 'openai'
             ? [
-                { id: 'gpt-4o', name: 'GPT-4o', desc: 'SOTA performance' },
-                { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Efficient & Smart' },
-                { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', desc: 'Fast & Reliable' }
+                { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'High-performance Open-source' }
             ]
             : integrationId === 'groq'
                 ? [
                     { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'State-of-the-art' },
                     { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra-fast' },
-                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'High context' }
+                    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 70B', desc: 'Reasoning model' },
+                    { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'High-performance Open-source' }
                 ]
                 : [];
 
@@ -136,7 +135,7 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
                         integrationId={config.integrationId || 'google_gemini'}
                         value={data.model || (
                             config.integrationId === 'groq' ? 'llama-3.3-70b-versatile' :
-                                config.integrationId === 'openai' ? 'gpt-4o' :
+                                config.integrationId === 'openai' ? 'openai/gpt-oss-120b' :
                                     'gemini-2.0-flash'
                         )}
                         onChange={(model) => updateData({ model })}
@@ -413,7 +412,7 @@ export function AIConfig({ node, updateNode }: { node: any, updateNode: (data: a
                 </Select>
             </div>
             {integrationId !== 'openrouter' && (
-                <ModelSelector integrationId={integrationId} value={data.model || (integrationId === 'groq' ? 'llama-3.3-70b-versatile' : integrationId === 'openai' ? 'gpt-4o' : 'gemini-2.0-flash')} onChange={(model) => updateData({ model })} />
+                <ModelSelector integrationId={integrationId} value={data.model || (integrationId === 'groq' ? 'llama-3.3-70b-versatile' : integrationId === 'openai' ? 'openai/gpt-oss-120b' : 'gemini-2.0-flash')} onChange={(model) => updateData({ model })} />
             )}
             <div className="space-y-2"><Label>API Key</Label><Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} /></div>
             <div className="space-y-2"><Label>System Prompt</Label><Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} /></div>
@@ -621,6 +620,248 @@ export function SheetsConfig({ node, updateNode, googleIntegration, onConnectGoo
     );
 }
 
+// ─── Google Docs Configuration ──────────────────────────────
+export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogle, onDisconnect, getAccessToken }: {
+    node: any; updateNode: (d: any) => void; googleIntegration: any; onConnectGoogle: () => void; onDisconnect: () => void; getAccessToken: (p: string) => Promise<string | null>;
+}) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const [docs, setDocs] = useState<{ id: string; name: string; modifiedTime?: string }[] | null>(null);
+    const [fetching, setFetching] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    const fetchDocs = async (nameFilter?: string) => {
+        setFetching(true);
+        try {
+            const token = await getAccessToken('google');
+            if (!token) throw new Error("No token found. Please re-connect.");
+            // mimeType for Google Docs
+            let q = "mimeType='application/vnd.google-apps.document' and trashed=false";
+            if (nameFilter) {
+                const sanitized = nameFilter.replace(/'/g, "\\'");
+                q += ` and name contains '${sanitized}'`;
+            }
+            const encodedQ = encodeURIComponent(q);
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodedQ}&orderBy=modifiedTime desc&pageSize=30&fields=files(id, name, modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true&spaces=drive`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const body = await res.json();
+            if (body.error) throw new Error(body.error.message || "Google Drive API Error");
+            setDocs(body.files || []);
+        } catch (e: any) { alert(e.message || "Failed to fetch docs."); }
+        finally { setFetching(false); }
+    };
+
+    const actionID = config.actionId || 'create_doc';
+
+    return (
+        <div className="space-y-4">
+            <GoogleConnectButton
+                isConnected={!!googleIntegration}
+                isValid={googleIntegration?.is_valid}
+                accountEmail={googleIntegration?.account_email}
+                onConnect={onConnectGoogle}
+                onDisconnect={onDisconnect}
+            />
+
+            {googleIntegration && (
+                <div className="space-y-3">
+                    <Section title="Operation Mode" icon={Zap} color="text-amber-400">
+                        <div className="flex gap-2 p-1 bg-[var(--muted)] rounded-lg">
+                            <button
+                                onClick={() => updateNode({ config: { ...config, actionId: 'create_doc' } })}
+                                className={cn(
+                                    "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
+                                    actionID === 'create_doc' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                )}
+                            >
+                                <Plus className="w-3 h-3 inline-block mr-1 mb-0.5" />
+                                Create New
+                            </button>
+                            <button
+                                onClick={() => updateNode({ config: { ...config, actionId: 'append_text' } })}
+                                className={cn(
+                                    "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
+                                    actionID === 'append_text' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                )}
+                            >
+                                <BookOpen className="w-3 h-3 inline-block mr-1 mb-0.5" />
+                                Update
+                            </button>
+                            <button
+                                onClick={() => updateNode({ config: { ...config, actionId: 'get_doc' } })}
+                                className={cn(
+                                    "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
+                                    actionID === 'get_doc' ? "bg-emerald-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                )}
+                            >
+                                <Link2 className="w-3 h-3 inline-block mr-1 mb-0.5" />
+                                Read
+                            </button>
+                        </div>
+                    </Section>
+
+
+                    {actionID === 'create_doc' ? (
+                        <Section title="New Document Details" icon={Plus} color="text-violet-400">
+                            <div className="space-y-2">
+                                <Label>Document Title</Label>
+                                <Input
+                                    placeholder="e.g. Proposal for {{currentItem.Company}}"
+                                    value={data.title || ''}
+                                    onChange={(e: any) => updateData({ title: e.target.value })}
+                                />
+                                <Label>Initial Content</Label>
+                                <Textarea
+                                    className="h-24"
+                                    placeholder="Content to add upon creation... use {{ai_node.text}}"
+                                    value={data.content || ''}
+                                    onChange={(e: any) => updateData({ content: e.target.value })}
+                                />
+                            </div>
+                        </Section>
+                    ) : actionID === 'get_doc' ? (
+                        <Section title="Read Document" icon={BookOpen} color="text-emerald-400">
+                            <div className="space-y-3">
+                                {/* Doc picker — same search UI */}
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Input
+                                            placeholder="Search docs..."
+                                            value={searchQuery}
+                                            onChange={(e: any) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e: any) => e.key === 'Enter' && fetchDocs(searchQuery)}
+                                        />
+                                        {fetching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />}
+                                    </div>
+                                    <button
+                                        disabled={fetching}
+                                        onClick={() => fetchDocs(searchQuery)}
+                                        className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                                    >
+                                        <Globe className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {docs && (
+                                    <div className="border border-emerald-500/30 rounded-lg p-1 bg-emerald-500/5 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {docs.length === 0 && <p className="p-3 text-[10px] text-center opacity-50 italic">No docs found.</p>}
+                                        {docs.map(d => (
+                                            <button
+                                                key={d.id}
+                                                onClick={() => {
+                                                    updateData({ documentId: d.id, documentName: d.name });
+                                                    setDocs(null);
+                                                }}
+                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] hover:bg-emerald-500/10 transition-colors truncate flex flex-col mb-1"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold truncate">{d.name}</span>
+                                                    {d.modifiedTime && <span className="text-[8px] opacity-30">{new Date(d.modifiedTime).toLocaleDateString()}</span>}
+                                                </div>
+                                                <span className="opacity-40 text-[8px]">{d.id}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!docs && data.documentId && (
+                                    <div className="flex items-center gap-2 p-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-emerald-400 truncate">{data.documentName || 'Reading Document'}</p>
+                                            <p className="text-[8px] opacity-40 truncate">{data.documentId}</p>
+                                        </div>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    </div>
+                                )}
+
+                                {/* How to use the output */}
+                                <div className="p-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg space-y-1.5">
+                                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Output — Use As KB</p>
+                                    <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                                        This node outputs the full document text. Connect it to an
+                                        <span className="text-purple-400 font-semibold"> AI Agent's Knowledge (KB) ◆</span> port, or reference it with:
+                                    </p>
+                                    <code className="block text-[9px] bg-[var(--muted)] px-2 py-1 rounded text-emerald-300 font-mono">
+                                        {`{{${data.documentName || 'Google Docs'}.text}}`}
+                                    </code>
+                                </div>
+                            </div>
+                        </Section>
+                    ) : (
+                        <Section title="Select Document" icon={BookOpen} color="text-blue-400">
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Input
+                                            placeholder="Search docs..."
+                                            value={searchQuery}
+                                            onChange={(e: any) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e: any) => e.key === 'Enter' && fetchDocs(searchQuery)}
+                                        />
+                                        {fetching && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />}
+                                    </div>
+                                    <button
+                                        disabled={fetching}
+                                        onClick={() => fetchDocs(searchQuery)}
+                                        className="p-2 bg-violet-500 text-white rounded-lg hover:bg-violet-600 disabled:opacity-50 transition-colors"
+                                    >
+                                        <Globe className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {docs && (
+                                    <div className="border border-violet-500/30 rounded-lg p-1 bg-violet-500/5 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {docs.length === 0 && <p className="p-3 text-[10px] text-center opacity-50 italic">No docs found.</p>}
+                                        {docs.map(d => (
+                                            <button
+                                                key={d.id}
+                                                onClick={() => {
+                                                    updateData({ documentId: d.id, documentName: d.name });
+                                                    setDocs(null);
+                                                }}
+                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] hover:bg-violet-500/10 transition-colors truncate flex flex-col mb-1"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold truncate">{d.name}</span>
+                                                    {d.modifiedTime && <span className="text-[8px] opacity-30">{new Date(d.modifiedTime).toLocaleDateString()}</span>}
+                                                </div>
+                                                <span className="opacity-40 text-[8px]">{d.id}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!docs && data.documentId && (
+                                    <div className="flex items-center gap-2 p-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-emerald-400 truncate">{data.documentName || 'Connected Document'}</p>
+                                            <p className="text-[8px] opacity-40 truncate">{data.documentId}</p>
+                                        </div>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    </div>
+                                )}
+
+                                <div className="space-y-1 pt-2 border-t border-[var(--border)]">
+                                    <Label>Text to Append</Label>
+                                    <Textarea
+                                        className="h-24"
+                                        placeholder="Add content here... use {{ai_node.text}}"
+                                        value={data.text || ''}
+                                        onChange={(e: any) => updateData({ text: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </Section>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─── Google Calendar Config ───────────────────────────
 export function GoogleCalendarConfig({ node, updateNode, googleIntegration, onConnect, onDisconnect }: any) {
     const config = node.data.config || {};
@@ -711,3 +952,69 @@ export function MemoryConfig({ node, updateNode }: any) {
         </div>
     );
 }
+
+// ─── Loop Configuration ──────────────────────────────────────
+export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const hasHeaders = data.hasHeaders !== false; // default true
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+            {/* Input Array */}
+            <div className="space-y-1.5">
+                <Label>Input Array</Label>
+                <Input
+                    placeholder="{{Google Sheets.values}}"
+                    value={data.inputArray || ''}
+                    onChange={(e: any) => updateData({ inputArray: e.target.value })}
+                />
+                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed ml-0.5">
+                    Use <code className="bg-[var(--muted)] px-1 rounded">{'{{NodeName.values}}'}</code> for Google Sheets,
+                    or <code className="bg-[var(--muted)] px-1 rounded">{'{{NodeName.items}}'}</code> for plain arrays.
+                </p>
+            </div>
+
+            {/* First row = headers toggle */}
+            <label className="flex items-center gap-3 p-2.5 rounded-lg border border-[var(--border)] hover:border-orange-500/40 cursor-pointer transition-colors">
+                <input
+                    type="checkbox"
+                    checked={hasHeaders}
+                    onChange={(e: any) => updateData({ hasHeaders: e.target.checked })}
+                    className="accent-orange-500 w-3.5 h-3.5"
+                />
+                <div>
+                    <p className="text-xs font-semibold text-[var(--fg)]">First row is headers</p>
+                    <p className="text-[10px] text-[var(--muted-fg)]">Maps column names as object keys (recommended for Sheets)</p>
+                </div>
+            </label>
+
+            {/* Usage reference card */}
+            <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-lg space-y-2">
+                <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wider">In Downstream Nodes, Use:</p>
+                <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                        <code className="text-[10px] bg-[var(--muted)] px-2 py-0.5 rounded text-orange-300 font-mono">{'{{currentItem.ColumnName}}'}</code>
+                        <span className="text-[9px] text-[var(--muted-fg)]">any column value</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <code className="text-[10px] bg-[var(--muted)] px-2 py-0.5 rounded text-orange-300 font-mono">{'{{currentIndex}}'}</code>
+                        <span className="text-[9px] text-[var(--muted-fg)]">0-based row number</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Example for leads scenario */}
+            <div className="p-3 bg-[var(--muted)] rounded-lg border border-[var(--border)] space-y-1.5">
+                <p className="text-[9px] font-bold text-[var(--fg)] uppercase tracking-wider">📋 Example — Leads Scenario</p>
+                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                    Input: <code className="text-violet-400">{'{{Google Sheets.values}}'}</code><br />
+                    In AI prompt: <code className="text-violet-400">{'{{currentItem.Name}}, {{currentItem.Company}}'}</code><br />
+                    Doc title: <code className="text-violet-400">{'Proposal for {{currentItem.Company}}'}</code>
+                </p>
+            </div>
+        </div>
+    );
+}
+

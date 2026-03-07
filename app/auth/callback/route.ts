@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url);
@@ -8,8 +9,29 @@ export async function GET(request: Request) {
 
     if (code) {
         const supabase = await createClient();
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (!error) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (!error && data.user) {
+            const user = data.user;
+            const supabaseAdmin = createAdminClient();
+
+            // Extract profile info from Google metadata
+            const fullName = user.user_metadata?.full_name || user.user_metadata?.name || '';
+            const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || '';
+
+            // Manually sync profile to ensure it exists immediately for the UI
+            await supabaseAdmin
+                .from('profiles')
+                .upsert({
+                    id: user.id,
+                    email: user.email,
+                    full_name: fullName,
+                    avatar_url: avatarUrl,
+                    updated_at: new Date().toISOString(),
+                }, {
+                    onConflict: 'id'
+                });
+
             return NextResponse.redirect(`${origin}${next}`);
         }
     }

@@ -41,22 +41,39 @@ export default function WorkflowsPage() {
     const fetchWorkflows = async () => {
         setLoading(true);
         try {
+            // First check if user is authenticated
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+            if (authError || !user) {
+                console.error('[Workflows] Auth error or no user:', authError?.message);
+                setWorkflows([]);
+                setLoading(false);
+                return;
+            }
+
+            console.log('[Workflows] Fetching for user:', user.id);
+
             const { data, error } = await supabase
                 .from('workflows')
                 .select('*')
                 .order('updated_at', { ascending: false });
 
-            if (error) throw error;
+            if (error) {
+                console.error('[Workflows] Query error:', error.message, error.details);
+                throw error;
+            }
+
+            console.log('[Workflows] Loaded', data?.length ?? 0, 'workflows');
             setWorkflows(data || []);
         } catch (err: any) {
             toast.error('Failed to load workflows');
-            console.error(err);
+            console.error('[Workflows] Fetch error:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    const router = useRouter(); // Use useRouter
+    const router = useRouter();
 
     useEffect(() => {
         fetchWorkflows();
