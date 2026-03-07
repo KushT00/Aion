@@ -14,40 +14,28 @@ import {
     Activity,
     History,
     Search,
-    Filter,
     ArrowUpRight,
-    Mail,
-    Globe,
-    MessageSquare,
-    ExternalLink,
     Sparkles,
     Loader2,
     Package,
-    Terminal
+    Terminal,
+    Key,
+    CheckCircle2,
+    AlertCircle,
+    Clock,
 } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
-interface PurchasedAutomation {
-    id: string;
-    created_at: string;
-    listing: {
-        id: string;
-        title: string;
-        description: string;
-        category: string;
-        seller: {
-            full_name: string;
-        };
-        workflow: {
-            id: string;
-            name: string;
-            status: string;
-        };
-    };
-}
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; pulse?: boolean }> = {
+    active: { label: 'Active', color: 'text-emerald-400', bg: 'bg-emerald-500/10', pulse: true },
+    setup_required: { label: 'Setup Required', color: 'text-amber-400', bg: 'bg-amber-500/10' },
+    paused: { label: 'Paused', color: 'text-[var(--muted-fg)]', bg: 'bg-[var(--muted)]' },
+    error: { label: 'Error', color: 'text-rose-400', bg: 'bg-rose-500/10' },
+};
 
 export default function MyAutomationsPage() {
-    const [automations, setAutomations] = useState<PurchasedAutomation[]>([]);
+    const [automations, setAutomations] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -69,15 +57,35 @@ export default function MyAutomationsPage() {
             }
         }
         fetchAutomations();
-        return () => {
-            isMounted = false;
-            controller.abort();
-        };
+        return () => { isMounted = false; controller.abort(); };
     }, []);
 
-    const filtered = automations.filter(a =>
-        a.listing.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filtered = automations.filter(a => {
+        return (a.listing?.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+    });
+
+    // Create instance if missing (for old purchases that don't have one)
+    const handleCreateInstance = async (purchaseId: string, item: any) => {
+        try {
+            toast.loading('Creating instance...', { id: 'create-inst' });
+            const res = await fetch('/api/marketplace/create-instance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ purchaseId }),
+            });
+            const data = await res.json();
+            toast.dismiss('create-inst');
+            if (res.ok && data.instanceId) {
+                toast.success('Instance created!');
+                window.location.href = `/my-automations/${data.instanceId}/setup`;
+            } else {
+                toast.error(data.error || 'Failed to create instance');
+            }
+        } catch {
+            toast.dismiss('create-inst');
+            toast.error('Connection error');
+        }
+    };
 
     if (isLoading) {
         return (
@@ -95,90 +103,143 @@ export default function MyAutomationsPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-black italic uppercase tracking-tighter">My <span className="text-primary-400">Automations</span></h1>
-                    <p className="text-[var(--muted-fg)] font-medium">Manage and monitor your active AI instances.</p>
+                    <p className="text-[var(--muted-fg)] font-medium">Manage and monitor your deployed AI instances.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-fg)]" />
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search instances..."
-                            className="bg-[var(--muted)] border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-1 ring-primary-500/50 w-64 transition-all font-bold placeholder:opacity-50"
-                        />
-                    </div>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-fg)]" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search instances..."
+                        className="bg-[var(--muted)] border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-1 ring-primary-500/50 w-64 transition-all font-bold placeholder:opacity-50"
+                    />
                 </div>
             </div>
 
             <div className="grid grid-cols-1 gap-6">
-                {filtered.map((item) => (
-                    <Card key={item.id} className="relative overflow-hidden group hover:border-primary-500/40 p-0 transition-all duration-500 rounded-[2rem] border-[var(--border)] bg-[var(--card)] shadow-xl shadow-black/5">
-                        <div className="flex flex-col lg:flex-row lg:items-center p-6 gap-8">
-                            {/* Icon & Name */}
-                            <div className="flex items-center gap-6 flex-1">
-                                <div className="w-16 h-16 rounded-[1.5rem] flex items-center justify-center bg-primary-500/10 text-primary-400 shrink-0 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
-                                    <Bot className="w-8 h-8" />
-                                </div>
-                                <div className="space-y-1.5 min-w-0">
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="font-black text-xl uppercase italic tracking-tighter truncate">{item.listing.title}</h3>
-                                        <Badge variant="success" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-black uppercase tracking-widest text-[8px] animate-pulse">
-                                            Instance Live
-                                        </Badge>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)]">
-                                        <span className="flex items-center gap-1.5"><Package className="w-3 h-3" /> {item.listing.category}</span>
-                                        <span className="flex items-center gap-1.5"><Terminal className="w-3 h-3" /> {item.listing.seller.full_name}</span>
-                                    </div>
-                                </div>
-                            </div>
+                {filtered.map((item) => {
+                    const status = item.status || 'setup_required';
+                    const statusConf = STATUS_CONFIG[status] || STATUS_CONFIG.setup_required;
+                    const listing = item.listing;
+                    const hasInstance = !!item.instanceId;
 
-                            {/* Stats */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 px-2 md:px-0">
-                                <div className="space-y-1">
-                                    <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Tasks Today</p>
-                                    <p className="text-xl font-black italic flex items-center gap-2">
-                                        <Zap className="w-4 h-4 text-amber-400" />
-                                        0
-                                    </p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Impact</p>
-                                    <p className="text-xl font-black italic flex items-center gap-2 text-emerald-400">
-                                        <ArrowUpRight className="w-4 h-4" />
-                                        $0.00
-                                    </p>
-                                </div>
-                                <div className="hidden md:block space-y-1">
-                                    <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Purchased</p>
-                                    <p className="text-sm font-black uppercase flex items-center gap-2">
-                                        <History className="w-4 h-4 text-[var(--muted-fg)]" />
-                                        {new Date(item.created_at).toLocaleDateString()}
-                                    </p>
-                                </div>
-                            </div>
+                    return (
+                        <Card key={item.purchaseId} className="relative overflow-hidden group hover:border-primary-500/40 p-0 transition-all duration-500 rounded-[2rem] border-[var(--border)] bg-[var(--card)] shadow-xl shadow-black/5">
+                            {/* Status stripe */}
+                            <div className={cn(
+                                "h-1.5 w-full",
+                                status === 'active' ? "bg-emerald-500" :
+                                    status === 'setup_required' ? "bg-amber-500" :
+                                        status === 'error' ? "bg-rose-500" :
+                                            "bg-[var(--muted)]"
+                            )} />
 
-                            {/* Actions */}
-                            <div className="flex items-center gap-3 border-t lg:border-t-0 pt-6 lg:pt-0">
-                                {item.listing.workflow ? (
-                                    <Link href={`/builder?id=${item.listing.workflow.id}`} className="flex-1 md:flex-none">
-                                        <Button className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
-                                            Open Controller
+                            <div className="flex flex-col lg:flex-row lg:items-center p-6 gap-8">
+                                {/* Icon & Name */}
+                                <div className="flex items-center gap-6 flex-1">
+                                    <div className={cn(
+                                        "w-16 h-16 rounded-[1.5rem] flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500",
+                                        status === 'active' ? "bg-emerald-500/10 text-emerald-400" :
+                                            status === 'setup_required' ? "bg-amber-500/10 text-amber-400" :
+                                                "bg-primary-500/10 text-primary-400"
+                                    )}>
+                                        {status === 'setup_required' ? <Key className="w-8 h-8" /> : <Bot className="w-8 h-8" />}
+                                    </div>
+                                    <div className="space-y-1.5 min-w-0">
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <h3 className="font-black text-xl uppercase italic tracking-tighter truncate">{listing?.title || 'Automation'}</h3>
+                                            <Badge className={cn(
+                                                "font-black uppercase tracking-widest text-[8px] border",
+                                                statusConf.bg, statusConf.color,
+                                                statusConf.pulse ? "animate-pulse" : ""
+                                            )}>
+                                                {status === 'setup_required' && <AlertCircle className="w-3 h-3 mr-1" />}
+                                                {status === 'active' && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                                                {statusConf.label}
+                                            </Badge>
+                                            {item.pricing_tier && (
+                                                <Badge className={cn(
+                                                    "font-black uppercase tracking-widest text-[8px]",
+                                                    item.pricing_tier === 'managed'
+                                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                        : "bg-primary-500/10 text-primary-400 border-primary-500/20"
+                                                )}>
+                                                    {item.pricing_tier === 'managed' ? 'Managed' : 'BYOK'}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-4 text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)]">
+                                            <span className="flex items-center gap-1.5"><Package className="w-3 h-3" /> {listing?.category || 'Automation'}</span>
+                                            <span className="flex items-center gap-1.5"><Terminal className="w-3 h-3" /> {listing?.seller?.full_name || 'Creator'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Stats */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 px-2 md:px-0">
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Total Runs</p>
+                                        <p className="text-xl font-black italic flex items-center gap-2">
+                                            <Zap className="w-4 h-4 text-amber-400" />
+                                            {item.total_runs || 0}
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Success Rate</p>
+                                        <p className="text-xl font-black italic flex items-center gap-2 text-emerald-400">
+                                            <ArrowUpRight className="w-4 h-4" />
+                                            {item.total_runs > 0
+                                                ? `${Math.round((item.total_successes / item.total_runs) * 100)}%`
+                                                : '—'}
+                                        </p>
+                                    </div>
+                                    <div className="hidden md:block space-y-1">
+                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Last Run</p>
+                                        <p className="text-sm font-black uppercase flex items-center gap-2">
+                                            <History className="w-4 h-4 text-[var(--muted-fg)]" />
+                                            {item.last_run_at
+                                                ? new Date(item.last_run_at).toLocaleDateString()
+                                                : 'Never'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-3 border-t lg:border-t-0 pt-6 lg:pt-0">
+                                    {hasInstance ? (
+                                        // Instance exists — link to setup/dashboard
+                                        <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                            {status === 'setup_required' ? (
+                                                <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400">
+                                                    <Key className="w-4 h-4 mr-2" />
+                                                    Complete Setup
+                                                </Button>
+                                            ) : (
+                                                <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
+                                                    <Activity className="w-4 h-4 mr-2" />
+                                                    View Dashboard
+                                                </Button>
+                                            )}
+                                        </Link>
+                                    ) : (
+                                        // No instance yet — offer to create one
+                                        <Button
+                                            onClick={() => handleCreateInstance(item.purchaseId, item)}
+                                            className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400"
+                                        >
+                                            <Key className="w-4 h-4 mr-2" />
+                                            Initialize Instance
                                         </Button>
-                                    </Link>
-                                ) : (
-                                    <Button disabled className="h-12 rounded-xl font-black uppercase tracking-widest text-[10px] opacity-50">
-                                        Under Setup
+                                    )}
+                                    <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
+                                        <Settings className="w-4 h-4" />
                                     </Button>
-                                )}
-                                <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-                                    <Settings className="w-4 h-4" />
-                                </Button>
+                                </div>
                             </div>
-                        </div>
-                    </Card>
-                ))}
+                        </Card>
+                    );
+                })}
             </div>
 
             {/* Empty State */}
@@ -189,7 +250,7 @@ export default function MyAutomationsPage() {
                     </div>
                     <h3 className="font-black text-2xl uppercase italic mb-2">Build your workforce</h3>
                     <p className="text-[var(--muted-fg)] max-w-sm mx-auto mb-8 font-medium">
-                        You haven't purchased any automations yet. Browse the marketplace to find AI agents ready to work for you.
+                        You haven't deployed any automations yet. Browse the marketplace to find AI agents ready to work for you.
                     </p>
                     <Link href="/marketplace">
                         <Button className="rounded-2xl px-10 h-14 font-black uppercase tracking-widest italic shadow-xl shadow-primary-500/20">

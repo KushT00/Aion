@@ -186,7 +186,7 @@ export default function MarketplacePage() {
             </div>
 
             {/* Filter Bar */}
-            <div className="sticky top-16 z-20 bg-[var(--bg)]/80 backdrop-blur-xl border-b border-[var(--border)] shadow-sm">
+            <div className="bg-[var(--bg)] border-b border-[var(--border)]">
                 <div className="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-4">
                         {categories.map(cat => (

@@ -21,7 +21,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
     return (
         <header
             className={cn(
-                'sticky top-0 z-30 h-16 flex items-center gap-4 px-4 lg:px-6',
+                'h-16 flex items-center gap-4 px-4 lg:px-6 z-30',
                 'bg-[var(--topbar-bg)] backdrop-blur-xl',
                 'border-b border-[var(--border)]',
             )}

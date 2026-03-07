@@ -1,11 +1,11 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useAIChat } from '@/components/ai-chat-context';
+import { cn } from '@/lib/utils';
 import {
     Globe,
     Star,
@@ -23,65 +23,125 @@ import {
     Bot,
     Tag,
     Calendar,
-    Key
+    Key,
+    Sparkles,
+    Server,
+    Wallet,
+    ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import toast from 'react-hot-toast';
 
 // Human-readable names for integration IDs
-const integrationLabels: Record<string, string> = {
-    google_gemini: 'Google Gemini API Key',
-    groq: 'Groq API Key',
-    openai: 'OpenAI API Key',
-    telegram: 'Telegram Bot Token',
-    discord: 'Discord Webhook URL',
-    slack: 'Slack Webhook URL',
-    google_sheets: 'Google Account (OAuth)',
-    google_docs: 'Google Account (OAuth)',
-    google_calendar: 'Google Account (OAuth)',
-    google_gmail: 'Google Account (OAuth)',
-    notion: 'Notion API Key',
-    api: 'Custom API Endpoint',
+const integrationLabels: Record<string, { name: string; desc: string; type: 'api_key' | 'oauth' }> = {
+    google_gemini: { name: 'Google Gemini', desc: 'AI Text Generation API Key', type: 'api_key' },
+    groq: { name: 'Groq', desc: 'Groq API Key for fast LLM inference', type: 'api_key' },
+    openai: { name: 'OpenAI', desc: 'GPT API Key', type: 'api_key' },
+    telegram: { name: 'Telegram', desc: 'Bot Token from @BotFather', type: 'api_key' },
+    discord: { name: 'Discord', desc: 'Webhook URL for your server', type: 'api_key' },
+    slack: { name: 'Slack', desc: 'Webhook URL for your workspace', type: 'api_key' },
+    google_sheets: { name: 'Google Sheets', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_docs: { name: 'Google Docs', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_calendar: { name: 'Google Calendar', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_gmail: { name: 'Gmail', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    notion: { name: 'Notion', desc: 'Integration API Key', type: 'api_key' },
+    api: { name: 'Custom API', desc: 'HTTP Endpoint URL', type: 'api_key' },
 };
 
 export default function MarketplaceDetailPage() {
     const params = useParams();
-    const { toggle: toggleChat } = useAIChat();
+    const router = useRouter();
     const [listing, setListing] = useState<any>(null);
     const [reviews, setReviews] = useState<any[]>([]);
     const [requiredIntegrations, setRequiredIntegrations] = useState<string[]>([]);
     const [hasPurchased, setHasPurchased] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [pricingTab, setPricingTab] = useState<'byok' | 'managed'>('byok');
+    const [isPurchasing, setIsPurchasing] = useState(false);
 
     useEffect(() => {
+        let isMounted = true;
+        const controller = new AbortController();
+
         async function fetchListing() {
             try {
-                const res = await fetch(`/api/marketplace/listings/${params.id}`);
+                const res = await fetch(`/api/marketplace/listings/${params.id}`, { signal: controller.signal });
                 const data = await res.json();
 
                 if (!res.ok) {
-                    setError(data.error || 'Listing not found');
+                    if (isMounted) setError(data.error || 'Listing not found');
                     return;
                 }
 
-                setListing(data.listing);
-                setReviews(data.reviews || []);
-                setRequiredIntegrations(data.requiredIntegrations || []);
-                setHasPurchased(data.hasPurchased || false);
-            } catch (err) {
-                setError('Failed to load listing');
+                if (isMounted) {
+                    setListing(data.listing);
+                    setReviews(data.reviews || []);
+                    setRequiredIntegrations(data.requiredIntegrations || []);
+                    setHasPurchased(data.hasPurchased || false);
+                }
+            } catch (err: any) {
+                if (err.name !== 'AbortError' && isMounted) setError('Failed to load listing');
             } finally {
-                setIsLoading(false);
+                if (isMounted) setIsLoading(false);
             }
         }
         if (params.id) fetchListing();
+        return () => { isMounted = false; controller.abort(); };
     }, [params.id]);
 
     const formatPrice = (price: number) => {
         if (price === 0) return 'Free';
         return `$${(price / 100).toFixed(0)}`;
     };
+
+    const handlePurchase = async () => {
+        setIsPurchasing(true);
+        try {
+            const res = await fetch('/api/marketplace/purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    listingId: listing.id,
+                    pricingTier: pricingTab,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (res.status === 409) {
+                toast.success('You already own this! Redirecting...');
+                router.push('/my-automations');
+                return;
+            }
+
+            if (!res.ok) {
+                toast.error(data.error || 'Purchase failed');
+                return;
+            }
+
+            toast.success('🎉 Purchase complete! Starting AI setup...');
+            setHasPurchased(true);
+
+            // Redirect to the AI setup wizard
+            const targetUrl = data.instanceId
+                ? `/my-automations/${data.instanceId}/setup`
+                : '/my-automations';
+            setTimeout(() => {
+                router.push(targetUrl);
+            }, 1000);
+        } catch (err) {
+            toast.error('Something went wrong. Please try again.');
+        } finally {
+            setIsPurchasing(false);
+        }
+    };
+
+    // Separate integrations by type
+    const oauthIntegrations = requiredIntegrations.filter(k => integrationLabels[k]?.type === 'oauth');
+    const apiKeyIntegrations = requiredIntegrations.filter(k => integrationLabels[k]?.type === 'api_key');
+    // Deduplicate Google OAuth (sheets + docs + calendar = 1 Google sign-in)
+    const needsGoogleOAuth = oauthIntegrations.length > 0;
 
     // Loading state
     if (isLoading) {
@@ -113,6 +173,9 @@ export default function MarketplaceDetailPage() {
             </div>
         );
     }
+
+    const byokPrice = listing.price;
+    const managedPrice = listing.price === 0 ? 0 : listing.price * 2;
 
     return (
         <div className="min-h-screen bg-[var(--bg)]">
@@ -195,24 +258,43 @@ export default function MarketplaceDetailPage() {
                             </div>
                         )}
 
-                        {/* Required Integrations */}
+                        {/* Required Integrations / Credentials Preview */}
                         {requiredIntegrations.length > 0 && (
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 <h3 className="text-sm font-black uppercase tracking-widest text-[var(--muted-fg)] flex items-center gap-2">
-                                    <Key className="w-4 h-4" /> Required Integrations
+                                    <Key className="w-4 h-4" /> What You'll Need to Connect
                                 </h3>
                                 <p className="text-xs text-[var(--muted-fg)]">
-                                    After purchase, you'll need to provide the following credentials to activate this automation.
+                                    With <span className="text-primary-400 font-bold">BYOK</span> you provide these yourself. With <span className="text-emerald-400 font-bold">Managed</span>, the creator provides all resources for you.
                                 </p>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {requiredIntegrations.map(integId => (
-                                        <div key={integId} className="flex items-center gap-3 p-4 rounded-2xl bg-[var(--muted)]/50 border border-[var(--border)]">
-                                            <CheckCircle2 className="w-5 h-5 text-amber-400" />
-                                            <span className="text-sm font-bold">
-                                                {integrationLabels[integId] || integId}
-                                            </span>
+                                    {needsGoogleOAuth && (
+                                        <div className="flex items-center gap-4 p-5 rounded-2xl bg-[var(--muted)]/50 border border-[var(--border)] group hover:border-primary-500/30 transition-colors">
+                                            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                                                <Globe className="w-5 h-5 text-blue-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold">Google Account</p>
+                                                <p className="text-[10px] text-[var(--muted-fg)] uppercase tracking-widest">
+                                                    Sign in with Google · Covers {oauthIntegrations.map(k => integrationLabels[k]?.name).join(', ')}
+                                                </p>
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
+                                    {apiKeyIntegrations.map(integId => {
+                                        const info = integrationLabels[integId] || { name: integId, desc: 'API Key', type: 'api_key' };
+                                        return (
+                                            <div key={integId} className="flex items-center gap-4 p-5 rounded-2xl bg-[var(--muted)]/50 border border-[var(--border)] group hover:border-primary-500/30 transition-colors">
+                                                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                                                    <Key className="w-5 h-5 text-amber-400" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold">{info.name}</p>
+                                                    <p className="text-[10px] text-[var(--muted-fg)] uppercase tracking-widest">{info.desc}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -225,9 +307,9 @@ export default function MarketplaceDetailPage() {
                             <div className="space-y-8 relative">
                                 <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-[var(--border)] border-dashed border-l" />
                                 {[
-                                    { t: 'Purchase', d: 'Get access to this automation by completing the purchase.' },
-                                    { t: 'Connect Accounts', d: 'Provide your API keys and credentials through the secure setup wizard.' },
-                                    { t: 'Configure', d: 'Customize settings through the AI onboarding assistant.' },
+                                    { t: 'Choose Your Plan', d: 'Pick BYOK (use your own API keys) or Managed (we handle everything).' },
+                                    { t: 'AI Setup', d: 'Our AI assistant walks you through connecting your accounts in under 2 minutes.' },
+                                    { t: 'Configure', d: 'Select your files, sheets, and preferences — the AI handles the rest.' },
                                     { t: 'Live Deployment', d: 'Your isolated instance starts running 24/7 with zero maintenance.' }
                                 ].map((step, idx) => (
                                     <div key={step.t} className="relative pl-12">
@@ -282,82 +364,196 @@ export default function MarketplaceDetailPage() {
                         )}
                     </div>
 
-                    {/* Right: Sidebar Actions */}
+                    {/* ─── Right: Pricing Sidebar ─── */}
                     <div className="space-y-6">
-                        <Card className="p-8 sticky top-32 bg-gradient-to-br from-[var(--card)] to-[var(--muted)] border-none shadow-2xl space-y-8">
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-baseline">
-                                    <span className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-widest">Monthly Cost</span>
-                                    <div className="text-right">
-                                        <p className={cn("text-4xl font-black", listing.price === 0 ? "text-emerald-400" : "")}>
-                                            {formatPrice(listing.price)}
-                                        </p>
-                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tighter">
-                                            {listing.price === 0 ? 'OPEN SOURCE' : 'PER INSTANCE / MO'}
-                                        </p>
+                        <Card className="p-0 sticky top-8 bg-[var(--card)] border-[var(--border)] shadow-2xl shadow-black/10 overflow-hidden rounded-[2rem]">
+                            {/* Pricing Tabs */}
+                            <div className="grid grid-cols-2 border-b border-[var(--border)]">
+                                <button
+                                    onClick={() => setPricingTab('byok')}
+                                    className={cn(
+                                        "py-5 text-center transition-all relative",
+                                        pricingTab === 'byok'
+                                            ? "bg-primary-500/5"
+                                            : "hover:bg-[var(--muted)]/50 opacity-50 hover:opacity-80"
+                                    )}
+                                >
+                                    <div className="flex flex-col items-center gap-1.5">
+                                        <Key className={cn("w-5 h-5", pricingTab === 'byok' ? "text-primary-400" : "text-[var(--muted-fg)]")} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Your Keys</span>
                                     </div>
-                                </div>
+                                    {pricingTab === 'byok' && (
+                                        <div className="absolute bottom-0 inset-x-0 h-0.5 bg-primary-500" />
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setPricingTab('managed')}
+                                    className={cn(
+                                        "py-5 text-center transition-all relative",
+                                        pricingTab === 'managed'
+                                            ? "bg-emerald-500/5"
+                                            : "hover:bg-[var(--muted)]/50 opacity-50 hover:opacity-80"
+                                    )}
+                                >
+                                    <div className="flex flex-col items-center gap-1.5">
+                                        <Server className={cn("w-5 h-5", pricingTab === 'managed' ? "text-emerald-400" : "text-[var(--muted-fg)]")} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Managed</span>
+                                    </div>
+                                    {pricingTab === 'managed' && (
+                                        <div className="absolute bottom-0 inset-x-0 h-0.5 bg-emerald-500" />
+                                    )}
+                                </button>
                             </div>
 
-                            <div className="space-y-4 pt-4 border-t border-[var(--border)]">
-                                {hasPurchased ? (
-                                    <Link href="/my-automations">
-                                        <Button className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest italic group shadow-xl shadow-emerald-500/30">
-                                            <CheckCircle2 className="w-5 h-5 mr-2" /> Already Purchased — View
-                                        </Button>
-                                    </Link>
-                                ) : (
-                                    <Button
-                                        onClick={toggleChat}
-                                        className="w-full h-16 rounded-2xl bg-gradient-to-r from-primary-600 to-primary-500 text-white font-black uppercase tracking-widest italic group shadow-xl shadow-primary-500/30 hover:shadow-primary-500/40"
-                                    >
-                                        Deploy with AI Setup
-                                        <Zap className="w-4 h-4 ml-2 fill-current group-hover:scale-125 transition-transform" />
-                                    </Button>
-                                )}
-                                <Button variant="outline" className="w-full h-12 rounded-2xl font-bold uppercase tracking-wider">
-                                    Trial Run (1hr)
-                                </Button>
-                            </div>
-
-                            <div className="space-y-4 pt-4">
-                                <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
-                                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                                    Security Audited & Verified
-                                </div>
-                                <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
-                                    <Clock className="w-4 h-4 text-primary-400" />
-                                    Instant Setup ({'<'} 2 mins)
-                                </div>
-                                <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
-                                    <Lock className="w-4 h-4 text-amber-400" />
-                                    Credential Isolation Active
-                                </div>
-                                <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
-                                    <Calendar className="w-4 h-4 text-[var(--muted-fg)]" />
-                                    Published {new Date(listing.created_at).toLocaleDateString()}
-                                </div>
-                            </div>
-
-                            {/* Creator Info */}
-                            {listing.seller && (
-                                <div className="pt-8 border-t border-[var(--border)]">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg text-xs">
-                                            {listing.seller.full_name?.slice(0, 2)?.toUpperCase() || '??'}
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-tighter">Creator</p>
-                                            <p className="text-sm font-black text-primary-400 italic">
-                                                {listing.seller.full_name || 'Unknown Creator'}
+                            {/* Tab Content */}
+                            <div className="p-8 space-y-6">
+                                {/* BYOK Tab */}
+                                {pricingTab === 'byok' && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Badge className="bg-primary-500/10 text-primary-400 border-primary-500/20 font-black uppercase tracking-widest text-[8px]">
+                                                Bring Your Own Keys
+                                            </Badge>
+                                            <p className={cn("text-4xl font-black", byokPrice === 0 ? "text-emerald-400" : "")}>
+                                                {formatPrice(byokPrice)}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tighter">
+                                                {byokPrice === 0 ? 'FREE FOREVER' : 'FIXED PRICE / MONTH'}
                                             </p>
                                         </div>
-                                    </div>
-                                    <Button variant="ghost" className="w-full text-xs font-bold uppercase tracking-widest hover:text-primary-400">
-                                        Contact Creator <MessageSquare className="w-3.5 h-3.5 ml-2" />
-                                    </Button>
+                                        <div className="space-y-3 text-xs text-[var(--muted-fg)]">
+                                            <div className="flex items-start gap-3">
+                                                <CheckCircle2 className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">You provide your own API keys & Google account</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <CheckCircle2 className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Fixed monthly cost — no usage surprises</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <CheckCircle2 className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Full control over your data & credentials</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <CheckCircle2 className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">AI guides you through setup in 2 minutes</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-[var(--muted-fg)] italic opacity-60 leading-relaxed">
+                                            Best for technical users who already have API keys and want predictable billing.
+                                        </p>
+                                    </>
+                                )}
+
+                                {/* Managed Tab */}
+                                {pricingTab === 'managed' && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-black uppercase tracking-widest text-[8px]">
+                                                Fully Managed
+                                            </Badge>
+                                            <p className="text-4xl font-black text-emerald-400">
+                                                {managedPrice === 0 ? 'Free' : formatPrice(managedPrice)}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tighter">
+                                                {managedPrice === 0 ? 'FREE FOREVER' : 'USAGE-BASED / MONTH'}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-3 text-xs text-[var(--muted-fg)]">
+                                            <div className="flex items-start gap-3">
+                                                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Creator provides all API keys & infrastructure</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Zero technical setup — just sign up and go</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Usage-based billing (pay only for what runs)</span>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                                <span className="font-bold">Priority support from the creator</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-[var(--muted-fg)] italic opacity-60 leading-relaxed">
+                                            Best for non-technical users who want a plug-and-play experience with no API setup.
+                                        </p>
+                                    </>
+                                )}
+
+                                {/* Action Buttons */}
+                                <div className="space-y-4 pt-4 border-t border-[var(--border)]">
+                                    {hasPurchased ? (
+                                        <Link href="/my-automations">
+                                            <Button className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest italic group shadow-xl shadow-emerald-500/30">
+                                                <CheckCircle2 className="w-5 h-5 mr-2" /> Purchased — View Dashboard
+                                            </Button>
+                                        </Link>
+                                    ) : (
+                                        <Button
+                                            onClick={handlePurchase}
+                                            disabled={isPurchasing}
+                                            className={cn(
+                                                "w-full h-16 rounded-2xl text-white font-black uppercase tracking-widest italic group shadow-xl transition-all",
+                                                pricingTab === 'byok'
+                                                    ? "bg-gradient-to-r from-primary-600 to-primary-500 shadow-primary-500/30 hover:shadow-primary-500/40"
+                                                    : "bg-gradient-to-r from-emerald-600 to-emerald-500 shadow-emerald-500/30 hover:shadow-emerald-500/40"
+                                            )}
+                                        >
+                                            {isPurchasing ? (
+                                                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing...</>
+                                            ) : (
+                                                <>
+                                                    Deploy with AI Setup
+                                                    <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
                                 </div>
-                            )}
+
+                                {/* Trust Badges */}
+                                <div className="space-y-4 pt-4">
+                                    <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
+                                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                                        Security Audited & Verified
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
+                                        <Clock className="w-4 h-4 text-primary-400" />
+                                        Instant Setup ({'<'} 2 mins)
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
+                                        <Lock className="w-4 h-4 text-amber-400" />
+                                        Credential Isolation Active
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs font-bold text-[var(--muted-fg)]">
+                                        <Calendar className="w-4 h-4 text-[var(--muted-fg)]" />
+                                        Published {new Date(listing.created_at).toLocaleDateString()}
+                                    </div>
+                                </div>
+
+                                {/* Creator Info */}
+                                {listing.seller && (
+                                    <div className="pt-8 border-t border-[var(--border)]">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg text-xs">
+                                                {listing.seller.full_name?.slice(0, 2)?.toUpperCase() || '??'}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-tighter">Creator</p>
+                                                <p className="text-sm font-black text-primary-400 italic">
+                                                    {listing.seller.full_name || 'Unknown Creator'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" className="w-full text-xs font-bold uppercase tracking-widest hover:text-primary-400">
+                                            Contact Creator <MessageSquare className="w-3.5 h-3.5 ml-2" />
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </Card>
                     </div>
                 </div>
