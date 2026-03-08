@@ -25,17 +25,17 @@ export async function GET(req: NextRequest) {
         }
 
         // We map the raw results to ensure a clean, reliable data structure for the frontend
+        // If a user was flagged as creator but hasn't finalized onboarding, we feed safe defaults.
         const safeCreators = (creators || []).map((c: any) => {
             const profileData = c.creator_profile || {};
             return {
                 id: c.id,
-                full_name: c.full_name || 'Anonymous Creator',
+                full_name: c.full_name || 'AION Creator',
                 avatar_url: c.avatar_url,
                 bio: c.bio || profileData.bio || 'Experienced AI Automation Specialist.',
-                expertise: profileData.expertise || 'General Automation',
+                expertise: profileData.expertise || 'Automation Creator',
                 skills: Array.isArray(profileData.skills) ? profileData.skills : [],
-                experience_years: profileData.experience_years || 1,
-                // If there's no base rate in the form, use a stylized default for UI purposes
+                experience_years: profileData.experience_years || 0,
                 hourly_rate: profileData.hourly_rate || Math.floor(Math.random() * 50) + 50
             };
         });
