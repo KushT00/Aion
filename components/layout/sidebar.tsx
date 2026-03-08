@@ -3,13 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { useViewMode } from '@/components/view-mode-context';
 import { useAIChat } from '@/components/ai-chat-context';
+import { useAuth } from '@/hooks/use-auth';
 import {
     LayoutDashboard,
     Store,
     Bot,
-    Zap,
     X,
     Settings,
     User,
@@ -24,7 +23,9 @@ import {
     Play,
     Sparkles,
     ChevronLeft,
-    ChevronRight,
+    Inbox,
+    Rocket,
+    ArrowRight,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -32,6 +33,7 @@ const consumerNav = [
     { label: 'Home', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Marketplace', href: '/marketplace', icon: Store },
     { label: 'My Automations', href: '/my-automations', icon: Bot },
+    { label: 'Inbox', href: '/inbox', icon: Inbox },
     { label: 'Billing', href: '/billing', icon: CreditCard },
 ];
 
@@ -40,6 +42,7 @@ const creatorNav = [
     { label: 'Workflow Builder', href: '/builder', icon: Hammer },
     { label: 'My Workflows', href: '/workflows', icon: GitBranch },
     { label: 'My Listings', href: '/creator/listings', icon: Package },
+    { label: 'Inbox', href: '/creator/inbox', icon: Inbox },
     { label: 'Lead CRM', href: '/creator/leads', icon: Users },
     { label: 'Earnings', href: '/creator/earnings', icon: DollarSign },
     { label: 'Runs', href: '/runs', icon: Play },
@@ -59,11 +62,16 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
     const pathname = usePathname();
     const { toggle: toggleChat } = useAIChat();
+    const { profile } = useAuth();
     const [collapsed, setCollapsed] = useState(false);
 
-    // Determine if we are in "Creator Studio" based on URL
+    // Creator mode: user must BOTH have is_creator=true AND be on a creator path
     const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows') || pathname.startsWith('/runs') || pathname.startsWith('/agent-wizard');
-    const navItems = isCreatorPath ? creatorNav : consumerNav;
+    const isCreator = profile?.is_creator === true || profile?.role === 'creator';
+
+    // Show creator nav only if user IS a creator AND on a creator route
+    const navItems = (isCreator && isCreatorPath) ? creatorNav : consumerNav;
+    const sectionLabel = (isCreator && isCreatorPath) ? 'Build & Monetize' : 'Explore Marketplace';
 
     return (
         <>
@@ -118,7 +126,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 {!collapsed && (
                     <div className="px-5 pt-3 pb-1 animate-in fade-in scale-95 origin-left duration-300">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted-fg)]">
-                            {isCreatorPath ? 'Build & Monetize' : 'Explore Marketplace'}
+                            {sectionLabel}
                         </span>
                     </div>
                 )}
@@ -153,6 +161,26 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             </Link>
                         );
                     })}
+
+                    {/* "Become a Creator" CTA — shown only for non-creators in consumer nav */}
+                    {!isCreator && !collapsed && (
+                        <div className="mt-4 pt-4 border-t border-[var(--sidebar-border)]">
+                            <Link
+                                href="/become-creator"
+                                onClick={onClose}
+                                className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20 text-primary-400 hover:from-primary-500/20 hover:to-accent-500/20 transition-all group"
+                            >
+                                <div className="w-7 h-7 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0">
+                                    <Rocket className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-black uppercase tracking-tight">Become a Creator</p>
+                                    <p className="text-[10px] text-primary-400/70 font-medium">Sell AI automations</p>
+                                </div>
+                                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                            </Link>
+                        </div>
+                    )}
                 </nav>
 
                 {/* Bottom items */}

@@ -6,6 +6,17 @@
 
 export type UserRole = 'creator' | 'user' | 'admin';
 
+export interface CreatorProfile {
+  expertise: string;
+  skills: string[];
+  experience_years: number;
+  bio: string;
+  work_style: string;
+  specializations: string[];
+  portfolio_links: string[];
+  automation_categories: string[];
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -14,6 +25,9 @@ export interface Profile {
   role: UserRole;
   bio: string | null;
   website: string | null;
+  is_creator: boolean;
+  creator_onboarded_at: string | null;
+  creator_profile: CreatorProfile | null;
   created_at: string;
   updated_at: string;
 }

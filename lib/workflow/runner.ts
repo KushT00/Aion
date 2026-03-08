@@ -579,7 +579,7 @@ export class WorkflowRunner {
                         const isIntegIfElse = config?.integrationId === 'if_else' || config?.actionId === 'condition';
                         const isIntegSwitch = config?.integrationId === 'switch' || config?.actionId === 'evaluate';
 
-                        const isLogicBranchNode = node.type === 'if_else' || (node.type as string) === 'switch' ||
+                        const isLogicBranchNode = (node.type as string) === 'if_else' || (node.type as string) === 'switch' ||
                             node.config?.originalType === 'if_else' || node.config?.originalType === 'switch' ||
                             ((node.type as string) === 'logic_gate' && (isIntegIfElse || isIntegSwitch));
 

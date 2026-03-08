@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { ContactCreatorModal } from '../components/ContactCreatorModal';
 
 // Human-readable names for integration IDs
 const integrationLabels: Record<string, { name: string; desc: string; type: 'api_key' | 'oauth' }> = {
@@ -59,6 +61,8 @@ export default function MarketplaceDetailPage() {
     const [error, setError] = useState<string | null>(null);
     const [pricingTab, setPricingTab] = useState<'byok' | 'managed'>('byok');
     const [isPurchasing, setIsPurchasing] = useState(false);
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+    const { profile } = useAuth();
 
     useEffect(() => {
         let isMounted = true;
@@ -90,9 +94,11 @@ export default function MarketplaceDetailPage() {
         return () => { isMounted = false; controller.abort(); };
     }, [params.id]);
 
-    const formatPrice = (price: number) => {
-        if (price === 0) return 'Free';
-        return `$${(price / 100).toFixed(0)}`;
+    const formatPrice = (price: any) => {
+        const num = Number(price);
+        if (isNaN(num)) return '$0';
+        if (num === 0) return 'Free';
+        return `$${(num / 100).toFixed(0)}`;
     };
 
     const handlePurchase = async () => {
@@ -548,7 +554,11 @@ export default function MarketplaceDetailPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Button variant="ghost" className="w-full text-xs font-bold uppercase tracking-widest hover:text-primary-400">
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full text-xs font-bold uppercase tracking-widest hover:text-primary-400"
+                                            onClick={() => setIsContactModalOpen(true)}
+                                        >
                                             Contact Creator <MessageSquare className="w-3.5 h-3.5 ml-2" />
                                         </Button>
                                     </div>
@@ -558,6 +568,13 @@ export default function MarketplaceDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Modal for contacting creator */}
+            <ContactCreatorModal
+                isOpen={isContactModalOpen}
+                onClose={() => setIsContactModalOpen(false)}
+                listing={listing}
+            />
         </div>
     );
 }
