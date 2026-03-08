@@ -300,7 +300,7 @@ export default function MarketplacePage() {
                                     <Card
                                         key={item.id}
                                         className={cn(
-                                            "group flex flex-col gap-0 p-0 border-[var(--border)] hover:border-primary-500/40",
+                                            "group flex flex-col justify-between gap-0 p-0 border-[var(--border)] hover:border-primary-500/40",
                                             "hover:shadow-xl hover:shadow-primary-500/8 transition-all duration-300",
                                             "rounded-2xl overflow-hidden bg-[var(--card)] relative"
                                         )}
