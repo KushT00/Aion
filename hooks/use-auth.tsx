@@ -10,6 +10,7 @@ interface AuthContextValue {
     profile: Profile | null;
     loading: boolean;
     signOut: () => Promise<void>;
+    refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextValue>({
     profile: null,
     loading: true,
     signOut: async () => { },
+    refreshProfile: async () => { },
 });
 
 // Single Supabase client instance for the entire app
@@ -26,6 +28,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
+
+    const refreshProfile = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url, is_creator, role')
+                .eq('id', user.id)
+                .single();
+            setProfile(data as Profile | null);
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -39,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (user) {
                     const { data } = await supabase
                         .from('profiles')
-                        .select('*')
+                        .select('id, full_name, avatar_url, is_creator, role')
                         .eq('id', user.id)
                         .single();
                     if (!cancelled) setProfile(data as Profile | null);
@@ -60,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (session?.user) {
                     const { data } = await supabase
                         .from('profiles')
-                        .select('*')
+                        .select('id, full_name, avatar_url, is_creator, role')
                         .eq('id', session.user.id)
                         .single();
                     if (!cancelled) setProfile(data as Profile | null);
@@ -84,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+        <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );

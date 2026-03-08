@@ -1,4 +1,4 @@
-import { Menu, Search, Hammer } from 'lucide-react';
+import { Menu, Search, Hammer, LogOut } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/utils';
@@ -12,9 +12,9 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
-    const { mode } = useViewMode();
+    const { mode, isCreator: isActualCreator } = useViewMode();
     const { profile } = useAuth();
-    const isCreator = mode === 'creator';
+    const isCreatorMode = mode === 'creator';
     const userName = profile?.full_name || 'User';
     const avatarUrl = profile?.avatar_url;
 
@@ -54,11 +54,18 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
             <div className="flex items-center gap-4">
                 {/* Mode Switcher Shortcut */}
-                {!isCreator && (
-                    <Link href="/creator/dashboard">
+                {isCreatorMode ? (
+                    <Link href="/dashboard">
+                        <Button variant="outline" size="sm" className="hidden sm:flex h-9 rounded-xl font-black uppercase tracking-widest text-[10px] gap-2 border-dashed border-primary-500/50 text-primary-400">
+                            <LogOut className="w-3.5 h-3.5" />
+                            Exit Studio
+                        </Button>
+                    </Link>
+                ) : (
+                    <Link href={isActualCreator ? "/creator/dashboard" : "/become-creator"}>
                         <Button variant="outline" size="sm" className="hidden sm:flex h-9 rounded-xl font-black uppercase tracking-widest text-[10px] gap-2 border-dashed hover:border-primary-500/50">
                             <Hammer className="w-3.5 h-3.5 text-primary-400" />
-                            Become a Creator
+                            {isActualCreator ? "Go to Studio" : "Become a Creator"}
                         </Button>
                     </Link>
                 )}

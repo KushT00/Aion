@@ -19,7 +19,8 @@ import {
     Settings,
     Star,
     Sparkles,
-    Globe
+    Globe,
+    Rocket
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
@@ -211,6 +212,27 @@ export default function ConsumerDashboard() {
                             </Button>
                         </Link>
                     </div>
+
+                    {/* Become a Creator CTA */}
+                    {!profile?.is_creator && (
+                        <Card className="p-8 bg-gradient-to-br from-accent-600/20 to-primary-600/20 border-accent-500/30 rounded-[2rem] space-y-4 relative overflow-hidden group">
+                            <div className="relative z-10">
+                                <div className="w-12 h-12 rounded-2xl bg-accent-500/20 flex items-center justify-center mb-4">
+                                    <Rocket className="w-6 h-6 text-accent-400" />
+                                </div>
+                                <h3 className="text-xl font-black uppercase tracking-tight italic leading-tight text-accent-400">Monetize Your <br /> Expertise</h3>
+                                <p className="text-xs font-bold text-[var(--muted-fg)] leading-relaxed uppercase tracking-tight opacity-70">
+                                    Turn your workflows into profitable AI agents. Join our creator community today.
+                                </p>
+                                <Link href="/become-creator">
+                                    <Button size="sm" className="mt-4 rounded-xl px-6 font-black uppercase italic tracking-widest bg-accent-500 text-white hover:bg-accent-600 border-none">
+                                        Start Building
+                                    </Button>
+                                </Link>
+                            </div>
+                            <Rocket className="absolute -bottom-6 -right-6 w-32 h-32 text-accent-400/10 group-hover:scale-125 group-hover:-rotate-12 transition-all duration-700" />
+                        </Card>
+                    )}
 
                     {/* Concierge Promo */}
                     <Card className="p-8 bg-gradient-to-br from-primary-600/20 to-accent-600/20 border-primary-500/30 rounded-[2rem] space-y-4 relative overflow-hidden group">
