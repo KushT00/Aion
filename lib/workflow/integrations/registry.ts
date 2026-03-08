@@ -1962,3 +1962,67 @@ registry.register({
         },
     ],
 });
+
+// ─── CRM Capture (Save to Consumer Dashboard) ───────────────
+// This integration allows creators to mark a node's output to be
+// saved as a CRM result in the buyer's dashboard.
+registry.register({
+    id: "crm_capture",
+    name: "CRM Capture",
+    category: "utility",
+    actions: [
+        {
+            id: "capture",
+            name: "Save to CRM",
+            description: "Captures workflow output as a business result (lead, data, etc.) for the buyer's CRM dashboard",
+            execute: async (config, context) => {
+                // The actual Supabase insert happens in the runner (server-side only).
+                // This action just structures the data for the runner to pick up.
+                const {
+                    resultType = 'lead',
+                    title,
+                    captureFields,
+                    tags,
+                    sourceNodeId,
+                } = config;
+
+                // Resolve source data from the upstream node output
+                let sourceData: any = {};
+                if (sourceNodeId && context?.nodes?.[sourceNodeId]) {
+                    sourceData = context.nodes[sourceNodeId];
+                } else {
+                    // Fallback: gather all upstream node outputs
+                    sourceData = context?.nodes || {};
+                }
+
+                // If captureFields is specified, extract only those fields
+                let capturedData = sourceData;
+                if (captureFields && typeof captureFields === 'string') {
+                    const fields = captureFields.split(',').map((f: string) => f.trim());
+                    capturedData = {};
+                    for (const field of fields) {
+                        // Support dot notation for nested fields
+                        const parts = field.split('.');
+                        let value = sourceData;
+                        for (const part of parts) {
+                            value = value?.[part];
+                        }
+                        if (value !== undefined) {
+                            capturedData[field] = value;
+                        }
+                    }
+                }
+
+                // Return structured data — the runner will detect __crm_capture flag
+                return {
+                    __crm_capture: true,
+                    result_type: resultType,
+                    title: title || `${resultType.charAt(0).toUpperCase() + resultType.slice(1)} — ${new Date().toLocaleDateString()}`,
+                    data: capturedData,
+                    tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map((t: string) => t.trim())) : [],
+                    captured_at: new Date().toISOString(),
+                };
+            },
+        },
+    ],
+});

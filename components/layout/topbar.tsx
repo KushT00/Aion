@@ -1,5 +1,6 @@
 import { Menu, Search, Hammer } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { NotificationBell } from '@/components/ui/notification-bell';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/utils';
 import { useViewMode } from '@/components/view-mode-context';
@@ -62,6 +63,9 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                         </Button>
                     </Link>
                 )}
+
+                {/* Notifications */}
+                <NotificationBell />
 
                 {/* Theme toggle */}
                 <ThemeToggle />

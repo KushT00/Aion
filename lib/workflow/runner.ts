@@ -15,15 +15,33 @@ export interface RunLog {
     timestamp: string;
 }
 
+/**
+ * CRM Capture Result — collected when a node outputs data flagged for CRM storage.
+ * The webhook/API handler is responsible for persisting these to consumer_results.
+ */
+export interface CapturedResult {
+    nodeId: string;
+    nodeLabel: string;
+    result_type: string;
+    title: string;
+    data: any;
+    tags: string[];
+    metadata: Record<string, any>;
+    captured_at: string;
+}
+
 export class WorkflowRunner {
     private nodes: WorkflowNode[];
     private edges: WorkflowEdge[];
     private context: ExecutionContext;
     private logs: RunLog[] = [];
+    private capturedResults: CapturedResult[] = [];
+    private instanceId: string | null = null;
 
-    constructor(nodes: WorkflowNode[], edges: WorkflowEdge[], env: Record<string, string> = {}) {
+    constructor(nodes: WorkflowNode[], edges: WorkflowEdge[], env: Record<string, string> = {}, instanceId?: string) {
         this.nodes = nodes;
         this.edges = edges;
+        this.instanceId = instanceId || null;
         this.context = {
             nodes: {},
             env,
@@ -191,6 +209,66 @@ export class WorkflowRunner {
         return this.logs;
     }
 
+    /**
+     * Returns any CRM-captured results from this execution.
+     * The caller (webhook handler / API route) should persist these
+     * to the consumer_results table in Supabase.
+     */
+    getCapturedResults(): CapturedResult[] {
+        return this.capturedResults;
+    }
+
+    /**
+     * Check if a node's output contains CRM capture data and collect it.
+     */
+    private collectCRMCapture(node: WorkflowNode, output: any): void {
+        if (!output) return;
+
+        // Method 1: Explicit CRM Capture node (crm_capture integration)
+        if (output.__crm_capture === true) {
+            this.capturedResults.push({
+                nodeId: node.id,
+                nodeLabel: node.label || node.id,
+                result_type: output.result_type || 'custom',
+                title: output.title || `Result from ${node.label || node.id}`,
+                data: output.data || {},
+                tags: output.tags || [],
+                metadata: {
+                    source_node: node.id,
+                    source_label: node.label,
+                    instance_id: this.instanceId,
+                },
+                captured_at: output.captured_at || new Date().toISOString(),
+            });
+            console.log(`📦 [CRM CAPTURE] Result captured from node "${node.label || node.id}" (type: ${output.result_type})`);
+            return;
+        }
+
+        // Method 2: Any node with saveToCRM flag in its config
+        const config = node.config as any;
+        if (config?.data?.saveToCRM === true || config?.saveToCRM === true) {
+            const resultType = config?.data?.crmResultType || config?.crmResultType || 'data';
+            const crmTitle = config?.data?.crmTitle || config?.crmTitle || '';
+            const crmTags = config?.data?.crmTags || config?.crmTags || '';
+
+            this.capturedResults.push({
+                nodeId: node.id,
+                nodeLabel: node.label || node.id,
+                result_type: resultType,
+                title: crmTitle || `${node.label || 'Node'} — ${new Date().toLocaleDateString()}`,
+                data: output,
+                tags: crmTags ? (typeof crmTags === 'string' ? crmTags.split(',').map((t: string) => t.trim()) : crmTags) : [],
+                metadata: {
+                    source_node: node.id,
+                    source_label: node.label,
+                    instance_id: this.instanceId,
+                },
+                captured_at: new Date().toISOString(),
+            });
+            console.log(`📦 [CRM CAPTURE] Auto-captured from node "${node.label || node.id}" (saveToCRM flag)`);
+        }
+    }
+
     // ─── Execute a single node — returns true if execution should stop ───────
     private async executeNodeOnce(node: WorkflowNode, onLog?: (log: RunLog) => void): Promise<boolean> {
         const log: RunLog = {
@@ -295,6 +373,9 @@ export class WorkflowRunner {
                 const extraData = isTrigger ? { ...this.context.trigger } : {};
 
                 this.context.nodes[node.id] = { ...result, ...extraData };
+
+                // Check for CRM capture
+                this.collectCRMCapture(node, result);
 
                 // Also update context.trigger so {{trigger.text}} works
                 if (isTrigger) {

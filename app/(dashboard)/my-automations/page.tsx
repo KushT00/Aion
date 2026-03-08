@@ -38,6 +38,7 @@ export default function MyAutomationsPage() {
     const [automations, setAutomations] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [togglingId, setTogglingId] = useState<string | null>(null);
 
     useEffect(() => {
         let isMounted = true;
@@ -84,6 +85,39 @@ export default function MyAutomationsPage() {
         } catch {
             toast.dismiss('create-inst');
             toast.error('Connection error');
+        }
+    };
+
+    // Toggle pause/resume for an instance
+    const handleToggleInstance = async (instanceId: string, currentStatus: string) => {
+        if (!instanceId) return;
+        setTogglingId(instanceId);
+        const action = currentStatus === 'active' ? 'pause' : 'resume';
+        try {
+            toast.loading(action === 'pause' ? 'Pausing...' : 'Resuming...', { id: 'toggle-inst' });
+            const res = await fetch(`/api/consumer/instances/${instanceId}/toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action }),
+            });
+            const data = await res.json();
+            toast.dismiss('toggle-inst');
+            if (res.ok && data.success) {
+                toast.success(data.message);
+                // Update local state
+                setAutomations(prev => prev.map(a =>
+                    a.instanceId === instanceId
+                        ? { ...a, status: data.newStatus }
+                        : a
+                ));
+            } else {
+                toast.error(data.error || 'Toggle failed');
+            }
+        } catch {
+            toast.dismiss('toggle-inst');
+            toast.error('Connection error');
+        } finally {
+            setTogglingId(null);
         }
     };
 
@@ -208,20 +242,24 @@ export default function MyAutomationsPage() {
                                 {/* Actions */}
                                 <div className="flex items-center gap-3 border-t lg:border-t-0 pt-6 lg:pt-0">
                                     {hasInstance ? (
-                                        // Instance exists — link to setup/dashboard
-                                        <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                        // Instance exists — link to setup or dashboard
+                                        <>
                                             {status === 'setup_required' ? (
-                                                <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400">
-                                                    <Key className="w-4 h-4 mr-2" />
-                                                    Complete Setup
-                                                </Button>
+                                                <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                                    <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400">
+                                                        <Key className="w-4 h-4 mr-2" />
+                                                        Complete Setup
+                                                    </Button>
+                                                </Link>
                                             ) : (
-                                                <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
-                                                    <Activity className="w-4 h-4 mr-2" />
-                                                    View Dashboard
-                                                </Button>
+                                                <Link href={`/my-automations/${item.instanceId}/dashboard`}>
+                                                    <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
+                                                        <Activity className="w-4 h-4 mr-2" />
+                                                        View Dashboard
+                                                    </Button>
+                                                </Link>
                                             )}
-                                        </Link>
+                                        </>
                                     ) : (
                                         // No instance yet — offer to create one
                                         <Button
@@ -232,6 +270,32 @@ export default function MyAutomationsPage() {
                                             Initialize Instance
                                         </Button>
                                     )}
+
+                                    {/* Pause / Resume Toggle Button */}
+                                    {hasInstance && (status === 'active' || status === 'paused') && (
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            disabled={togglingId === item.instanceId}
+                                            onClick={() => handleToggleInstance(item.instanceId, status)}
+                                            className={cn(
+                                                "h-12 w-12 rounded-xl transition-all",
+                                                status === 'active'
+                                                    ? "border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50 text-amber-400"
+                                                    : "border-emerald-500/30 hover:bg-emerald-500/10 hover:border-emerald-500/50 text-emerald-400"
+                                            )}
+                                            title={status === 'active' ? 'Pause automation' : 'Resume automation'}
+                                        >
+                                            {togglingId === item.instanceId ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : status === 'active' ? (
+                                                <Pause className="w-4 h-4" />
+                                            ) : (
+                                                <Play className="w-4 h-4" />
+                                            )}
+                                        </Button>
+                                    )}
+
                                     <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
                                         <Settings className="w-4 h-4" />
                                     </Button>

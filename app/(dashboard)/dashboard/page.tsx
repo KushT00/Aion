@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,59 +8,85 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { useAIChat } from '@/components/ai-chat-context';
 import {
-    Play,
     ArrowRight,
     Zap,
     TrendingUp,
     Clock,
-    Mail,
-    MessageSquare,
     ChevronRight,
     Activity,
     Settings,
     Star,
     Sparkles,
-    Globe
+    Globe,
+    MessageSquare,
+    Bot,
+    Loader2,
+    CheckCircle2,
+    AlertCircle,
+    Pause,
+    Key,
+    BarChart3,
+    Package,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
 
-const stats = [
-    { label: 'Workforce Impact', value: '42.5h', change: '+12% this week', icon: Clock, color: 'text-primary-400' },
-    { label: 'Tasks Completed', value: '1,284', change: '+243 today', icon: Zap, color: 'text-amber-400' },
-    { label: 'Estimated ROI', value: '$840', change: 'Total Value Saved', icon: TrendingUp, color: 'text-emerald-400' },
-];
+// Status config matching my-automations page
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; borderColor: string; pulse?: boolean }> = {
+    active: { label: 'Active', color: 'text-emerald-400', bg: 'bg-emerald-500/10', borderColor: 'border-emerald-500/20', pulse: true },
+    setup_required: { label: 'Setup Required', color: 'text-amber-400', bg: 'bg-amber-500/10', borderColor: 'border-amber-500/20' },
+    paused: { label: 'Paused', color: 'text-[var(--muted-fg)]', bg: 'bg-[var(--muted)]', borderColor: 'border-[var(--border)]' },
+    error: { label: 'Error', color: 'text-rose-400', bg: 'bg-rose-500/10', borderColor: 'border-rose-500/20' },
+};
 
-const activeInstances = [
-    {
-        id: '1',
-        name: 'Smart Email Triage',
-        status: 'running',
-        metric: '124 emails processed',
-        lastRun: '2 mins ago',
-        icon: Mail,
-        gradient: 'from-blue-500/20 to-indigo-500/20'
-    },
-    {
-        id: '2',
-        name: 'Discord Lead Multiplier',
-        status: 'running',
-        metric: '12 hot leads found',
-        lastRun: '15 mins ago',
-        icon: MessageSquare,
-        gradient: 'from-violet-500/20 to-purple-500/20'
-    },
-];
+const STATUS_ICONS: Record<string, typeof Bot> = {
+    active: CheckCircle2,
+    setup_required: Key,
+    paused: Pause,
+    error: AlertCircle,
+};
 
-const recommendations = [
-    { id: '1', title: 'LinkedIn Magnet', category: 'Lead Gen', rating: 4.9, icon: Globe, color: 'text-sky-400', bg: 'bg-sky-500/10' },
-    { id: '2', title: 'Content Multiplier', category: 'Social', rating: 4.8, icon: MessageSquare, color: 'text-violet-400', bg: 'bg-violet-500/10' },
-    { id: '3', title: 'Market Pulse', category: 'Finance', rating: 4.7, icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-];
+interface DashboardInstance {
+    id: string;
+    status: string;
+    total_runs: number;
+    total_successes: number;
+    total_failures: number;
+    last_run_at: string | null;
+    listing?: {
+        id: string;
+        title: string;
+        description: string;
+        category: string;
+        seller?: { full_name: string; avatar_url: string | null };
+    };
+}
+
+interface DashboardStats {
+    totalInstances: number;
+    activeCount: number;
+    totalRuns: number;
+    totalSuccesses: number;
+    totalFailures: number;
+    successRate: number;
+}
+
+interface MarketplaceRecommendation {
+    id: string;
+    title: string;
+    category: string;
+    rating_avg: number;
+    price: number;
+    currency: string;
+}
 
 export default function ConsumerDashboard() {
     const { profile } = useAuth();
     const { toggle: toggleChat } = useAIChat();
+
+    const [instances, setInstances] = useState<DashboardInstance[]>([]);
+    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [recommendations, setRecommendations] = useState<MarketplaceRecommendation[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     const firstName = profile?.full_name?.split(' ')[0] || 'Partner';
 
@@ -69,6 +96,70 @@ export default function ConsumerDashboard() {
         if (hour < 18) return 'Good afternoon';
         return 'Good evening';
     }, []);
+
+    // Fetch real data
+    useEffect(() => {
+        let cancelled = false;
+
+        async function fetchDashboard() {
+            try {
+                // Fetch instances + stats
+                const instRes = await fetch('/api/consumer/instances');
+                if (instRes.ok) {
+                    const data = await instRes.json();
+                    if (!cancelled) {
+                        setInstances(data.instances || []);
+                        setStats(data.stats || null);
+                    }
+                }
+
+                // Fetch marketplace recommendations (top rated listings)
+                const recRes = await fetch('/api/marketplace/listings?limit=3&sort=rating');
+                if (recRes.ok) {
+                    const recData = await recRes.json();
+                    if (!cancelled) {
+                        setRecommendations(recData.listings || []);
+                    }
+                }
+            } catch (err) {
+                console.error('[Dashboard] Fetch error:', err);
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        }
+
+        fetchDashboard();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Derive display stats
+    const totalRuns = stats?.totalRuns || 0;
+    const successRate = stats?.successRate || 0;
+    const activeCount = stats?.activeCount || 0;
+    // Estimate time saved: ~5 minutes per successful run
+    const hoursSaved = ((stats?.totalSuccesses || 0) * 5 / 60).toFixed(1);
+
+    // Category icons for recommendations
+    const CATEGORY_ICONS: Record<string, { icon: typeof Globe; color: string; bg: string }> = {
+        'Lead Gen': { icon: Globe, color: 'text-sky-400', bg: 'bg-sky-500/10' },
+        'Social': { icon: MessageSquare, color: 'text-violet-400', bg: 'bg-violet-500/10' },
+        'Finance': { icon: TrendingUp, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+        'Utility': { icon: Zap, color: 'text-primary-400', bg: 'bg-primary-500/10' },
+        'E-commerce': { icon: Package, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    };
+
+    const defaultCategoryIcon = { icon: Bot, color: 'text-primary-400', bg: 'bg-primary-500/10' };
+
+    if (isLoading) {
+        return (
+            <div className="p-6 lg:p-10 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+                    <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-widest">Loading your command center...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-12">
@@ -81,15 +172,19 @@ export default function ConsumerDashboard() {
                 <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-10">
                     <div className="space-y-6">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            Digital Workforce Active
+                            <div className={cn("w-1.5 h-1.5 rounded-full", activeCount > 0 ? "bg-emerald-400 animate-pulse" : "bg-[var(--muted-fg)]")} />
+                            {activeCount > 0 ? `${activeCount} Agent${activeCount > 1 ? 's' : ''} Active` : 'Digital Workforce Standby'}
                         </div>
                         <h1 className="text-5xl lg:text-7xl font-black tracking-tight leading-[0.9] uppercase italic">
                             {greeting}, <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400">{firstName}</span>
                         </h1>
                         <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-xl font-bold uppercase tracking-tight opacity-80">
-                            Your AI agents generated <span className="text-[var(--fg)]">42 hours</span> of freedom this month.
+                            {totalRuns > 0 ? (
+                                <>Your AI agents saved <span className="text-[var(--fg)]">{hoursSaved} hours</span> with <span className="text-[var(--fg)]">{totalRuns.toLocaleString()} tasks</span> completed.</>
+                            ) : (
+                                <>Deploy your first AI agent to start automating your workflow.</>
+                            )}
                         </p>
                         <div className="flex flex-wrap gap-4 pt-4">
                             <Link href="/marketplace">
@@ -106,20 +201,26 @@ export default function ConsumerDashboard() {
 
                     <div className="hidden xl:flex flex-col items-center justify-center p-8 rounded-[3rem] bg-[var(--card)]/50 border border-white/5 backdrop-blur-md shadow-2xl space-y-3">
                         <div className="relative">
-                            <Activity className="w-12 h-12 text-primary-400 animate-pulse" />
-                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[var(--bg)]" />
+                            <Activity className={cn("w-12 h-12 text-primary-400", activeCount > 0 ? "animate-pulse" : "opacity-40")} />
+                            {activeCount > 0 && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[var(--bg)]" />
+                            )}
                         </div>
                         <div className="text-center">
-                            <p className="text-4xl font-black italic tracking-tighter">99.2%</p>
-                            <p className="text-[10px] uppercase font-black tracking-[0.2em] text-[var(--muted-fg)]">System Efficiency</p>
+                            <p className="text-4xl font-black italic tracking-tighter">{successRate}%</p>
+                            <p className="text-[10px] uppercase font-black tracking-[0.2em] text-[var(--muted-fg)]">Success Rate</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Value Metrics */}
+            {/* Value Metrics — Real Data */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {stats.map((stat) => (
+                {[
+                    { label: 'Time Saved', value: `${hoursSaved}h`, change: `${stats?.totalSuccesses || 0} successful runs`, icon: Clock, color: 'text-primary-400' },
+                    { label: 'Tasks Completed', value: totalRuns.toLocaleString(), change: `${successRate}% success rate`, icon: Zap, color: 'text-amber-400' },
+                    { label: 'Active Agents', value: activeCount.toString(), change: `${stats?.totalInstances || 0} total deployed`, icon: TrendingUp, color: 'text-emerald-400' },
+                ].map((stat) => (
                     <Card key={stat.label} className="p-8 border-[var(--border)] hover:border-primary-500/30 transition-all duration-300 rounded-3xl bg-[var(--card)] relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                             <stat.icon className="w-16 h-16" />
@@ -143,7 +244,7 @@ export default function ConsumerDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                {/* Main Content: Active Automations */}
+                {/* Main Content: Real Active Automations */}
                 <div className="lg:col-span-2 space-y-8">
                     <div className="flex items-center justify-between">
                         <h2 className="text-3xl font-black uppercase italic tracking-tighter">Live Workforce</h2>
@@ -152,59 +253,123 @@ export default function ConsumerDashboard() {
                         </Link>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {activeInstances.map((instance) => (
-                            <div key={instance.id} className="group relative bg-[var(--card)] border border-[var(--border)] rounded-[2rem] p-8 hover:border-primary-500/30 transition-all duration-500 flex flex-col h-full">
-                                <div className="flex items-start justify-between mb-8">
-                                    <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500", instance.gradient)}>
-                                        <instance.icon className="w-8 h-8 text-white" />
-                                    </div>
-                                    <div className="text-right">
-                                        <Badge variant="success" dot pulse className="bg-emerald-500/10 text-emerald-400 border-none px-3 py-1 text-[10px] font-black uppercase tracking-widest">Active</Badge>
-                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] mt-2 uppercase tracking-tighter">{instance.lastRun}</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 flex-1">
-                                    <h4 className="text-xl font-black uppercase tracking-tight">{instance.name}</h4>
-                                    <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-tight opacity-60">Status: Fully Autonomous</p>
-                                </div>
-                                <div className="mt-8 pt-6 border-t border-[var(--border)] flex items-center justify-between">
-                                    <div>
-                                        <p className="text-[10px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Impact</p>
-                                        <p className="text-sm font-black italic">{instance.metric}</p>
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="rounded-xl hover:bg-primary-500/10 hover:text-primary-400 transition-colors">
-                                        <Settings className="w-4 h-4" />
-                                    </Button>
-                                </div>
+                    {instances.length === 0 ? (
+                        <div className="text-center p-16 border-2 border-dashed border-[var(--border)] rounded-[2rem] bg-primary-500/[0.01]">
+                            <div className="w-16 h-16 rounded-2xl bg-primary-500/10 flex items-center justify-center mx-auto mb-4">
+                                <Bot className="w-8 h-8 text-primary-400" />
                             </div>
-                        ))}
-                    </div>
+                            <h3 className="font-black text-xl uppercase italic mb-2">No agents deployed yet</h3>
+                            <p className="text-[var(--muted-fg)] max-w-sm mx-auto mb-6 font-medium text-sm">
+                                Browse the marketplace to find AI agents ready to automate your work.
+                            </p>
+                            <Link href="/marketplace">
+                                <Button className="rounded-xl px-8 h-12 font-black uppercase tracking-widest text-xs">
+                                    Browse Marketplace
+                                </Button>
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {instances.slice(0, 4).map((instance) => {
+                                const statusConf = STATUS_CONFIG[instance.status] || STATUS_CONFIG.setup_required;
+                                const StatusIcon = STATUS_ICONS[instance.status] || Bot;
+                                const listing = instance.listing;
+
+                                return (
+                                    <Link key={instance.id} href={`/my-automations/${instance.id}/setup`} className="block">
+                                        <div className="group relative bg-[var(--card)] border border-[var(--border)] rounded-[2rem] p-8 hover:border-primary-500/30 transition-all duration-500 flex flex-col h-full">
+                                            <div className="flex items-start justify-between mb-8">
+                                                <div className={cn(
+                                                    "w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-all duration-500",
+                                                    statusConf.bg
+                                                )}>
+                                                    <Bot className={cn("w-8 h-8", statusConf.color)} />
+                                                </div>
+                                                <div className="text-right">
+                                                    <Badge className={cn(
+                                                        "text-[10px] font-black uppercase tracking-widest border",
+                                                        statusConf.bg, statusConf.color, statusConf.borderColor,
+                                                        statusConf.pulse ? "animate-pulse" : ""
+                                                    )}>
+                                                        <StatusIcon className="w-3 h-3 mr-1" />
+                                                        {statusConf.label}
+                                                    </Badge>
+                                                    {instance.last_run_at && (
+                                                        <p className="text-[10px] font-bold text-[var(--muted-fg)] mt-2 uppercase tracking-tighter">
+                                                            {new Date(instance.last_run_at).toLocaleDateString()}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2 flex-1">
+                                                <h4 className="text-xl font-black uppercase tracking-tight truncate">{listing?.title || 'Automation'}</h4>
+                                                <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider opacity-60">
+                                                    {listing?.category || 'Automation'} · {listing?.seller?.full_name || 'Creator'}
+                                                </p>
+                                            </div>
+                                            <div className="mt-8 pt-6 border-t border-[var(--border)] flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[10px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Runs</p>
+                                                    <p className="text-sm font-black italic flex items-center gap-1.5">
+                                                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                                        {instance.total_runs || 0}
+                                                        {instance.total_runs > 0 && (
+                                                            <span className="text-emerald-400 text-xs ml-1">
+                                                                ({Math.round(((instance.total_successes || 0) / instance.total_runs) * 100)}%)
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <Button variant="ghost" size="icon" className="rounded-xl hover:bg-primary-500/10 hover:text-primary-400 transition-colors">
+                                                    <Settings className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
-                {/* Sidebar: Recommendations */}
+                {/* Sidebar: Marketplace Recommendations (Real data) */}
                 <div className="space-y-8">
                     <h2 className="text-2xl font-black uppercase italic tracking-tighter">Expand Workforce</h2>
                     <div className="space-y-4">
-                        {recommendations.map((item) => (
-                            <Link key={item.id} href="/marketplace" className="block group">
-                                <Card className="p-5 border-[var(--border)] hover:border-primary-500/30 bg-[var(--card)] transition-all flex items-center gap-4 rounded-2xl">
-                                    <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", item.bg)}>
-                                        <item.icon className={cn("w-6 h-6", item.color)} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[8px] font-black uppercase tracking-widest text-primary-400">{item.category}</span>
-                                            <div className="flex items-center text-[10px] font-bold text-amber-400">
-                                                <Star className="w-3 h-3 fill-current mr-0.5" /> {item.rating}
+                        {recommendations.length > 0 ? (
+                            recommendations.map((item) => {
+                                const catInfo = CATEGORY_ICONS[item.category] || defaultCategoryIcon;
+                                const CatIcon = catInfo.icon;
+
+                                return (
+                                    <Link key={item.id} href={`/marketplace/${item.id}`} className="block group">
+                                        <Card className="p-5 border-[var(--border)] hover:border-primary-500/30 bg-[var(--card)] transition-all flex items-center gap-4 rounded-2xl">
+                                            <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", catInfo.bg)}>
+                                                <CatIcon className={cn("w-6 h-6", catInfo.color)} />
                                             </div>
-                                        </div>
-                                        <h4 className="font-extrabold text-sm truncate uppercase tracking-tighter">{item.title}</h4>
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-[var(--muted-fg)] group-hover:translate-x-1 group-hover:text-primary-400 transition-all" />
-                                </Card>
-                            </Link>
-                        ))}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[8px] font-black uppercase tracking-widest text-primary-400">{item.category}</span>
+                                                    {item.rating_avg > 0 && (
+                                                        <div className="flex items-center text-[10px] font-bold text-amber-400">
+                                                            <Star className="w-3 h-3 fill-current mr-0.5" /> {item.rating_avg.toFixed(1)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <h4 className="font-extrabold text-sm truncate uppercase tracking-tighter">{item.title}</h4>
+                                            </div>
+                                            <ChevronRight className="w-4 h-4 text-[var(--muted-fg)] group-hover:translate-x-1 group-hover:text-primary-400 transition-all" />
+                                        </Card>
+                                    </Link>
+                                );
+                            })
+                        ) : (
+                            // Fallback: show generic CTA when no listings exist
+                            <div className="text-center p-6 border border-dashed border-[var(--border)] rounded-2xl">
+                                <p className="text-xs font-bold text-[var(--muted-fg)] opacity-60">Marketplace listings coming soon</p>
+                            </div>
+                        )}
+
                         <Link href="/marketplace" className="block">
                             <Button variant="outline" className="w-full h-12 rounded-xl text-xs font-black uppercase tracking-widest border-2 hover:bg-primary-500/5">
                                 View Full Workforce

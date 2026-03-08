@@ -46,6 +46,7 @@ import {
     NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
+    CRMCaptureConfig,
     Input, Label
 } from '@/components/workflow/NodeConfigs';
 import { PublishingPanel } from '@/components/workflow/PublishingPanel';
@@ -124,6 +125,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'data_tool', label: 'Set Variable', icon: SlidersHorizontal, integrationId: 'set_variable', nodeType: 'custom', actionId: 'set' },
             { type: 'data_tool', label: 'Delay / Wait', icon: Timer, integrationId: 'delay', nodeType: 'custom', actionId: 'wait' },
             { type: 'tool', label: 'File Tool', icon: WebhookIcon, integrationId: 'tool', nodeType: 'custom', actionId: 'file_reader' },
+            { type: 'data_tool', label: 'CRM Capture', icon: Database, integrationId: 'crm_capture', nodeType: 'custom', actionId: 'capture' },
         ],
     },
 ];
@@ -1215,6 +1217,9 @@ function BuilderContent() {
 
                                     // Delay
                                     if (integId === 'delay') return <DelayConfig node={selectedNode} updateNode={updateNode} />;
+
+                                    // CRM Capture
+                                    if (integId === 'crm_capture') return <CRMCaptureConfig node={selectedNode} updateNode={updateNode} />;
 
                                     // HTTP Request
                                     if (nodeData.type === 'api_action') return (

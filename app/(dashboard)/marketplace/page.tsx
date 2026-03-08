@@ -178,9 +178,16 @@ export default function MarketplacePage() {
                                 className="w-full bg-[var(--card)] border border-[var(--border)] rounded-2xl pl-14 pr-6 py-5 text-sm shadow-2xl shadow-primary-500/5 focus:ring-2 ring-primary-500/20 transition-all outline-none font-bold"
                             />
                         </div>
-                        <Button type="submit" size="lg" className="rounded-2xl px-12 h-[60px] font-black uppercase tracking-widest italic shadow-2xl shadow-primary-500/20">
-                            Search
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Button type="submit" size="lg" className="rounded-2xl px-12 h-[60px] font-black uppercase tracking-widest italic shadow-2xl shadow-primary-500/20">
+                                Search
+                            </Button>
+                            <Link href="/marketplace/request">
+                                <Button type="button" variant="outline" size="lg" className="rounded-2xl px-8 h-[60px] font-black uppercase tracking-widest italic border border-[var(--border)] hover:bg-[var(--muted)]/50">
+                                    <Sparkles className="w-4 h-4 text-amber-400 mr-2" /> Request Custom
+                                </Button>
+                            </Link>
+                        </div>
                     </form>
                 </div>
             </div>

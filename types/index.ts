@@ -139,3 +139,72 @@ export interface SidebarNavItem {
   icon: string;
   badge?: string | number;
 }
+
+// ─── Consumer Instances (Sanket — Workstream C) ─────────────
+
+export type InstanceStatus = 'setup_required' | 'active' | 'paused' | 'error';
+
+export interface ConsumerInstance {
+  id: string;
+  purchase_id: string;
+  buyer_id: string;
+  workflow_id: string;
+  listing_id: string;
+  status: InstanceStatus;
+  pricing_tier: 'byok' | 'managed';
+  credentials: Record<string, unknown>;
+  custom_config: Record<string, unknown>;
+  config_overrides: Record<string, unknown>;
+  last_run_at: string | null;
+  total_runs: number;
+  total_successes: number;
+  total_failures: number;
+  created_at: string;
+  updated_at: string;
+  // Joined data
+  listing?: MarketplaceListing;
+}
+
+export interface ConsumerRunLog {
+  id: string;
+  instance_id: string;
+  status: 'success' | 'failed';
+  duration_ms: number | null;
+  node_count: number | null;
+  input_summary: string | null;
+  output_summary: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface ConsumerAnalytic {
+  id: string;
+  instance_id: string;
+  metric_type: 'lead' | 'revenue' | 'task' | 'custom';
+  metric_value: number;
+  metric_label: string | null;
+  metadata: Record<string, unknown>;
+  recorded_at: string;
+}
+
+// ─── Notifications (Sanket — Workstream C) ──────────────────
+
+export type NotificationType =
+  | 'workflow_failed'
+  | 'workflow_success'
+  | 'daily_summary'
+  | 'threshold_alert'
+  | 'purchase'
+  | 'system'
+  | 'info';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string | null;
+  read: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}

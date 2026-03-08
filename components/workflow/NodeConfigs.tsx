@@ -1448,3 +1448,117 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
     );
 }
 
+// ─── CRM Capture Configuration ───────────────────────────────
+// Lets creators configure what data gets saved to the buyer's CRM dashboard
+export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
+            {/* What this node does */}
+            <div className="p-3 bg-gradient-to-br from-teal-500/10 to-cyan-500/10 border border-teal-500/30 rounded-xl space-y-2">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                        <span className="text-sm">📦</span>
+                    </div>
+                    <p className="text-[11px] font-black text-teal-400 uppercase tracking-wider">CRM Capture</p>
+                </div>
+                <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                    This node saves the upstream data as a <span className="text-teal-400 font-bold">business result</span> in
+                    the buyer&apos;s CRM Dashboard. Use this to capture leads, proposals, extracted data — anything the buyer
+                    should see as a deliverable.
+                </p>
+            </div>
+
+            {/* Result Type */}
+            <div className="space-y-1.5">
+                <Label>Result Type</Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                        { id: 'lead', label: '👤 Lead', desc: 'Contact / prospect' },
+                        { id: 'data', label: '📊 Data', desc: 'Extracted data' },
+                        { id: 'task', label: '✅ Task', desc: 'Action item' },
+                        { id: 'proposal', label: '📄 Proposal', desc: 'Generated doc' },
+                    ].map(t => (
+                        <button
+                            key={t.id}
+                            onClick={() => updateData({ resultType: t.id })}
+                            className={cn(
+                                "p-2 rounded-lg border text-left transition-all",
+                                (data.resultType || 'lead') === t.id
+                                    ? "bg-teal-500/10 border-teal-500/50 text-teal-400"
+                                    : "border-[var(--border)] hover:border-teal-500/30 text-[var(--muted-fg)]"
+                            )}
+                        >
+                            <p className="text-[10px] font-bold">{t.label}</p>
+                            <p className="text-[8px] opacity-60">{t.desc}</p>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Title Template */}
+            <div className="space-y-1.5">
+                <Label>Title Template</Label>
+                <Input
+                    placeholder="e.g. Lead — {{currentItem.Name}}"
+                    value={data.title || ''}
+                    onChange={(e: any) => updateData({ title: e.target.value })}
+                />
+                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                    Use <code className="bg-[var(--muted)] px-1 rounded">{'{{variable}}'}</code> for dynamic titles
+                </p>
+            </div>
+
+            {/* Capture Fields (optional) */}
+            <div className="space-y-1.5">
+                <Label>Capture Fields <span className="text-[8px] opacity-50">(optional)</span></Label>
+                <Input
+                    placeholder="name, email, phone, company"
+                    value={data.captureFields || ''}
+                    onChange={(e: any) => updateData({ captureFields: e.target.value })}
+                />
+                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                    Comma-separated. Leave empty to capture entire upstream output.
+                </p>
+            </div>
+
+            {/* Tags */}
+            <div className="space-y-1.5">
+                <Label>Tags <span className="text-[8px] opacity-50">(optional)</span></Label>
+                <Input
+                    placeholder="hot-lead, auto-generated, q1"
+                    value={data.tags || ''}
+                    onChange={(e: any) => updateData({ tags: e.target.value })}
+                />
+            </div>
+
+            {/* Source Node ID (auto or manual) */}
+            <div className="space-y-1.5">
+                <Label>Source Node <span className="text-[8px] opacity-50">(optional)</span></Label>
+                <Input
+                    placeholder="Auto-detect (leave empty)"
+                    value={data.sourceNodeId || ''}
+                    onChange={(e: any) => updateData({ sourceNodeId: e.target.value })}
+                />
+                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                    If empty, captures from the immediate upstream node.
+                </p>
+            </div>
+
+            {/* How it works */}
+            <div className="p-3 bg-[var(--muted)] rounded-lg border border-[var(--border)] space-y-1.5">
+                <p className="text-[9px] font-bold text-[var(--fg)] uppercase tracking-wider">💡 How it works</p>
+                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                    When a buyer runs this automation, any data flowing through this node will be
+                    saved to their <span className="text-teal-400 font-semibold">CRM Dashboard</span>. They can
+                    view, search, filter, and export these results.
+                </p>
+            </div>
+        </div>
+    );
+}
+
+
