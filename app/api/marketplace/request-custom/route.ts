@@ -6,7 +6,7 @@ const GEMINI_API_KEY = process.env.AION_GEMINI_API_KEY || '';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { name, email, projectDescription, timeline, budget } = body;
+        const { name, email, projectDescription, timeline, budget, targetCreatorId } = body;
 
         if (!name || !email || !projectDescription) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -77,24 +77,16 @@ Respond strictly in JSON format matching this structure:
             if (timeline === 'urgent') { urgencyScore = 9; urgencyTag = 'Hot'; }
         }
 
-        // Ideally we assign this to a specific creator. 
-        // For now, we will assign it to a default creator if the platform has one,
-        // or just insert with creator_id = NULL and fetch all NULLs in the dashboard.
-        // Let's find the first user who has role as a creator, or just use the system owner.
-        // Wait, the migration specifies creator_id. We'll find ANY creator or leave it null so all creators can see it.
-        // Let's drop the NOT NULL or find a creator. The migration allows NULL since it's `ON DELETE CASCADE` and no `NOT NULL` constraint.
-
-        let targetCreatorId = null;
-
-        // As a quick demo trick, we will assign it to the current logged in user so they can view it in THEIR Creator CRM!
-        const targetId = user?.id || null;
+        // We map the requested targetCreatorId to the new lead.
+        // If the consumer didn't select a specific creator, we fallback to NULL so it can go to a marketplace pool.
+        const assignedCreatorId = targetCreatorId || null;
 
         // Insert Lead
         const { error: insertErr } = await supabase
             .from('creator_custom_leads')
             .insert({
                 consumer_id: user?.id || null,
-                creator_id: targetId, // Assign to self for demo visibility if logged in, otherwise null
+                creator_id: assignedCreatorId,
                 consumer_name: name,
                 consumer_email: email,
                 project_description: projectDescription,
