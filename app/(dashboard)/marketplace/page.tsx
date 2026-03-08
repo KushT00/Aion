@@ -38,15 +38,14 @@ const SORT_OPTIONS = [
     { value: 'price_high', label: 'Price: High → Low' },
 ];
 
-// Category → color mapping for dynamic cards
-const categoryColors: Record<string, { color: string; bg: string }> = {
-    'Lead Gen': { color: 'text-sky-400', bg: 'bg-sky-500/10' },
-    'Social Media': { color: 'text-violet-400', bg: 'bg-violet-500/10' },
-    'E-commerce': { color: 'text-pink-400', bg: 'bg-pink-500/10' },
-    'Utility': { color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    'SaaS Sync': { color: 'text-blue-400', bg: 'bg-blue-500/10' },
-    'Support': { color: 'text-orange-400', bg: 'bg-orange-500/10' },
-    'Finance': { color: 'text-amber-400', bg: 'bg-amber-500/10' },
+const categoryColors: Record<string, { color: string; bg: string; accent: string }> = {
+    'Lead Gen': { color: 'text-sky-400', bg: 'bg-sky-500/10', accent: 'border-sky-500/30' },
+    'Social Media': { color: 'text-violet-400', bg: 'bg-violet-500/10', accent: 'border-violet-500/30' },
+    'E-commerce': { color: 'text-pink-400', bg: 'bg-pink-500/10', accent: 'border-pink-500/30' },
+    'Utility': { color: 'text-emerald-400', bg: 'bg-emerald-500/10', accent: 'border-emerald-500/30' },
+    'SaaS Sync': { color: 'text-blue-400', bg: 'bg-blue-500/10', accent: 'border-blue-500/30' },
+    'Support': { color: 'text-orange-400', bg: 'bg-orange-500/10', accent: 'border-orange-500/30' },
+    'Finance': { color: 'text-amber-400', bg: 'bg-amber-500/10', accent: 'border-amber-500/30' },
 };
 
 const categoryIcons: Record<string, any> = {
@@ -111,22 +110,18 @@ export default function MarketplacePage() {
                 console.error('Failed to fetch listings:', data.error);
             }
         } catch (err: any) {
-            if (err.name !== 'AbortError') {
-                console.error('Error fetching listings:', err);
-            }
+            if (err.name !== 'AbortError') console.error('Error fetching listings:', err);
         } finally {
             setIsLoading(false);
         }
     }, [selectedCategory, searchQuery, sort, page]);
 
-    // Fetch on mount and filter changes
     useEffect(() => {
         const controller = new AbortController();
         fetchListings(controller.signal);
         return () => controller.abort();
     }, [fetchListings]);
 
-    // Reset page when filters change
     useEffect(() => {
         setPage(1);
     }, [selectedCategory, searchQuery, sort]);
@@ -142,20 +137,17 @@ export default function MarketplacePage() {
         return `$${(price / 100).toFixed(0)}/mo`;
     };
 
-    const getCardStyle = (category: string) => {
-        return categoryColors[category] || { color: 'text-primary-400', bg: 'bg-primary-500/10' };
-    };
+    const getCardStyle = (category: string) =>
+        categoryColors[category] || { color: 'text-primary-400', bg: 'bg-primary-500/10', accent: 'border-primary-500/30' };
 
-    const getIcon = (category: string) => {
-        return categoryIcons[category] || Bot;
-    };
+    const getIcon = (category: string) => categoryIcons[category] || Bot;
 
     return (
         <div className="p-0 space-y-0 min-h-screen bg-[var(--bg)]">
-            {/* Hero Section */}
+
+            {/* Hero Section — unchanged */}
             <div className="relative overflow-hidden border-b border-[var(--border)] pt-20 pb-24 px-6 lg:px-10">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--primary-500)_0%,transparent_50%)] opacity-[0.03] pointer-events-none" />
-
                 <div className="relative max-w-7xl mx-auto text-center space-y-8">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/5 border border-primary-500/20 text-primary-400 text-[10px] font-black uppercase tracking-[0.2em] animate-fade-in">
                         <Sparkles className="w-3 h-3" /> The Agent Economy is Here
@@ -166,7 +158,6 @@ export default function MarketplacePage() {
                     <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-2xl mx-auto font-bold uppercase tracking-tight opacity-80">
                         Plug-and-play automations. Zero configuration. <br className="hidden md:block" /> 100% Secure.
                     </p>
-
                     <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
                         <div className="relative w-full max-w-lg group">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-fg)] group-focus-within:text-primary-400 transition-colors" />
@@ -192,7 +183,7 @@ export default function MarketplacePage() {
                 </div>
             </div>
 
-            {/* Filter Bar */}
+            {/* Filter Bar — unchanged */}
             <div className="bg-[var(--bg)] border-b border-[var(--border)]">
                 <div className="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-4">
@@ -212,7 +203,6 @@ export default function MarketplacePage() {
                         ))}
                     </div>
                     <div className="flex items-center gap-3 ml-6">
-                        {/* Sort Dropdown */}
                         <div className="relative">
                             <Button
                                 variant="ghost"
@@ -260,14 +250,13 @@ export default function MarketplacePage() {
 
             {/* Listings Grid */}
             <div className="max-w-7xl mx-auto p-6 lg:p-10">
-                {/* Results count */}
                 <div className="flex items-center justify-between mb-8">
                     <p className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-widest">
                         {isLoading ? 'Loading...' : `${total} automation${total !== 1 ? 's' : ''} found`}
                     </p>
                 </div>
 
-                {/* Loading State */}
+                {/* Loading */}
                 {isLoading && (
                     <div className="flex items-center justify-center py-32">
                         <div className="flex flex-col items-center gap-4">
@@ -277,7 +266,7 @@ export default function MarketplacePage() {
                     </div>
                 )}
 
-                {/* Empty State */}
+                {/* Empty */}
                 {!isLoading && listings.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                         <div className="w-24 h-24 rounded-[3rem] bg-primary-500/10 flex items-center justify-center">
@@ -301,89 +290,120 @@ export default function MarketplacePage() {
                     </div>
                 )}
 
-                {/* Listings */}
+                {/* ── REDESIGNED CARDS ── */}
                 {!isLoading && listings.length > 0 && (
                     <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                        {/*
+                            NEW LAYOUT: 3-col grid on lg, 2-col on md, 1-col on sm.
+                            Each card is a compact horizontal strip:
+                            [Icon | Info block] + [Price pill + Deploy btn]
+                            No more tall rectangles.
+                        */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {listings.map((item) => {
                                 const style = getCardStyle(item.category);
                                 const Icon = getIcon(item.category);
                                 return (
-                                    <Card key={item.id} className="group flex flex-col p-0 border-[var(--border)] hover:border-primary-500/30 hover:shadow-2xl hover:shadow-primary-500/5 transition-all duration-500 rounded-[2.5rem] overflow-hidden bg-[var(--card)] relative">
-                                        {/* Card Decoration */}
-                                        <div className="absolute top-0 right-0 p-5">
-                                            {item.rating_avg > 0 && (
-                                                <Badge variant="primary" className="bg-primary-500 text-white text-[8px] font-black tracking-[0.1em] px-2.5 py-1 rounded-lg shadow-lg shadow-primary-500/20 uppercase">
-                                                    ★ {item.rating_avg.toFixed(1)}
-                                                </Badge>
-                                            )}
-                                        </div>
+                                    <Card
+                                        key={item.id}
+                                        className={cn(
+                                            "group flex flex-col justify-between gap-0 p-0 border-[var(--border)] hover:border-primary-500/40",
+                                            "hover:shadow-xl hover:shadow-primary-500/8 transition-all duration-300",
+                                            "rounded-2xl overflow-hidden bg-[var(--card)] relative"
+                                        )}
+                                    >
+                                        {/* Top strip: coloured accent line */}
+                                        <div className={cn("h-0.5 w-full", style.bg, "opacity-60")} />
 
-                                        {/* Icon Section */}
-                                        <div className="p-8 pb-4">
-                                            <div className={cn("w-16 h-16 rounded-[2rem] flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-xl", style.bg, "border border-white/5")}>
-                                                <Icon className={cn("w-7 h-7", style.color)} />
+                                        {/* Main body */}
+                                        <div className="flex items-start gap-4 p-5">
+                                            {/* Icon */}
+                                            <div className={cn(
+                                                "shrink-0 w-11 h-11 rounded-xl flex items-center justify-center",
+                                                style.bg, "border border-white/5",
+                                                "group-hover:scale-105 transition-transform duration-300 shadow-lg"
+                                            )}>
+                                                <Icon className={cn("w-5 h-5", style.color)} />
                                             </div>
-                                        </div>
 
-                                        {/* Content */}
-                                        <div className="px-8 pb-8 space-y-5 flex-1 flex flex-col">
-                                            <div className="space-y-3">
+                                            {/* Text block */}
+                                            <div className="flex-1 min-w-0 space-y-1.5">
+                                                {/* Category + rating row */}
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary-400">{item.category}</span>
+                                                    <span className={cn("text-[9px] font-black uppercase tracking-widest", style.color)}>
+                                                        {item.category}
+                                                    </span>
                                                     {item.rating_count > 0 && (
-                                                        <div className="flex items-center text-[10px] font-bold text-amber-400 ml-auto bg-amber-400/10 px-2 py-0.5 rounded-full">
-                                                            <Star className="w-3 h-3 fill-current mr-1" /> {item.rating_avg.toFixed(1)}
-                                                        </div>
+                                                        <span className="ml-auto flex items-center gap-0.5 text-[9px] font-black text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md">
+                                                            <Star className="w-2.5 h-2.5 fill-current" />
+                                                            {item.rating_avg.toFixed(1)}
+                                                        </span>
                                                     )}
                                                 </div>
-                                                <h3 className="text-xl font-black leading-tight group-hover:text-primary-400 transition-colors uppercase italic tracking-tighter">{item.title}</h3>
-                                                <p className="text-xs text-[var(--muted-fg)] leading-relaxed line-clamp-2 font-medium opacity-80 min-h-[2.5rem]">
+
+                                                {/* Title */}
+                                                <h3 className="text-sm font-black uppercase italic tracking-tight leading-tight group-hover:text-primary-400 transition-colors truncate">
+                                                    {item.title}
+                                                </h3>
+
+                                                {/* Description */}
+                                                <p className="text-[11px] text-[var(--muted-fg)] leading-relaxed line-clamp-2 font-medium opacity-70">
                                                     {item.description}
                                                 </p>
-                                            </div>
 
-                                            {/* Tags */}
-                                            {item.tags && item.tags.length > 0 && (
-                                                <div className="flex gap-2 flex-wrap">
-                                                    {item.tags.slice(0, 3).map(t => (
-                                                        <span key={t} className="text-[9px] font-black uppercase tracking-widest bg-[var(--muted)]/50 px-2.5 py-1 rounded-lg border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors">
-                                                            {t}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* Creator */}
-                                            {item.seller?.full_name && (
-                                                <div className="flex items-center gap-2 text-[10px] text-[var(--muted-fg)]">
-                                                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-[8px] font-bold">
-                                                        {item.seller.full_name.charAt(0).toUpperCase()}
+                                                {/* Tags */}
+                                                {item.tags && item.tags.length > 0 && (
+                                                    <div className="flex gap-1.5 flex-wrap pt-0.5">
+                                                        {item.tags.slice(0, 3).map(t => (
+                                                            <span
+                                                                key={t}
+                                                                className="text-[8px] font-black uppercase tracking-wider bg-[var(--muted)]/60 px-2 py-0.5 rounded-md border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors"
+                                                            >
+                                                                {t}
+                                                            </span>
+                                                        ))}
                                                     </div>
-                                                    <span className="font-bold">by {item.seller.full_name}</span>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
+                                        </div>
 
-                                            <div className="pt-5 border-t border-[var(--border)] mt-auto flex items-center justify-between">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Monthly</span>
-                                                    <span className={cn("text-xl font-black italic", item.price === 0 ? "text-emerald-400" : "text-primary-400")}>
-                                                        {formatPrice(item.price)}
-                                                    </span>
-                                                </div>
-                                                <div className="flex flex-col text-right">
-                                                    <span className="text-[9px] uppercase font-black text-[var(--muted-fg)] tracking-widest opacity-40">Adoption</span>
-                                                    <span className="text-sm font-black flex items-center gap-1 justify-end uppercase">
-                                                        <Users className="w-3 h-3" /> {item.usage_count}
-                                                    </span>
+                                        {/* Footer strip */}
+                                        <div className="border-t border-[var(--border)] px-5 py-3 flex items-center justify-between gap-3 bg-[var(--muted)]/20">
+                                            {/* Left: creator + adoption */}
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                {item.seller?.full_name && (
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-[7px] font-bold">
+                                                            {item.seller.full_name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <span className="text-[9px] font-bold text-[var(--muted-fg)] truncate max-w-[80px]">
+                                                            {item.seller.full_name}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center gap-1 text-[9px] font-black text-[var(--muted-fg)] opacity-50">
+                                                    <Users className="w-3 h-3" />
+                                                    {item.usage_count}
                                                 </div>
                                             </div>
 
-                                            <Link href={`/marketplace/${item.id}`} className="block">
-                                                <Button className="w-full rounded-2xl h-12 font-black italic uppercase tracking-widest group-hover:shadow-xl group-hover:shadow-primary-500/30 transform transition-all active:scale-95 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 border-none">
-                                                    Deploy AI <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                                                </Button>
-                                            </Link>
+                                            {/* Right: price + deploy */}
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className={cn(
+                                                    "text-sm font-black italic",
+                                                    item.price === 0 ? "text-emerald-400" : "text-primary-400"
+                                                )}>
+                                                    {formatPrice(item.price)}
+                                                </span>
+                                                <Link href={`/marketplace/${item.id}`}>
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-8 px-4 rounded-xl font-black italic uppercase tracking-wider text-[10px] bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 border-none shadow-lg shadow-primary-500/20 group-hover:shadow-primary-500/40 transition-all active:scale-95"
+                                                    >
+                                                        Deploy <ArrowRight className="w-3 h-3 ml-1 group-hover:translate-x-0.5 transition-transform" />
+                                                    </Button>
+                                                </Link>
+                                            </div>
                                         </div>
                                     </Card>
                                 );
