@@ -22,10 +22,9 @@ export async function GET(
                     bio
                 ),
                 workflow:workflows!marketplace_listings_workflow_id_fkey (
-                    id,
-                    name,
                     tags,
-                    description
+                    description,
+                    nodes
                 )
             `)
             .eq('id', id)
@@ -52,20 +51,48 @@ export async function GET(
             .limit(20);
 
         // Fetch workflow nodes to auto-detect required integrations
-        const { data: nodes } = await supabase
-            .from('workflow_nodes')
-            .select('config')
-            .eq('workflow_id', listing.workflow?.id);
-
-        // Extract unique integration IDs from node configs
+        const workflowData = listing.workflow as any;
         const requiredIntegrations = new Set<string>();
-        if (nodes) {
+
+        if (workflowData?.nodes) {
+            const nodes = Array.isArray(workflowData.nodes)
+                ? workflowData.nodes
+                : (typeof workflowData.nodes === 'string' ? JSON.parse(workflowData.nodes) : []);
+
             for (const node of nodes) {
-                const config = node.config as any;
-                if (config?.integrationId) {
-                    requiredIntegrations.add(config.integrationId);
-                }
+                const nodeType = (node.type || '').toLowerCase();
+                const data = node.data || {};
+                const explicitType = data.integrationType;
+
+                if (explicitType) requiredIntegrations.add(explicitType);
+
+                // Check common service types
+                if (nodeType.includes('google') || nodeType.includes('sheet')) requiredIntegrations.add('google_sheets');
+                if (nodeType.includes('gemini')) requiredIntegrations.add('google_gemini');
+                if (nodeType.includes('telegram')) requiredIntegrations.add('telegram');
+                if (nodeType.includes('discord')) requiredIntegrations.add('discord');
+                if (nodeType.includes('slack')) requiredIntegrations.add('slack');
+                if (nodeType.includes('notion')) requiredIntegrations.add('notion');
+                if (nodeType.includes('groq')) requiredIntegrations.add('groq');
+                if (nodeType.includes('openai')) requiredIntegrations.add('openai');
+                if (nodeType.includes('anthropic')) requiredIntegrations.add('anthropic');
+
+                // Scan for ANY api key fields or labeled fields
+                Object.keys(data).forEach(k => {
+                    const low = k.toLowerCase();
+                    if (low.includes('apikey') || low.includes('token') || low.includes('credential')) {
+                        if (nodeType.includes('openai')) requiredIntegrations.add('openai');
+                        if (nodeType.includes('anthropic')) requiredIntegrations.add('anthropic');
+                        if (nodeType.includes('groq')) requiredIntegrations.add('groq');
+                        if (nodeType.includes('telegram')) requiredIntegrations.add('telegram');
+                    }
+                });
             }
+        }
+
+        // Don't leak the workflow nodes payload to the public API
+        if (listing.workflow) {
+            delete listing.workflow.nodes;
         }
 
         // Check if the current user has already purchased this listing
