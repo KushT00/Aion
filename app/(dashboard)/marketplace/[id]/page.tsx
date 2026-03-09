@@ -489,6 +489,25 @@ export default function MarketplaceDetailPage() {
                                     </>
                                 )}
 
+                                {/* Requirements Summary near Deploy Button */}
+                                {requiredIntegrations.length > 0 && (
+                                    <div className="space-y-3 pt-2 pb-2">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--muted-fg)]">
+                                            <Key className="w-3.5 h-3.5" /> Required to Deploy
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {requiredIntegrations.map(k => {
+                                                const info = integrationLabels[k] || { name: k };
+                                                return (
+                                                    <span key={k} className="px-2 py-1 rounded flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-[9px] font-black uppercase tracking-widest text-amber-500">
+                                                        {info.name}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Action Buttons */}
                                 <div className="space-y-4 pt-4 border-t border-[var(--border)]">
                                     {hasPurchased ? (
