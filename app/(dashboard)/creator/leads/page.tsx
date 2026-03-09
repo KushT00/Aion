@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +44,42 @@ export default function LeadCRMPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [dbError, setDbError] = useState('');
+    const [startingChat, setStartingChat] = useState<string | null>(null);
+    const router = useRouter();
+
+    const handleContact = async (lead: CustomLead) => {
+        if (!lead.consumer_id) {
+            toast.error("This request was submitted by an unregistered user and cannot be contacted via chat.");
+            return;
+        }
+
+        setStartingChat(lead.id);
+        try {
+            const res = await fetch('/api/conversations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'hire_request',
+                    consumer_id: lead.consumer_id,
+                    creator_id: lead.creator_id,
+                    subject: 'Automation Request: ' + lead.consumer_name,
+                    message: "Hi " + lead.consumer_name + ", I received your custom automation request. Let's discuss the details!",
+                    priority: lead.urgency_tag === 'Hot' ? 'hot' : (lead.urgency_tag === 'Slowest' ? 'none' : 'warm')
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.conversation) {
+                router.push(`/creator/inbox?conv=${data.conversation.id}`);
+            } else {
+                toast.error(data.error || "Failed to start conversation");
+            }
+        } catch (error) {
+            toast.error("Network error");
+            console.error(error);
+        } finally {
+            setStartingChat(null);
+        }
+    };
 
     const fetchLeads = async () => {
         setIsLoading(true);
@@ -222,8 +260,13 @@ export default function LeadCRMPage() {
                                     </div>
 
                                     <div className="flex gap-2 items-end">
-                                        <Button size="sm" className="rounded-xl flex-1 font-black italic uppercase text-[10px] tracking-widest h-10 bg-primary-600 hover:bg-primary-500 text-white shadow-lg shadow-primary-500/20">
-                                            Contact
+                                        <Button
+                                            size="sm"
+                                            onClick={() => handleContact(lead)}
+                                            disabled={startingChat === lead.id}
+                                            className="rounded-xl flex-1 font-black italic uppercase text-[10px] tracking-widest h-10 bg-primary-600 hover:bg-primary-500 text-white shadow-lg shadow-primary-500/20"
+                                        >
+                                            {startingChat === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Contact'}
                                         </Button>
                                         <Button variant="secondary" size="icon" className="h-10 w-10 rounded-xl bg-[var(--muted)] hover:bg-[var(--border)]">
                                             <MoreHorizontal className="w-4 h-4" />

@@ -127,6 +127,18 @@ export async function POST(
                 .eq('id', conversationId);
         }
 
+        // --- ADD NOTIFICATION FOR RECIPIENT ---
+        const otherUserId = conv.consumer_id === user.id ? conv.creator_id : conv.consumer_id;
+        if (otherUserId) {
+            await supabase.from('notifications').insert({
+                user_id: otherUserId,
+                type: 'new_message',
+                title: 'New Message Received',
+                message: `You have a new message from ${message.sender?.full_name || 'a user'}.`,
+                metadata: { conversationId, url: user.id === conv.consumer_id ? '/creator/inbox' : '/inbox' }
+            });
+        }
+
         return NextResponse.json({ message }, { status: 201 });
     } catch (err: any) {
         console.error('[MESSAGE SEND ERROR]', err);

@@ -101,6 +101,15 @@ Respond strictly in JSON format matching this structure:
         if (insertErr) {
             console.error('[SUPABASE LEAD INSERT ERROR]', insertErr);
             // If the table is missing, just return success so the UI works and we mock it in the UI
+        } else if (assignedCreatorId) {
+            // Send notification to the creator
+            await supabase.from('notifications').insert({
+                user_id: assignedCreatorId,
+                type: 'new_lead',
+                title: 'New Custom Request',
+                message: `${name} has requested a custom automation.`,
+                metadata: { url: '/creator/leads' }
+            });
         }
 
         return NextResponse.json({ success: true, summary, urgencyTag });

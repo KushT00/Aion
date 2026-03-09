@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/conversations — list all conversations for the current user
@@ -81,19 +82,28 @@ export async function POST(req: NextRequest) {
         if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        const { type, creator_id, listing_id, instance_id, subject, message, priority, metadata } = body;
+        const { type, creator_id, consumer_id, listing_id, instance_id, subject, message, priority, metadata } = body;
 
-        if (!type || !creator_id || !subject) {
-            return NextResponse.json({ error: 'Missing type, creator_id, or subject' }, { status: 400 });
+        const actualConsumerId = consumer_id || user.id;
+        const actualCreatorId = creator_id || user.id;
+
+        if (user.id !== actualConsumerId && user.id !== actualCreatorId) {
+            return NextResponse.json({ error: 'Unauthorized to create conversation for other users' }, { status: 403 });
         }
 
+        if (!type || !actualCreatorId || !actualConsumerId || !subject) {
+            return NextResponse.json({ error: 'Missing type, creator_id, consumer_id, or subject' }, { status: 400 });
+        }
+
+        const adminClient = createAdminClient();
+
         // Create conversation
-        const { data: conv, error: convErr } = await supabase
+        const { data: conv, error: convErr } = await adminClient
             .from('conversations')
             .insert({
                 type,
-                consumer_id: user.id,
-                creator_id,
+                consumer_id: actualConsumerId,
+                creator_id: actualCreatorId,
                 listing_id: listing_id || null,
                 instance_id: instance_id || null,
                 subject,
@@ -110,11 +120,23 @@ export async function POST(req: NextRequest) {
 
         // Send first message if provided
         if (message) {
-            await supabase.from('messages').insert({
+            await adminClient.from('messages').insert({
                 conversation_id: conv.id,
                 sender_id: user.id,
                 content: message,
                 message_type: 'text',
+            });
+        }
+
+        // --- ADD NOTIFICATION FOR RECIPIENT ---
+        const recipientId = actualCreatorId === user.id ? actualConsumerId : actualCreatorId;
+        if (recipientId && recipientId !== user.id) {
+            await supabase.from('notifications').insert({
+                user_id: recipientId,
+                type: 'new_conversation',
+                title: 'New Conversation Started',
+                message: `A new conversation was started regarding: ${subject}`,
+                metadata: { conversationId: conv.id, url: user.id === actualCreatorId ? '/inbox' : '/creator/inbox' }
             });
         }
 

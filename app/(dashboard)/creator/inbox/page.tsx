@@ -90,6 +90,10 @@ export default function CreatorInboxPage() {
         supabase.auth.getUser().then(({ data }) => {
             if (data.user) setCurrentUserId(data.user.id);
         });
+
+        const params = new URLSearchParams(window.location.search);
+        const convId = params.get('conv');
+        if (convId) setSelectedConv(convId);
     }, []);
 
     const fetchConversations = useCallback(async () => {
@@ -121,6 +125,8 @@ export default function CreatorInboxPage() {
             }
         };
         fetchMessages();
+        const poll = setInterval(fetchMessages, 3000);
+        return () => clearInterval(poll);
     }, [selectedConv]);
 
     // Realtime
@@ -164,6 +170,10 @@ export default function CreatorInboxPage() {
                 body: JSON.stringify({ content: newMessage.trim() }),
             });
             if (res.ok) {
+                const data = await res.json();
+                if (data.message) {
+                    setMessages(prev => [...prev, data.message]);
+                }
                 setNewMessage('');
                 setShowQuickReplies(false);
                 fetchConversations();

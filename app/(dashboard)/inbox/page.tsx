@@ -72,6 +72,10 @@ export default function InboxPage() {
         supabase.auth.getUser().then(({ data }) => {
             if (data.user) setCurrentUserId(data.user.id);
         });
+
+        const params = new URLSearchParams(window.location.search);
+        const convId = params.get('conv');
+        if (convId) setSelectedConv(convId);
     }, []);
 
     // Fetch conversations
@@ -108,6 +112,8 @@ export default function InboxPage() {
             }
         };
         fetchMessages();
+        const poll = setInterval(fetchMessages, 3000);
+        return () => clearInterval(poll);
     }, [selectedConv]);
 
     // Supabase Realtime: listen for new messages
@@ -164,6 +170,10 @@ export default function InboxPage() {
                 body: JSON.stringify({ content: newMessage.trim() }),
             });
             if (res.ok) {
+                const data = await res.json();
+                if (data.message) {
+                    setMessages(prev => [...prev, data.message]);
+                }
                 setNewMessage('');
                 // Refresh conversations to get updated last_message
                 fetchConversations();
