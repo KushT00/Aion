@@ -13,8 +13,66 @@ const themeOptions: { value: Theme; label: string; icon: typeof Sun; desc: strin
     { value: 'system', label: 'System', icon: Monitor, desc: 'Follow system preference' },
 ];
 
+import { useState, useEffect } from 'react';
+import { Copy, RefreshCw, Check, Eye, EyeOff } from 'lucide-react';
+import toast from 'react-hot-toast';
+
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
+    const [apiKey, setApiKey] = useState<string | null>(null);
+    const [isLoadingKey, setIsLoadingKey] = useState(true);
+    const [isRegenerating, setIsRegenerating] = useState(false);
+    const [showKey, setShowKey] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        fetchApiKey();
+    }, []);
+
+    async function fetchApiKey() {
+        try {
+            const res = await fetch('/api/settings/api-key');
+            const data = await res.json();
+            if (res.ok) {
+                setApiKey(data.apiKey);
+            }
+        } catch (err) {
+            console.error('Failed to fetch API key');
+        } finally {
+            setIsLoadingKey(false);
+        }
+    }
+
+    async function handleRegenerate() {
+        if (!confirm('Regenerating will invalidate your current API key. Any external integrations using it will break. Continue?')) {
+            return;
+        }
+
+        setIsRegenerating(true);
+        try {
+            const res = await fetch('/api/settings/api-key', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                setApiKey(data.apiKey);
+                setShowKey(true);
+                toast.success('New API key generated');
+            } else {
+                toast.error(data.error || 'Failed to generate key');
+            }
+        } catch (err) {
+            toast.error('Connection error');
+        } finally {
+            setIsRegenerating(false);
+        }
+    }
+
+    const copyToClipboard = () => {
+        if (!apiKey) return;
+        navigator.clipboard.writeText(apiKey);
+        setCopied(true);
+        toast.success('Copied to clipboard');
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     return (
         <div className="p-6 lg:p-8 max-w-3xl space-y-6">
@@ -102,16 +160,55 @@ export default function SettingsPage() {
                         <Key className="w-5 h-5" />
                         API Keys
                     </CardTitle>
-                    <CardDescription>Manage API keys for programmatic access</CardDescription>
+                    <CardDescription>Use this key to authenticate external API calls to AION</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="flex items-center gap-3 p-4 bg-[var(--muted)] rounded-lg">
-                        <code className="flex-1 text-sm font-mono text-[var(--muted-fg)]">
-                            aion_sk_••••••••••••••••••••••••
-                        </code>
-                        <Button variant="outline" size="sm">
-                            Regenerate
-                        </Button>
+                <CardContent className="space-y-4">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3 p-4 bg-[var(--muted)] rounded-lg group">
+                            <code className="flex-1 text-sm font-mono text-[var(--fg)] break-all">
+                                {isLoadingKey ? (
+                                    <span className="opacity-50">Loading...</span>
+                                ) : apiKey ? (
+                                    showKey ? apiKey : 'aion_sk_' + '•'.repeat(24)
+                                ) : (
+                                    <span className="opacity-50 italic">No key generated yet</span>
+                                )}
+                            </code>
+                            <div className="flex items-center gap-1">
+                                {apiKey && (
+                                    <>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => setShowKey(!showKey)}
+                                        >
+                                            {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={copyToClipboard}
+                                        >
+                                            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                        </Button>
+                                    </>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="ml-2"
+                                    onClick={handleRegenerate}
+                                    disabled={isRegenerating}
+                                >
+                                    {isRegenerating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Regenerate'}
+                                </Button>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-[var(--muted-fg)] uppercase font-bold tracking-widest">
+                            Keep this key secret. It provides full programmatic access to your account.
+                        </p>
                     </div>
                 </CardContent>
             </Card>
@@ -119,7 +216,7 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <Card className="border-red-200 dark:border-red-500/20">
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-error">
+                    <CardTitle className="flex items-center gap-2 text-[var(--error-fg)]">
                         <Shield className="w-5 h-5" />
                         Danger Zone
                     </CardTitle>
@@ -133,9 +230,9 @@ export default function SettingsPage() {
                                 Permanently delete your account and all associated data
                             </p>
                         </div>
-                        <Button variant="danger" size="sm">
-                            <Trash2 className="w-4 h-4" />
-                            Delete
+                        <Button variant="outline" className="text-red-500 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/50" size="sm">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete Account
                         </Button>
                     </div>
                 </CardContent>
@@ -143,3 +240,4 @@ export default function SettingsPage() {
         </div>
     );
 }
+

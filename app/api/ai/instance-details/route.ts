@@ -24,8 +24,12 @@ export async function GET(req: NextRequest) {
             .select(`
                 id, status, pricing_tier, buyer_id, created_at, workflow_id,
                 listing:marketplace_listings (
-                    id, title, description, category,
-                    workflow:workflows ( id, name, nodes, edges )
+                    id, title, description, category
+                ),
+                workflow:workflows!consumer_instances_workflow_id_fkey ( 
+                    id, name,
+                    nodes:workflow_nodes (id, type, label, position_x, position_y, config),
+                    edges:workflow_edges (id, source_node_id, target_node_id, label)
                 )
             `)
             .or(`id.eq.${instanceId},purchase_id.eq.${instanceId}`)
@@ -44,60 +48,61 @@ export async function GET(req: NextRequest) {
 
         // 2. Get workflow nodes to determine required integrations
         const listing = instance.listing as any;
-        const workflowData = listing?.workflow;
+        const rawWorkflow = (instance as any).workflow;
+
+        // Handle Supabase returning array for joins
+        const workflow = Array.isArray(rawWorkflow) ? rawWorkflow[0] : rawWorkflow;
+        const nodes = workflow?.nodes || [];
+        const edges = workflow?.edges || [];
+
         let requiredIntegrations: string[] = [];
 
-        if (workflowData?.nodes) {
-            const nodes = Array.isArray(workflowData.nodes)
-                ? workflowData.nodes
-                : (typeof workflowData.nodes === 'string' ? JSON.parse(workflowData.nodes) : []);
-
+        if (nodes.length > 0) {
             const integrationTypes = new Set<string>();
 
             for (const node of nodes) {
                 const nodeType = (node.type || '').toLowerCase();
-                const data = node.data || {};
-                const explicitType = data.integrationType;
+                const config = node.config || {};
+                const data = config.data || {};
+                const explicitType = config.integrationId;
 
                 if (explicitType) integrationTypes.add(explicitType);
 
-                // Check common service types
+                // Check common service types in node type strings
                 if (nodeType.includes('google') || nodeType.includes('sheet')) integrationTypes.add('google_sheets');
                 if (nodeType.includes('gemini')) integrationTypes.add('google_gemini');
                 if (nodeType.includes('telegram')) integrationTypes.add('telegram');
                 if (nodeType.includes('discord')) integrationTypes.add('discord');
                 if (nodeType.includes('slack')) integrationTypes.add('slack');
                 if (nodeType.includes('notion')) integrationTypes.add('notion');
-                if (nodeType.includes('groq')) integrationTypes.add('groq');
-                if (nodeType.includes('openai')) integrationTypes.add('openai');
-                if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
-
-                // Scan for ANY api key fields or labeled fields
-                Object.keys(data).forEach(k => {
-                    const low = k.toLowerCase();
-                    if (low.includes('apikey') || low.includes('token') || low.includes('credential')) {
-                        if (nodeType.includes('openai')) integrationTypes.add('openai');
-                        if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
-                        if (nodeType.includes('groq')) integrationTypes.add('groq');
-                        if (nodeType.includes('telegram')) integrationTypes.add('telegram');
-                    }
-                });
             }
             requiredIntegrations = Array.from(integrationTypes);
         }
+
+        // Flatten the structure for the frontend to make it easier to use
+        const normalizedInstance = {
+            ...instance,
+            listing: {
+                ...listing,
+                workflow: {
+                    ...workflow,
+                    nodes,
+                    edges
+                }
+            }
+        };
 
         // 3. Fetch existing credentials
         const { data: credentials } = await supabase
             .from('consumer_credentials')
             .select('integration_key, is_valid, credential_data')
-            .eq('instance_id', instance.id); // Fixed: ensure we use the actual DB ID
+            .eq('instance_id', instance.id);
 
         return NextResponse.json({
-            instance,
+            instance: normalizedInstance,
             requiredIntegrations,
             credentials: (credentials || []).map(c => ({
                 ...c,
-                // Mask the actual credential value for security
                 credential_data: c.is_valid ? { value: '••••••••' } : c.credential_data,
             })),
         });

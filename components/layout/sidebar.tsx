@@ -46,7 +46,6 @@ const creatorNav = [
     { label: 'Lead CRM', href: '/creator/leads', icon: Users },
     { label: 'Earnings', href: '/creator/earnings', icon: DollarSign },
     { label: 'Runs', href: '/runs', icon: Play },
-    { label: 'Create Agent', href: '/agent-wizard', icon: Sparkles, highlight: true },
 ];
 
 const bottomItems = [
@@ -66,7 +65,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
 
     // Creator mode: user must BOTH have is_creator=true AND be on a creator path
-    const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows') || pathname.startsWith('/runs') || pathname.startsWith('/agent-wizard');
+    const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows') || pathname.startsWith('/runs');
     const isCreator = profile?.is_creator === true || profile?.role === 'creator';
 
     // Show creator nav only if user IS a creator AND on a creator route

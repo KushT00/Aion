@@ -206,7 +206,7 @@ export default function InstanceSandboxPage() {
             });
             if (res.ok) {
                 toast.success('🚀 Activation Successful!');
-                setTimeout(() => router.push('/my-automations'), 1000);
+                setTimeout(() => router.push(`/instance/${instanceId}`), 1000);
             }
         } finally {
             setIsActivating(false);

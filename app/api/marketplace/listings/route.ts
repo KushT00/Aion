@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
                     id,
                     name,
                     tags,
-                    nodes
+                    nodes:workflow_nodes (id, type, label, config)
                 )
             `, { count: 'exact' })
             .eq('is_active', true);

@@ -23,7 +23,7 @@ export async function GET(
         // Verify ownership + get instance stats
         const { data: instance, error: instErr } = await supabase
             .from('consumer_instances')
-            .select('id, total_runs, total_successes, total_failures, last_run_at, created_at')
+            .select('id, total_runs, total_successes, total_failures, last_run_at, created_at, pricing_tier')
             .eq('id', instanceId)
             .eq('buyer_id', user.id)
             .single();
@@ -86,11 +86,21 @@ export async function GET(
             }
         }
 
+        // Calculate Estimated Budget (Placeholder rates)
+        const isManaged = instance.pricing_tier === 'managed';
+        const costPerRun = isManaged ? 0.10 : 0.00; // Managed might cost $0.10/run
+        const totalCost = (instance.total_runs || 0) * costPerRun;
+
+        // Savings: assume manual work costs $30/hr
+        const totalSavings = (parseFloat(hoursSaved) * 30).toFixed(2);
+
         return NextResponse.json({
             summary: {
                 totalRuns,
                 successRate,
                 hoursSaved,
+                totalCost: totalCost.toFixed(2),
+                totalSavings,
                 leadsGenerated: metricsByType['lead'] || 0,
                 revenueAttributed: metricsByType['revenue'] || 0,
                 tasksCompleted: metricsByType['task'] || instance.total_successes || 0,
@@ -100,6 +110,7 @@ export async function GET(
             instance: {
                 createdAt: instance.created_at,
                 lastRunAt: instance.last_run_at,
+                pricingTier: instance.pricing_tier,
             },
         });
     } catch (error: any) {

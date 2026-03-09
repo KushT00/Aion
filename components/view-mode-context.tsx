@@ -26,8 +26,7 @@ export function ViewModeProvider({ children }: { children: ReactNode }) {
             pathname.startsWith('/creator') ||
             pathname === '/builder' ||
             pathname.startsWith('/workflows') ||
-            pathname.startsWith('/runs') ||
-            pathname.startsWith('/agent-wizard');
+            pathname.startsWith('/runs');
 
         if (isCreatorPath && isCreator) {
             setMode('creator');
