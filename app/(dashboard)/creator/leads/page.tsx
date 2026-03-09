@@ -22,7 +22,8 @@ import {
     RefreshCw,
     Bot,
     Flame,
-    Sparkles
+    Sparkles,
+    Trash2
 } from 'lucide-react';
 
 interface CustomLead {
@@ -45,6 +46,7 @@ export default function LeadCRMPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [dbError, setDbError] = useState('');
     const [startingChat, setStartingChat] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const router = useRouter();
 
     const handleContact = async (lead: CustomLead) => {
@@ -84,7 +86,7 @@ export default function LeadCRMPage() {
     const fetchLeads = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/creator/leads');
+            const res = await fetch('/api/creator/leads', { cache: 'no-store' });
             const data = await res.json();
             if (res.ok && data.success) {
                 setLeads(data.leads || []);
@@ -98,6 +100,26 @@ export default function LeadCRMPage() {
             console.error('Fetch error:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this custom request?')) return;
+        setDeletingId(id);
+        try {
+            const res = await fetch(`/api/creator/leads/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success('Lead removed successfully');
+                setLeads(prev => prev.filter(l => l.id !== id));
+            } else {
+                toast.error(data.error || 'Failed to delete lead');
+            }
+        } catch (error) {
+            toast.error('Network error');
+            console.error(error);
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -267,6 +289,15 @@ export default function LeadCRMPage() {
                                             className="rounded-xl flex-1 font-black italic uppercase text-[10px] tracking-widest h-10 bg-primary-600 hover:bg-primary-500 text-white shadow-lg shadow-primary-500/20"
                                         >
                                             {startingChat === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Contact'}
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            size="icon"
+                                            onClick={() => handleDelete(lead.id)}
+                                            disabled={deletingId === lead.id}
+                                            className="h-10 w-10 rounded-xl"
+                                        >
+                                            {deletingId === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </Button>
                                         <Button variant="secondary" size="icon" className="h-10 w-10 rounded-xl bg-[var(--muted)] hover:bg-[var(--border)]">
                                             <MoreHorizontal className="w-4 h-4" />
