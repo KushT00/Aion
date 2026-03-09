@@ -8,6 +8,7 @@ import { CreatorStep2Portfolio } from './components/CreatorStep2Portfolio';
 import { CreatorStep3Terms } from './components/CreatorStep3Terms';
 import { CreatorStep4Success } from './components/CreatorStep4Success';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -54,6 +55,7 @@ export default function BecomeCreatorPage() {
     return (
         <div className="min-h-screen bg-[var(--bg)] py-12 px-4 lg:px-8">
             <div className="max-w-4xl mx-auto">
+
                 <div className="text-center mb-12">
                     <h1 className="text-4xl lg:text-5xl font-black uppercase italic tracking-tighter mb-4">
                         Become a <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400">Creator</span>

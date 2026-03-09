@@ -162,28 +162,28 @@ export default function MarketplacePage() {
     return (
         <div className="p-0 space-y-0 min-h-screen bg-[var(--bg)]">
 
-            {/* Hero Section — unchanged */}
-            <div className="relative overflow-hidden border-b border-[var(--border)] pt-20 pb-24 px-6 lg:px-10">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--primary-500)_0%,transparent_50%)] opacity-[0.03] pointer-events-none" />
+            {/* Hero Section */}
+            <div className="relative overflow-hidden pt-20 pb-24 px-6 lg:px-10">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,var(--color-primary-500)_0%,transparent_50%)] opacity-[0.05] pointer-events-none" />
                 <div className="relative max-w-7xl mx-auto text-center space-y-8">
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/5 border border-primary-500/20 text-primary-400 text-[10px] font-black uppercase tracking-[0.2em] animate-fade-in">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/5 border border-primary-500/10 text-primary-500 dark:text-primary-400 text-[10px] font-black uppercase tracking-[0.2em] animate-fade-in shadow-sm">
                         <Sparkles className="w-3 h-3" /> The Agent Economy is Here
                     </div>
                     <h1 className="text-5xl lg:text-8xl font-black tracking-tight max-w-5xl mx-auto leading-[0.95] uppercase italic">
-                        Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 via-accent-400 to-primary-400 bg-[length:200%_auto] animate-gradient-x">Expert AI</span> <br />Workers
+                        Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 via-primary-400 to-accent-400 dark:from-primary-400 dark:via-accent-400 dark:to-primary-400 bg-[length:200%_auto] animate-gradient-x">Expert AI</span> <br />Workers
                     </h1>
-                    <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-2xl mx-auto font-bold uppercase tracking-tight opacity-80">
+                    <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-2xl mx-auto font-bold uppercase tracking-tight opacity-70">
                         Plug-and-play automations. Zero configuration. <br className="hidden md:block" /> 100% Secure.
                     </p>
                     <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
                         <div className="relative w-full max-w-lg group">
-                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-fg)] group-focus-within:text-primary-400 transition-colors" />
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-fg)] group-focus-within:text-primary-500 transition-colors" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search the workforce..."
-                                className="w-full bg-[var(--card)] border border-[var(--border)] rounded-2xl pl-14 pr-6 py-5 text-sm shadow-2xl shadow-primary-500/5 focus:ring-2 ring-primary-500/20 transition-all outline-none font-bold"
+                                className="w-full bg-[var(--card)] border border-[var(--border)] rounded-2xl pl-14 pr-6 py-5 text-sm shadow-premium focus:ring-4 ring-primary-500/10 transition-all outline-none font-bold"
                             />
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3">

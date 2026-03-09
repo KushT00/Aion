@@ -164,22 +164,26 @@ export default function ConsumerDashboard() {
     return (
         <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-12">
             {/* Hero Section */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-primary-900/40 via-accent-900/10 to-primary-900/40 border border-primary-500/20 rounded-[2.5rem] p-8 lg:p-14 shadow-2xl shadow-primary-500/5">
-                <div className="absolute top-0 right-0 p-10 opacity-10 pointer-events-none">
+            <div className="relative overflow-hidden bg-[var(--card)] border border-[var(--border)] rounded-[2.5rem] p-8 lg:p-14 shadow-premium group">
+                {/* Background Decor */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 via-transparent to-accent-500/5 opacity-40 group-hover:opacity-100 transition-opacity duration-1000" />
+                <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+                <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
                     <Zap className="w-64 h-64 text-primary-400 rotate-12" />
                 </div>
 
                 <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-10">
                     <div className="space-y-6">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-500 dark:text-primary-400 text-[10px] font-black uppercase tracking-widest">
                             <div className={cn("w-1.5 h-1.5 rounded-full", activeCount > 0 ? "bg-emerald-400 animate-pulse" : "bg-[var(--muted-fg)]")} />
                             {activeCount > 0 ? `${activeCount} Agent${activeCount > 1 ? 's' : ''} Active` : 'Digital Workforce Standby'}
                         </div>
                         <h1 className="text-5xl lg:text-7xl font-black tracking-tight leading-[0.9] uppercase italic">
                             {greeting}, <br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-400">{firstName}</span>
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-accent-500 dark:from-primary-400 dark:to-accent-400">{firstName}</span>
                         </h1>
-                        <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-xl font-bold uppercase tracking-tight opacity-80">
+                        <p className="text-[var(--muted-fg)] text-lg lg:text-xl max-w-xl font-bold uppercase tracking-tight">
                             {totalRuns > 0 ? (
                                 <>Your AI agents saved <span className="text-[var(--fg)]">{hoursSaved} hours</span> with <span className="text-[var(--fg)]">{totalRuns.toLocaleString()} tasks</span> completed.</>
                             ) : (
@@ -217,23 +221,23 @@ export default function ConsumerDashboard() {
             {/* Value Metrics — Real Data */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
-                    { label: 'Time Saved', value: `${hoursSaved}h`, change: `${stats?.totalSuccesses || 0} successful runs`, icon: Clock, color: 'text-primary-400' },
-                    { label: 'Tasks Completed', value: totalRuns.toLocaleString(), change: `${successRate}% success rate`, icon: Zap, color: 'text-amber-400' },
-                    { label: 'Active Agents', value: activeCount.toString(), change: `${stats?.totalInstances || 0} total deployed`, icon: TrendingUp, color: 'text-emerald-400' },
+                    { label: 'Time Saved', value: `${hoursSaved}h`, change: `${stats?.totalSuccesses || 0} successful runs`, icon: Clock, color: 'text-primary-500 dark:text-primary-400' },
+                    { label: 'Tasks Completed', value: totalRuns.toLocaleString(), change: `${successRate}% success rate`, icon: Zap, color: 'text-amber-500 dark:text-amber-400' },
+                    { label: 'Active Agents', value: activeCount.toString(), change: `${stats?.totalInstances || 0} total deployed`, icon: TrendingUp, color: 'text-emerald-500 dark:text-emerald-400' },
                 ].map((stat) => (
-                    <Card key={stat.label} className="p-8 border-[var(--border)] hover:border-primary-500/30 transition-all duration-300 rounded-3xl bg-[var(--card)] relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <stat.icon className="w-16 h-16" />
+                    <Card key={stat.label} className="p-8 border-[var(--border)] hover:border-primary-500/30 transition-all duration-500 rounded-[2rem] bg-[var(--card)] relative overflow-hidden group shadow-premium hover:-translate-y-1">
+                        <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-500 pointer-events-none">
+                            <stat.icon className="w-24 h-24" />
                         </div>
                         <div className="relative z-10 space-y-4">
-                            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center bg-[var(--muted)]", stat.color)}>
+                            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center bg-primary-500/5 dark:bg-[var(--muted)]", stat.color)}>
                                 <stat.icon className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)]">{stat.label}</p>
+                                <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-70">{stat.label}</p>
                                 <h3 className="text-3xl font-black italic tracking-tighter mt-1">{stat.value}</h3>
                                 <div className="flex items-center gap-1.5 mt-2">
-                                    <Badge variant="success" className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border-none">
+                                    <Badge variant="success" className="bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 text-[10px] font-bold border-none px-2 py-0.5">
                                         {stat.change}
                                     </Badge>
                                 </div>

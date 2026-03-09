@@ -32,6 +32,7 @@ const INTEGRATION_INFO: Record<string, { name: string; howToGet: string; type: '
     google_gmail: { name: 'Gmail Access', howToGet: 'Connect your Google account via Sign-in', type: 'oauth' },
     notion: { name: 'Notion Integration Key', howToGet: 'Go to notion.so/my-integrations → New integration', type: 'api_key' },
     api: { name: 'Custom API URL', howToGet: 'The HTTP endpoint this automation will call', type: 'api_key' },
+    serpapi: { name: 'SerpAPI Search Key', howToGet: 'Get one at https://serpapi.com/manage-api-key', type: 'api_key' },
 };
 
 function buildSystemPrompt(listing: any, integrations: string[], instance: any, credentials: any[]) {
@@ -95,6 +96,19 @@ ${needsGoogleOAuth ? `- **Google Account**: User needs to click "Connect Google 
 - If the user asks something unrelated, gently redirect to finishing setup.
 - Do NOT make up information about the automation. Use only what's in the details above.`;
 }
+
+// Map vault key names to integration keys
+const VAULT_MAPPING: Record<string, string> = {
+    'OPENAI_API_KEY': 'openai',
+    'GROQ_API_KEY': 'groq',
+    'ANTHROPIC_API_KEY': 'anthropic',
+    'GEMINI_API_KEY': 'google_gemini',
+    'SLACK_WEBHOOK_URL': 'slack',
+    'DISCORD_WEBHOOK_URL': 'discord',
+    'SERP_API_KEY': 'serpapi',
+    'GITHUB_TOKEN': 'github',
+    'TWILIO_AUTH_TOKEN': 'twilio'
+};
 
 export async function POST(req: NextRequest) {
     try {
@@ -162,6 +176,7 @@ export async function POST(req: NextRequest) {
                 if (nodeType.includes('groq')) integrationTypes.add('groq');
                 if (nodeType.includes('openai')) integrationTypes.add('openai');
                 if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
+                if (nodeType.includes('serp')) integrationTypes.add('serpapi');
 
                 // Scan for ANY api key fields or labeled fields
                 Object.keys(data).forEach(k => {
@@ -182,6 +197,41 @@ export async function POST(req: NextRequest) {
             .from('consumer_credentials')
             .select('integration_key, is_valid')
             .eq('instance_id', instanceId);
+
+        const currentIntegrations = credentials?.map(c => c.integration_key) || [];
+
+        // 3.5 AUTO-DETECTION: Check User Vault for missing required integrations
+        const missingIntegrations = requiredIntegrations.filter(k => !currentIntegrations.includes(k));
+
+        if (missingIntegrations.length > 0) {
+            const { data: vaultItems } = await supabase
+                .from('user_vault')
+                .select('*')
+                .eq('user_id', user.id);
+
+            if (vaultItems && vaultItems.length > 0) {
+                for (const item of vaultItems) {
+                    const mappedKey = VAULT_MAPPING[item.key_name];
+                    if (mappedKey && missingIntegrations.includes(mappedKey)) {
+                        console.log(`🔒 [VAULT] Auto-detecting ${item.key_name} for ${mappedKey}`);
+                        const encryptedBundle = encrypt(item.key_value);
+
+                        await supabase.from('consumer_credentials').upsert({
+                            instance_id: instanceId,
+                            integration_key: mappedKey,
+                            credential_data: {
+                                encrypted: true,
+                                from_vault: true,
+                                vault_key: item.key_name,
+                                ...encryptedBundle
+                            },
+                            is_valid: true,
+                            validated_at: new Date().toISOString(),
+                        }, { onConflict: 'instance_id,integration_key' });
+                    }
+                }
+            }
+        }
 
         // 4. Check if user provided a credential in this message
         let credentialStored = false;

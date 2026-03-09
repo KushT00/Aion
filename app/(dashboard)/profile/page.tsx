@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Camera, Mail, Globe, MapPin, Loader2 } from 'lucide-react';
+import { Camera, Mail, Globe, MapPin, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 
 export default function ProfilePage() {
-    const { user, profile, loading } = useAuth();
+    const { user, profile, loading, signOut } = useAuth();
 
     if (loading) {
         return (
@@ -24,11 +24,21 @@ export default function ProfilePage() {
     return (
         <div className="p-6 lg:p-8 max-w-3xl space-y-6">
             {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-[var(--fg)]">Profile</h1>
-                <p className="text-[var(--muted-fg)] mt-1">
-                    Manage your public profile and personal information.
-                </p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-[var(--fg)]">Profile</h1>
+                    <p className="text-[var(--muted-fg)] mt-1">
+                        Manage your public profile and personal information.
+                    </p>
+                </div>
+                <Button
+                    variant="outline"
+                    onClick={() => signOut()}
+                    className="border-red-500/20 text-red-500 hover:bg-red-500/5 hover:border-red-500 gap-2"
+                >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                </Button>
             </div>
 
             {/* Avatar Section */}

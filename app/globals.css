@@ -23,10 +23,10 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
-  --color-dark-bg: #0a0a0b;
-  --color-dark-card: #141416;
+  --color-dark-bg: #09090b;
+  --color-dark-card: #121214;
   --color-dark-border: #27272a;
-  --color-dark-hover: #1c1c1e;
+  --color-dark-hover: #1c1c1f;
 
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
@@ -35,8 +35,10 @@
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
+  --radius-2xl: 2.2rem;
 
   --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+  --shadow-premium: 0 10px 40px -10px rgba(0, 0, 0, 0.1);
 
   --animate-slide-in: slide-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --animate-fade-in: fade-in 0.3s ease-out;
@@ -47,33 +49,33 @@
 
 /* ─── CSS Custom Properties ─────────────────────────────── */
 :root {
-  --bg: #ffffff;
-  --fg: #18181b;
+  --bg: #f9faff;
+  --fg: #111113;
   --card: #ffffff;
-  --card-fg: #18181b;
-  --muted: #f4f4f5;
-  --muted-fg: #71717a;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
+  --card-fg: #111113;
+  --muted: #f1f3f9;
+  --muted-fg: #64748b;
+  --border: #e2e8f0;
+  --input: #f1f3f9;
   --ring: #8b5cf6;
   --sidebar-bg: #ffffff;
-  --sidebar-border: #e4e4e7;
-  --topbar-bg: rgba(255, 255, 255, 0.8);
+  --sidebar-border: rgba(0, 0, 0, 0.04);
+  --topbar-bg: rgba(249, 250, 255, 0.85);
 }
 
 .dark {
-  --bg: #0a0a0b;
+  --bg: #09090b;
   --fg: #fafafa;
-  --card: #141416;
+  --card: #121214;
   --card-fg: #fafafa;
-  --muted: #27272a;
-  --muted-fg: #a1a1aa;
+  --muted: #1c1c1f;
+  --muted-fg: #94a3b8;
   --border: #27272a;
-  --input: #27272a;
+  --input: #1c1c1f;
   --ring: #8b5cf6;
-  --sidebar-bg: #0f0f11;
+  --sidebar-bg: #0d0d0f;
   --sidebar-border: #1e1e21;
-  --topbar-bg: rgba(10, 10, 11, 0.8);
+  --topbar-bg: rgba(9, 9, 11, 0.85);
 }
 
 /* ─── Base Styles ───────────────────────────────────────── */

@@ -26,6 +26,7 @@ import {
     Inbox,
     Rocket,
     ArrowRight,
+    ShieldCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -35,6 +36,7 @@ const consumerNav = [
     { label: 'My Automations', href: '/my-automations', icon: Bot },
     { label: 'Inbox', href: '/inbox', icon: Inbox },
     { label: 'Billing', href: '/billing', icon: CreditCard },
+    { label: 'Secret Vault', href: '/vault', icon: ShieldCheck },
 ];
 
 const creatorNav = [
@@ -147,7 +149,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                     collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
                                     isHighlighted && !isActive && 'bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20 text-primary-600 dark:text-primary-400 hover:from-primary-500/20 hover:to-accent-500/20',
                                     isActive && !isHighlighted
-                                        ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                                        ? 'bg-[var(--muted)] text-primary-500 dark:text-primary-400'
                                         : !isHighlighted && 'text-[var(--muted-fg)] hover:text-[var(--fg)] hover:bg-[var(--muted)] transition-colors',
                                     isActive && isHighlighted && 'bg-gradient-to-r from-primary-500 to-accent-500 text-white shadow-lg shadow-primary-500/25',
                                 )}
@@ -167,14 +169,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             <Link
                                 href="/become-creator"
                                 onClick={onClose}
-                                className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-gradient-to-r from-primary-500/10 to-accent-500/10 border border-primary-500/20 text-primary-400 hover:from-primary-500/20 hover:to-accent-500/20 transition-all group"
+                                className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-primary-500/5 dark:bg-primary-500/10 border border-primary-500/10 text-primary-500 dark:text-primary-400 hover:bg-primary-500/10 transition-all group"
                             >
-                                <div className="w-7 h-7 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0">
+                                <div className="w-7 h-7 rounded-lg bg-primary-500/10 flex items-center justify-center shrink-0">
                                     <Rocket className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-xs font-black uppercase tracking-tight">Become a Creator</p>
-                                    <p className="text-[10px] text-primary-400/70 font-medium">Sell AI automations</p>
+                                    <p className="text-[10px] text-primary-500/70 font-medium">Sell AI automations</p>
                                 </div>
                                 <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform shrink-0" />
                             </Link>
@@ -206,7 +208,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                     'flex items-center rounded-lg text-sm font-medium transition-all duration-200',
                                     collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
                                     isActive
-                                        ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
+                                        ? 'bg-[var(--muted)] text-primary-500 dark:text-primary-400'
                                         : 'text-[var(--muted-fg)] hover:text-[var(--fg)] hover:bg-[var(--muted)]',
                                 )}
                             >

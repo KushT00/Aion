@@ -32,7 +32,7 @@ export default function CreatorLayout({ children }: { children: React.ReactNode 
     }
 
     // While redirecting, show nothing
-    if (!profile?.is_creator) return null;
+    if (!(profile?.is_creator || profile?.role === 'creator')) return null;
 
     return <>{children}</>;
 }
