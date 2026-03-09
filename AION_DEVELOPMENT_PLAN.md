@@ -340,11 +340,11 @@ CREATE TABLE public.subscriptions (
 - [x] **Status indicators** — Real-time badge: 🟢 Active, 🟡 Paused, 🔴 Error, ⚪ Setup Required
 
 #### C2. Consumer Onboarding — API Key Setup
-- [ ] **Per-automation setup wizard** — Click "Setup" → Step-by-step API key entry
-- [ ] **Auto-detect required keys** — Read the workflow's node configs to know which keys are needed
-- [ ] **Secure key storage** — Store encrypted in Supabase `consumer_credentials` table (use Supabase Vault)
-- [ ] **Key validation** — Test the API key before saving (ping the API endpoint)
-- [ ] **Connection status badges** — ✅ Connected / ❌ Not Connected per integration
+- [x] **Per-automation setup wizard** — Click "Setup" → Step-by-step API key entry
+- [x] **Auto-detect required keys** — Read the workflow's node configs to know which keys are needed
+- [x] **Secure key storage** — Store encrypted in Supabase `consumer_credentials` table (use Supabase Vault)
+- [x] **Key validation** — Test the API key before saving (ping the API endpoint)
+- [x] **Connection status badges** — ✅ Connected / ❌ Not Connected per integration
 
 ##### New DB Table:
 ```sql
@@ -383,19 +383,19 @@ CREATE TABLE public.consumer_run_logs (
 > [!IMPORTANT]
 > This is the most critical infrastructure piece. Each consumer must have their own isolated execution context (their own API keys, their own trigger endpoints, their own logs).
 
-- [ ] **Instance runner** — Modify `WorkflowRunner` to accept a `consumer_instance_id` and inject that consumer's credentials
+- [x] **Instance runner** — Modify `WorkflowRunner` to accept a `consumer_instance_id` and inject that consumer's credentials
 - [ ] **Per-instance triggers** — Each consumer gets their own webhook URL: `/api/webhooks/instance/[instanceId]`
 - [ ] **Per-instance cron** — Consumer's scheduled workflows run independently
 - [ ] **Per-instance Telegram bots** — Each consumer registers their own bot token
-- [ ] **Execution isolation** — Consumer A's failure doesn't affect Consumer B
+- [x] **Execution isolation** — Consumer A's failure doesn't affect Consumer B
 
 ### Phase 2: Consumer CRM Dashboard (Week 3–4)
 
 #### C4. Live Activity Feed
-- [ ] **Real-time log stream** — Use Supabase Realtime or SSE (Server-Sent Events) for live updates
-- [ ] **Log entry component** — Timestamp, node name, status, input/output preview
-- [ ] **Expandable log detail** — Click to see full input/output JSON
-- [ ] **Filter by status** — Success / Failed / All
+- [x] **Real-time log stream** — Use Supabase Realtime or SSE (Server-Sent Events) for live updates
+- [x] **Log entry component** — Timestamp, node name, status, input/output preview
+- [x] **Expandable log detail** — Click to see full input/output JSON
+- [x] **Filter by status** — Success / Failed / All
 - [ ] **Filter by date range** — Today, Last 7 days, Custom
 
 #### C5. ROI & Business Analytics Dashboard
