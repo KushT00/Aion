@@ -82,7 +82,7 @@ Respond strictly in JSON format matching this structure:
         const assignedCreatorId = targetCreatorId || null;
 
         // Insert Lead
-        const { error: insertErr } = await supabase
+        const { data: newLead, error: insertErr } = await supabase
             .from('creator_custom_leads')
             .insert({
                 consumer_id: user?.id || null,
@@ -94,21 +94,23 @@ Respond strictly in JSON format matching this structure:
                 urgency_score: urgencyScore,
                 urgency_tag: urgencyTag,
                 status: 'new'
-            });
+            })
+            .select('id')
+            .single();
 
         // Ignore the "table does not exist" error for the sake of the UX if the user hasn't run the migration yet.
         // We will fake a success to not block them but log it.
         if (insertErr) {
             console.error('[SUPABASE LEAD INSERT ERROR]', insertErr);
             // If the table is missing, just return success so the UI works and we mock it in the UI
-        } else if (assignedCreatorId) {
+        } else if (assignedCreatorId && newLead) {
             // Send notification to the creator
             await supabase.from('notifications').insert({
                 user_id: assignedCreatorId,
                 type: 'new_lead',
                 title: 'New Custom Request',
                 message: `${name} has requested a custom automation.`,
-                metadata: { url: '/creator/leads' }
+                metadata: { url: '/creator/leads', leadId: newLead.id }
             });
         }
 

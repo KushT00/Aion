@@ -70,7 +70,7 @@ export function NotificationBell() {
     const fetchNotifications = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/notifications?limit=15');
+            const res = await fetch('/api/notifications?limit=15', { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 setNotifications(data.notifications || []);
