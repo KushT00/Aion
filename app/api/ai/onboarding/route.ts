@@ -1,8 +1,22 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+// Use a secure key from environment, fallback for dev
+const ENCRYPTION_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 32) || '12345678901234567890123456789012';
+const ALGORITHM = 'aes-256-gcm';
+
+function encrypt(text: string) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return { iv: iv.toString('hex'), encryptedData: encrypted, authTag };
+}
 
 // Human-readable names for integration IDs
 const INTEGRATION_INFO: Record<string, { name: string; howToGet: string; type: 'api_key' | 'oauth' }> = {
@@ -187,10 +201,16 @@ export async function POST(req: NextRequest) {
             for (const { regex, integration } of keyPatterns) {
                 if (regex.test(message) && requiredIntegrations.includes(integration)) {
                     // Store credential securely
+                    const keyVal = message.match(regex)?.[0] || message.trim();
+                    const encryptedBundle = encrypt(keyVal);
+
                     await supabase.from('consumer_credentials').upsert({
                         instance_id: instanceId,
                         integration_key: integration,
-                        credential_data: { value: message.match(regex)?.[0] || message.trim() },
+                        credential_data: {
+                            encrypted: true,
+                            ...encryptedBundle
+                        },
                         is_valid: true,
                         validated_at: new Date().toISOString(),
                     }, { onConflict: 'instance_id,integration_key' });

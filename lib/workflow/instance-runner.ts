@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import crypto from 'crypto';
 import { WorkflowRunner, RunLog } from './runner';
 import { WorkflowNode, WorkflowEdge } from '@/types';
 
@@ -47,9 +48,31 @@ export class InstanceRunner {
                 .select('integration_key, credential_data')
                 .eq('instance_id', this.instanceId);
 
+            const ENCRYPTION_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 32) || '12345678901234567890123456789012';
+            const ALGORITHM = 'aes-256-gcm';
+
+            function decrypt(encryptedData: string, ivHex: string, authTagHex: string) {
+                const iv = Buffer.from(ivHex, 'hex');
+                const authTag = Buffer.from(authTagHex, 'hex');
+                const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
+                decipher.setAuthTag(authTag);
+                let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+                decrypted += decipher.final('utf8');
+                return decrypted;
+            }
+
             const credMap: Record<string, any> = {};
             (credentials || []).forEach(c => {
-                credMap[c.integration_key] = c.credential_data;
+                let data = c.credential_data;
+                if (data?.encrypted && data?.encryptedData) {
+                    try {
+                        const val = decrypt(data.encryptedData, data.iv, data.authTag);
+                        data = { value: val };
+                    } catch (err) {
+                        console.error(`Failed to decrypt credential for ${c.integration_key}`);
+                    }
+                }
+                credMap[c.integration_key] = data;
             });
 
             // 3. Hydrate Nodes: Apply overrides and inject credentials
