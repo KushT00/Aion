@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
                 workflow:workflows!marketplace_listings_workflow_id_fkey (
                     id,
                     name,
-                    tags
+                    tags,
+                    nodes
                 )
             `, { count: 'exact' })
             .eq('is_active', true);
@@ -77,8 +78,62 @@ export async function GET(req: NextRequest) {
 
         if (error) throw error;
 
+        // Automatically detect required integrations directly from workflow nodes
+        const processedListings = (listings || []).map(listing => {
+            const workflowData = listing?.workflow as any;
+            let requiredIntegrations: string[] = [];
+
+            if (workflowData?.nodes) {
+                const nodes = Array.isArray(workflowData.nodes)
+                    ? workflowData.nodes
+                    : (typeof workflowData.nodes === 'string' ? JSON.parse(workflowData.nodes) : []);
+
+                const integrationTypes = new Set<string>();
+                for (const node of nodes) {
+                    const nodeType = (node.type || '').toLowerCase();
+                    const data = node.data || {};
+                    const explicitType = data.integrationType;
+
+                    if (explicitType) integrationTypes.add(explicitType);
+
+                    // Check common service types
+                    if (nodeType.includes('google') || nodeType.includes('sheet')) integrationTypes.add('google_sheets');
+                    if (nodeType.includes('gemini')) integrationTypes.add('google_gemini');
+                    if (nodeType.includes('telegram')) integrationTypes.add('telegram');
+                    if (nodeType.includes('discord')) integrationTypes.add('discord');
+                    if (nodeType.includes('slack')) integrationTypes.add('slack');
+                    if (nodeType.includes('notion')) integrationTypes.add('notion');
+                    if (nodeType.includes('groq')) integrationTypes.add('groq');
+                    if (nodeType.includes('openai')) integrationTypes.add('openai');
+                    if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
+
+                    // Scan for ANY api key fields or labeled fields
+                    Object.keys(data).forEach(k => {
+                        const low = k.toLowerCase();
+                        if (low.includes('apikey') || low.includes('token') || low.includes('credential')) {
+                            if (nodeType.includes('openai')) integrationTypes.add('openai');
+                            if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
+                            if (nodeType.includes('groq')) integrationTypes.add('groq');
+                            if (nodeType.includes('telegram')) integrationTypes.add('telegram');
+                        }
+                    });
+                }
+                requiredIntegrations = Array.from(integrationTypes);
+            }
+
+            // Scrub nodes completely off the payload so we don't send the entire source code to public feeds
+            if (listing.workflow) {
+                delete listing.workflow.nodes;
+            }
+
+            return {
+                ...listing,
+                requiredIntegrations
+            };
+        });
+
         return NextResponse.json({
-            listings: listings || [],
+            listings: processedListings,
             total: count || 0,
             page,
             limit,

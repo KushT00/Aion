@@ -23,7 +23,8 @@ import {
     Loader2,
     Bot,
     Package,
-    RefreshCw
+    RefreshCw,
+    Key
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,21 @@ const categoryIcons: Record<string, any> = {
     'Finance': TrendingUp,
 };
 
+const integrationLabels: Record<string, { name: string; desc: string; type: 'api_key' | 'oauth' }> = {
+    google_gemini: { name: 'Google Gemini', desc: 'AI Text Generation API Key', type: 'api_key' },
+    groq: { name: 'Groq', desc: 'Groq API Key for fast LLM inference', type: 'api_key' },
+    openai: { name: 'OpenAI', desc: 'GPT API Key', type: 'api_key' },
+    telegram: { name: 'Telegram', desc: 'Bot Token from @BotFather', type: 'api_key' },
+    discord: { name: 'Discord', desc: 'Webhook URL for your server', type: 'api_key' },
+    slack: { name: 'Slack', desc: 'Webhook URL for your workspace', type: 'api_key' },
+    google_sheets: { name: 'Google Sheets', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_docs: { name: 'Google Docs', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_calendar: { name: 'Google Calendar', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    google_gmail: { name: 'Gmail', desc: 'Connect via Google Sign-In', type: 'oauth' },
+    notion: { name: 'Notion', desc: 'Integration API Key', type: 'api_key' },
+    api: { name: 'Custom API', desc: 'HTTP Endpoint URL', type: 'api_key' },
+};
+
 interface Listing {
     id: string;
     title: string;
@@ -76,6 +92,7 @@ interface Listing {
         full_name: string | null;
         avatar_url: string | null;
     };
+    requiredIntegrations?: string[];
 }
 
 export default function MarketplacePage() {
@@ -352,16 +369,40 @@ export default function MarketplacePage() {
                                                 </p>
 
                                                 {/* Tags */}
-                                                {item.tags && item.tags.length > 0 && (
-                                                    <div className="flex gap-1.5 flex-wrap pt-0.5">
-                                                        {item.tags.slice(0, 3).map(t => (
-                                                            <span
-                                                                key={t}
-                                                                className="text-[8px] font-black uppercase tracking-wider bg-[var(--muted)]/60 px-2 py-0.5 rounded-md border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors"
-                                                            >
-                                                                {t}
-                                                            </span>
-                                                        ))}
+                                                {(item.tags?.length > 0 || item.requiredIntegrations?.length > 0) && (
+                                                    <div className="flex flex-col gap-1.5 pt-0.5">
+                                                        {item.tags && item.tags.length > 0 && (
+                                                            <div className="flex gap-1.5 flex-wrap">
+                                                                {item.tags.slice(0, 3).map(t => (
+                                                                    <span
+                                                                        key={t}
+                                                                        className="text-[8px] font-black uppercase tracking-wider bg-[var(--muted)]/60 px-2 py-0.5 rounded-md border border-[var(--border)] text-[var(--muted-fg)] group-hover:border-primary-500/20 transition-colors"
+                                                                    >
+                                                                        {t}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {item.requiredIntegrations && item.requiredIntegrations.length > 0 && (
+                                                            <div className="flex gap-1 flex-wrap items-center mt-1">
+                                                                <span className="text-[8px] font-bold text-[var(--muted-fg)] flex items-center gap-1 uppercase tracking-widest mr-1 opacity-70">
+                                                                    <Key className="w-2.5 h-2.5" /> Needs:
+                                                                </span>
+                                                                {item.requiredIntegrations.slice(0, 3).map(k => {
+                                                                    const name = integrationLabels[k]?.name || k;
+                                                                    return (
+                                                                        <span key={k} className="text-[8px] font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-sm">
+                                                                            {name}
+                                                                        </span>
+                                                                    )
+                                                                })}
+                                                                {(item.requiredIntegrations?.length || 0) > 3 && (
+                                                                    <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-sm">
+                                                                        +{(item.requiredIntegrations?.length || 0) - 3}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
