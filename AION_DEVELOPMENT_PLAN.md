@@ -333,11 +333,11 @@ CREATE TABLE public.subscriptions (
 ### Phase 1: Foundation (Week 1–2)
 
 #### C1. Consumer "My Automations" (Connect to Real DB)
-- [ ] **Refactor `my-automations/page.tsx`** — Fetch from `purchases` + `marketplace_listings` joined data
-- [ ] **Purchase flow integration** — After Ricky's payment goes through, record appears here
-- [ ] **Automation card** — Shows name, status (active/paused/error), last run, total runs
-- [ ] **Quick actions** — Play / Pause / Config / Logs buttons per automation
-- [ ] **Status indicators** — Real-time badge: 🟢 Active, 🟡 Paused, 🔴 Error, ⚪ Setup Required
+- [x] **Refactor `my-automations/page.tsx`** — Fetch from `purchases` + `marketplace_listings` joined data
+- [x] **Purchase flow integration** — After Ricky's payment goes through, record appears here
+- [x] **Automation card** — Shows name, status (active/paused/error), last run, total runs
+- [x] **Quick actions** — Play / Pause / Config / Logs buttons per automation
+- [x] **Status indicators** — Real-time badge: 🟢 Active, 🟡 Paused, 🔴 Error, ⚪ Setup Required
 
 #### C2. Consumer Onboarding — API Key Setup
 - [ ] **Per-automation setup wizard** — Click "Setup" → Step-by-step API key entry
@@ -403,9 +403,9 @@ CREATE TABLE public.consumer_run_logs (
 > [!TIP]
 > This is AION's killer differentiator. Unlike n8n/Make which show "workflow ran successfully", AION shows "this automation generated 47 leads worth ₹2.3L this week."
 
-- [ ] **Leads generated counter** — Track leads captured by lead-gen automations
-- [ ] **Revenue attributed** — Link automation outputs to business value
-- [ ] **Success rate** — Pie chart: successful vs failed runs
+- [x] **Leads generated counter** — Track leads captured by lead-gen automations
+- [x] **Revenue attributed** — Link automation outputs to business value
+- [x] **Success rate** — Pie chart: successful vs failed runs
 - [ ] **Time saved metric** — Calculate hours saved based on task duration estimates
 - [ ] **ROI calculator** — (Subscription cost vs. value generated)
 - [ ] **Weekly email digest** — Summary of automation performance
@@ -425,10 +425,10 @@ CREATE TABLE public.consumer_analytics (
 ```
 
 #### C6. Notification & Alert System
-- [ ] **Failure alerts** — Toast + email when a workflow fails
-- [ ] **Daily summary** — "Your automations ran 142 times today. 3 errors."
-- [ ] **Threshold alerts** — "Your API quota is at 90%"
-- [ ] **Notification preferences** — Email, in-app, or both
+- [x] **Failure alerts** — Toast + email when a workflow fails
+- [x] **Daily summary** — "Your automations ran 142 times today. 3 errors."
+- [x] **Threshold alerts** — "Your API quota is at 90%"
+- [x] **Notification preferences** — Email, in-app, or both
 
 ### Phase 3: Advanced Consumer Features (Week 5–6)
 
