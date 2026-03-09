@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (user) {
             const { data } = await supabase
                 .from('profiles')
-                .select('id, full_name, avatar_url, is_creator, role')
+                .select('id, email, full_name, avatar_url, is_creator, role, bio')
                 .eq('id', user.id)
                 .single();
             setProfile(data as Profile | null);
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (user) {
                     const { data } = await supabase
                         .from('profiles')
-                        .select('id, full_name, avatar_url, is_creator, role')
+                        .select('id, email, full_name, avatar_url, is_creator, role, bio')
                         .eq('id', user.id)
                         .single();
                     if (!cancelled) setProfile(data as Profile | null);
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (session?.user) {
                     const { data } = await supabase
                         .from('profiles')
-                        .select('id, full_name, avatar_url, is_creator, role')
+                        .select('id, email, full_name, avatar_url, is_creator, role, bio')
                         .eq('id', session.user.id)
                         .single();
                     if (!cancelled) setProfile(data as Profile | null);
