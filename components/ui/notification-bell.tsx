@@ -15,6 +15,8 @@ interface NotificationItem {
     metadata?: {
         instanceId?: string;
         href?: string;
+        url?: string;
+        conversationId?: string;
     };
     _isPending?: boolean;
 }
@@ -26,6 +28,9 @@ const TYPE_ICONS: Record<string, { icon: typeof Bell; color: string; bg: string 
     daily_summary: { icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
     threshold_alert: { icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
     purchase: { icon: ShoppingBag, color: 'text-primary-400', bg: 'bg-primary-500/10' },
+    new_lead: { icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+    new_message: { icon: Info, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    new_conversation: { icon: Info, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     system: { icon: Info, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     info: { icon: Info, color: 'text-[var(--muted-fg)]', bg: 'bg-[var(--muted)]' },
 };
@@ -132,11 +137,17 @@ export function NotificationBell() {
 
     // Handle clicking on a notification — navigate if it has a link
     const handleNotificationClick = (notif: NotificationItem) => {
-        const href = notif.metadata?.href;
-        if (href) {
+        let finalHref = notif.metadata?.href || notif.metadata?.url;
+        if (finalHref && notif.metadata?.conversationId) {
+            finalHref = `${finalHref}?conv=${notif.metadata.conversationId}`;
+        }
+
+        if (finalHref) {
             setIsOpen(false);
-            router.push(href);
-        } else if (!notif.read) {
+            router.push(finalHref);
+        }
+
+        if (!notif.read) {
             handleMarkRead(notif.id);
         }
     };
@@ -203,7 +214,7 @@ export function NotificationBell() {
                                 const typeInfo = TYPE_ICONS[notif.type] || TYPE_ICONS.info;
                                 const Icon = typeInfo.icon;
                                 const isSetupPending = notif.type === 'setup_pending';
-                                const hasLink = !!notif.metadata?.href;
+                                const hasLink = !!(notif.metadata?.href || notif.metadata?.url);
 
                                 return (
                                     <div
