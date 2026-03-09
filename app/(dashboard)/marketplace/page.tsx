@@ -369,7 +369,7 @@ export default function MarketplacePage() {
                                                 </p>
 
                                                 {/* Tags */}
-                                                {(item.tags?.length > 0 || item.requiredIntegrations?.length > 0) && (
+                                                {((item.tags?.length ?? 0) > 0 || (item.requiredIntegrations?.length ?? 0) > 0) && (
                                                     <div className="flex flex-col gap-1.5 pt-0.5">
                                                         {item.tags && item.tags.length > 0 && (
                                                             <div className="flex gap-1.5 flex-wrap">
