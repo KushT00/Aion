@@ -104,6 +104,35 @@ export async function POST(req: NextRequest) {
 
         if (upsertErr) throw upsertErr;
 
+        // 5. Special Case: If Telegram, set webhook to the instance-specific webhook URL
+        if (integrationKey === 'telegram') {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+            // Telegram requires https for webhooks. In local dev, this might fail unless using ngrok
+            if (baseUrl.startsWith('https://')) {
+                const webhookUrl = `${baseUrl}/api/webhooks/instance/${instanceId}`;
+                console.log(`[TELEGRAM] Setting webhook for instance ${instanceId} to ${webhookUrl}`);
+                try {
+                    const setWebhookRes = await fetch(`https://api.telegram.org/bot${trimmedValue}/setWebhook`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: webhookUrl })
+                    });
+                    if (!setWebhookRes.ok) {
+                        const errorData = await setWebhookRes.text();
+                        console.error('[TELEGRAM WEBHOOK ERROR]', errorData);
+                        // We still return success but maybe log a warning
+                    } else {
+                        console.log(`[TELEGRAM] Webhook set successfully.`);
+                    }
+                } catch (webhookErr) {
+                    console.error('[TELEGRAM WEBHOOK CATCH]', webhookErr);
+                }
+            } else {
+                console.warn(`[TELEGRAM] Skipping webhook setup because baseUrl does not start with https: ${baseUrl}`);
+            }
+        }
+
+
         return NextResponse.json({ success: true, message: 'Credential saved securely' });
     } catch (error: any) {
         console.error('[SAVE CREDENTIAL ERROR]', error);

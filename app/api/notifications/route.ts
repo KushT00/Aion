@@ -35,9 +35,73 @@ export async function GET(req: NextRequest) {
             query = query.eq('read', false);
         }
 
-        const { data: dbNotifications, error: notifErr, count } = await query;
+        const { data: rawDbNotifications, error: notifErr, count: rawCount } = await query;
 
         if (notifErr) throw notifErr;
+
+        let dbNotifications = rawDbNotifications || [];
+        const staleNotificationIds: string[] = [];
+
+        // Dynamic validation of notifications
+        const leadIdsToCheck = new Set<string>();
+        const convIdsToCheck = new Set<string>();
+
+        for (const n of dbNotifications) {
+            if (n.type === 'new_lead' && n.metadata?.leadId) {
+                leadIdsToCheck.add(n.metadata.leadId);
+            }
+            if ((n.type === 'new_message' || n.type === 'new_conversation') && n.metadata?.conversationId) {
+                convIdsToCheck.add(n.metadata.conversationId);
+            }
+        }
+
+        const validLeadIds = new Set<string>();
+        if (leadIdsToCheck.size > 0) {
+            const { data: leads } = await supabase
+                .from('creator_custom_leads')
+                .select('id')
+                .in('id', Array.from(leadIdsToCheck));
+            if (leads) leads.forEach((l: any) => validLeadIds.add(l.id));
+        }
+
+        const validConvIds = new Set<string>();
+        if (convIdsToCheck.size > 0) {
+            const { data: unreadMsgs } = await supabase
+                .from('messages')
+                .select('conversation_id')
+                .in('conversation_id', Array.from(convIdsToCheck))
+                .eq('is_read', false)
+                .neq('sender_id', user.id);
+            if (unreadMsgs) unreadMsgs.forEach((m: any) => validConvIds.add(m.conversation_id));
+        }
+
+        // Filter and collect stale IDs
+        const validDbNotifications = [];
+        for (const n of dbNotifications) {
+            let isStale = false;
+
+            if (n.type === 'new_lead' && n.metadata?.leadId) {
+                if (!validLeadIds.has(n.metadata.leadId)) isStale = true;
+            } else if ((n.type === 'new_message' || n.type === 'new_conversation') && n.metadata?.conversationId) {
+                if (!validConvIds.has(n.metadata.conversationId)) isStale = true;
+            }
+
+            if (isStale) {
+                staleNotificationIds.push(n.id);
+            } else {
+                validDbNotifications.push(n);
+            }
+        }
+
+        dbNotifications = validDbNotifications;
+
+        // Cleanup stale notifications
+        if (staleNotificationIds.length > 0) {
+            await supabase
+                .from('notifications')
+                .delete()
+                .in('id', staleNotificationIds);
+        }
 
         // 2. Fetch pending setup instances (consumer_instances with status = 'setup_required')
         const { data: pendingInstances } = await supabase
@@ -84,7 +148,7 @@ export async function GET(req: NextRequest) {
             notifications: allNotifications,
             unreadCount: totalUnread,
             pendingSetups: pendingNotifications.length,
-            total: (count || 0) + pendingNotifications.length,
+            total: Math.max(0, (rawCount || 0) - staleNotificationIds.length) + pendingNotifications.length,
         });
     } catch (error: any) {
         console.error('[NOTIFICATIONS GET ERROR]', error);
