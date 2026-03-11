@@ -296,9 +296,13 @@ export default function MyAutomationsPage() {
                                         </Button>
                                     )}
 
-                                    <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-                                        <Settings className="w-4 h-4" />
-                                    </Button>
+                                    {hasInstance && (
+                                        <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                            <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
+                                                <Settings className="w-4 h-4" />
+                                            </Button>
+                                        </Link>
+                                    )}
                                 </div>
                             </div>
                         </Card>
