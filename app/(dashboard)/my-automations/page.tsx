@@ -252,7 +252,7 @@ export default function MyAutomationsPage() {
                                                     </Button>
                                                 </Link>
                                             ) : (
-                                                <Link href={`/instance/${item.instanceId}`} target="_blank">
+                                                <Link href={`/my-automations/${item.instanceId}/dashboard`}>
                                                     <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
                                                         <Activity className="w-4 h-4 mr-2" />
                                                         View Dashboard

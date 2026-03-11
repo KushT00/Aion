@@ -46,7 +46,8 @@ import {
     NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
-    CRMCaptureConfig,
+    CRMCaptureConfig, DataScrapingConfig, JSONSearchConfig, StructurizerConfig,
+    FormTriggerConfig,
     Input, Label
 } from '@/components/workflow/NodeConfigs';
 import { PublishingPanel } from '@/components/workflow/PublishingPanel';
@@ -55,7 +56,7 @@ import { PublishingPanel } from '@/components/workflow/PublishingPanel';
 const nodeTypes: NodeTypes = customNodeTypes as unknown as NodeTypes;
 
 // ─── Node Palette Categories & Items ────────────────────────
-type PaletteCategory = 'Triggers' | 'AI' | 'Communication' | 'Google' | 'Logic' | 'Utility';
+type PaletteCategory = 'Triggers' | 'AI' | 'Scraping' | 'Communication' | 'Google' | 'Logic' | 'Utility';
 // ─── Initial data ──────────────────────────────────────────
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -70,6 +71,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'trigger', label: 'Webhook', icon: WebhookIcon, integrationId: 'webhook', nodeType: 'custom' },
             { type: 'trigger', label: 'Telegram Message', icon: Send, integrationId: 'telegram', nodeType: 'custom', actionId: 'telegram_message' },
             { type: 'trigger', label: 'Gmail Trigger', icon: Mail, integrationId: 'google_gmail_trigger', nodeType: 'custom' },
+            { type: 'trigger', label: 'Aion Form', icon: FileText, integrationId: 'form_trigger', nodeType: 'custom', actionId: 'on_submit' },
         ],
     },
     {
@@ -80,6 +82,16 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
             { type: 'ai_action', label: 'Chat AI', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'chat' },
             { type: 'chat_model', label: 'Chat Model', icon: Cpu, integrationId: 'google_gemini', nodeType: 'custom', actionId: 'model' },
             { type: 'memory', label: 'Memory Session', icon: Database, integrationId: 'memory', nodeType: 'custom', actionId: 'session' },
+        ],
+    },
+    {
+        category: 'Scraping',
+        color: 'text-teal-400',
+        items: [
+            { type: 'data_scraping', label: 'Web Scraper', icon: Globe, integrationId: 'data_scraping', nodeType: 'custom', actionId: 'scraper' },
+            { type: 'data_scraping', label: 'HTML to Markdown', icon: FileText, integrationId: 'data_scraping', nodeType: 'custom', actionId: 'html_to_md' },
+            { type: 'data_scraping', label: 'JSON Search', icon: Search, integrationId: 'data_scraping', nodeType: 'custom', actionId: 'json_search' },
+            { type: 'data_scraping', label: 'AI Structurizer', icon: Sparkles, integrationId: 'data_scraping', nodeType: 'custom', actionId: 'structurizer' },
         ],
     },
     {
@@ -1115,9 +1127,10 @@ function BuilderContent() {
                                     const integId = nodeData?.config?.integrationId;
 
                                     // Trigger nodes
-                                    if (nodeData.type === 'trigger') return (
-                                        <TriggerConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />
-                                    );
+                                    if (nodeData.type === 'trigger') {
+                                        if (integId === 'form_trigger') return <FormTriggerConfig node={selectedNode} updateNode={updateNode} workflowId={workflowId as string} />;
+                                        return <TriggerConfiguration node={selectedNode} updateNode={updateNode} workflowId={workflowId} />;
+                                    }
 
                                     // AI Agent (multi-panel with tools/RAG)
                                     if (nodeData.type === 'ai_action' && selectedNode.type === 'ai_agent') return (
@@ -1217,6 +1230,13 @@ function BuilderContent() {
 
                                     // Delay
                                     if (integId === 'delay') return <DelayConfig node={selectedNode} updateNode={updateNode} />;
+
+                                    // Data & Scraping
+                                    if (integId === 'data_scraping') {
+                                        if (nodeData?.config?.actionId === 'json_search') return <JSONSearchConfig node={selectedNode} updateNode={updateNode} />;
+                                        if (nodeData?.config?.actionId === 'structurizer') return <StructurizerConfig node={selectedNode} updateNode={updateNode} />;
+                                        return <DataScrapingConfig node={selectedNode} updateNode={updateNode} />;
+                                    }
 
                                     // CRM Capture
                                     if (integId === 'crm_capture') return <CRMCaptureConfig node={selectedNode} updateNode={updateNode} />;

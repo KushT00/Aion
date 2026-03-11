@@ -22,7 +22,9 @@ import {
     Box,
     Clock,
     Zap,
-    TrendingUp
+    TrendingUp,
+    LayoutDashboard,
+    Globe
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -34,6 +36,8 @@ const getTypeStyle = (type: string) => {
         case 'data': return { icon: Database, color: 'text-sky-400', bg: 'bg-sky-500/10' };
         case 'task': return { icon: CheckSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
         case 'proposal': return { icon: FileText, color: 'text-violet-400', bg: 'bg-violet-500/10' };
+        case 'form_submission': return { icon: LayoutDashboard, color: 'text-pink-400', bg: 'bg-pink-500/10' };
+        case 'scraping': return { icon: Globe, color: 'text-blue-400', bg: 'bg-blue-500/10' };
         default: return { icon: Box, color: 'text-neutral-400', bg: 'bg-neutral-500/10' };
     }
 };
@@ -158,7 +162,7 @@ export default function CRMDashboardPage() {
                         </Link>
                         <div>
                             <h1 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
-                                CRM <span className="text-primary-400">Dashboard</span>
+                                Automation <span className="text-primary-400">Insights</span>
                             </h1>
                             <p className="text-[10px] text-[var(--muted-fg)] font-bold uppercase tracking-widest flex items-center gap-1">
                                 {instance?.listing?.title || 'Loading automation...'}
@@ -245,7 +249,7 @@ export default function CRMDashboardPage() {
                             >
                                 All Results
                             </Button>
-                            {['lead', 'data', 'task', 'proposal'].map(type => (
+                            {['lead', 'data', 'form_submission', 'scraping'].map(type => (
                                 <Button
                                     key={type}
                                     variant={activeType === type ? "primary" : "ghost"}

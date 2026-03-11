@@ -81,6 +81,25 @@ export async function POST(
         try {
             const results = await runner.execute(body);
 
+            // 5.1 Persist Captured CRM Results
+            const captured = runner.getCapturedResults();
+            if (captured.length > 0) {
+                const resultsToInsert = captured.map(c => ({
+                    instance_id: instanceId,
+                    buyer_id: userId,
+                    workflow_id: workflow.id,
+                    run_id: run.id,
+                    result_type: c.result_type,
+                    title: c.title,
+                    data: c.data,
+                    tags: c.tags,
+                    metadata: c.metadata,
+                    created_at: c.captured_at
+                }));
+
+                await supabase.from('consumer_results').insert(resultsToInsert);
+            }
+
             // Update Run Record on success
             await supabase.from('workflow_runs').update({
                 status: 'success',
@@ -98,7 +117,8 @@ export async function POST(
             return NextResponse.json({
                 success: true,
                 runId: run.id,
-                output: results
+                output: results,
+                capturedResults: captured.length
             });
 
         } catch (execErr: any) {

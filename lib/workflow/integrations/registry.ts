@@ -720,6 +720,24 @@ registry.register({
     ],
 });
 
+// ─── Form Trigger ───────────────────────────────────────────
+registry.register({
+    id: "form_trigger",
+    name: "Aion Form",
+    category: "trigger",
+    actions: [
+        {
+            id: "on_submit",
+            name: "On Form Submit",
+            description: "Triggers when someone submits your Aion Form",
+            execute: async (config, input) => {
+                // Form triggers are passive; they pass through the data received via the form endpoint
+                return input;
+            },
+        },
+    ],
+});
+
 
 // HTTP / API
 registry.register({
@@ -812,6 +830,114 @@ registry.register({
             },
         },
     ],
+});
+
+// ─── Data & Scraping ───────────────────────────────────────────
+registry.register({
+    id: "data_scraping",
+    name: "Data & Scraping",
+    category: "utility",
+    actions: [
+        {
+            id: "scraper",
+            name: "Web Scraper",
+            description: "Convert any URL to clean Markdown using Jina Reader",
+            execute: async (config) => {
+                const { url, waitTime } = config;
+                if (!url) throw new Error("URL is required for scraping");
+
+                // Jina Reader is a reliable, free-tier friendly way to get clean MD
+                const response = await fetch(`https://r.jina.ai/${url}`, {
+                    headers: {
+                        "X-Return-Format": "markdown",
+                        ...(waitTime ? { "X-Wait-For-Selector": "body" } : {})
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Scraping failed: ${response.statusText}`);
+                }
+
+                const text = await response.text();
+                return {
+                    content: text,
+                    url,
+                    length: text.length,
+                    timestamp: new Date().toISOString()
+                };
+            },
+        },
+        {
+            id: "html_to_md",
+            name: "HTML to Markdown",
+            description: "Clean raw HTML into readable Markdown",
+            execute: async (config) => {
+                const { html } = config;
+                if (!html) return { markdown: "" };
+
+                const response = await fetch("https://r.jina.ai/", {
+                    method: "POST",
+                    headers: { "Content-Type": "text/html" },
+                    body: html
+                });
+
+                if (!response.ok) return { markdown: html.replace(/<[^>]*>?/gm, '') }; // Fallback to strip tags
+
+                const text = await response.text();
+                return { markdown: text };
+            }
+        },
+        {
+            id: "json_search",
+            name: "JSON Search / Filter",
+            description: "Extract specific data from a JSON object",
+            execute: async (config) => {
+                const { data, path } = config;
+                if (!data) return { result: null };
+
+                let obj = typeof data === 'string' ? (data.startsWith('{') || data.startsWith('[') ? JSON.parse(data) : data) : data;
+
+                if (typeof obj !== 'object' || obj === null || !path) return { result: obj };
+
+                const parts = path.split('.');
+                let current = obj;
+                for (const part of parts) {
+                    if (current == null) break;
+                    current = current[part];
+                }
+
+                return { result: current };
+            }
+        },
+        {
+            id: "structurizer",
+            name: "AI Data Structurizer",
+            description: "Use AI to turn unstructured text into clean JSON",
+            execute: async (config, context) => {
+                const { text, schema, modelConfig } = config;
+                if (!text) throw new Error("Text input is required for structurizer");
+
+                const systemPrompt = `You are a data extraction expert. Extract information from the provided text and return it strictly in JSON format matching this schema: ${schema || '{"data": "string"}'}. Do not include any preamble or explanation.`;
+
+                const chatAction = registry.getAction(modelConfig?.provider || 'google_gemini', 'chat');
+                if (!chatAction) throw new Error("AI provider not found for Structurizer");
+
+                const result = await chatAction.execute({
+                    ...modelConfig,
+                    systemPrompt,
+                    userPrompt: text
+                }, context);
+
+                try {
+                    // Strip potential markdown code blocks
+                    const cleanJson = result.text.replace(/```json|```/g, '').trim();
+                    return JSON.parse(cleanJson);
+                } catch (e) {
+                    return { raw: result.text, error: "Failed to parse AI response as JSON" };
+                }
+            }
+        }
+    ]
 });
 
 // Google Calendar
@@ -1961,6 +2087,128 @@ registry.register({
             },
         },
     ],
+});
+
+// ─── Data Scraping & Harvesting ───────────────────────────
+registry.register({
+    id: "data_scraping",
+    name: "Data Scraping",
+    category: "utility",
+    actions: [
+        {
+            id: "scrape",
+            name: "Web Scraper",
+            description: "Convert any URL into AI-ready Markdown using high-fidelity scraping.",
+            execute: async (config) => {
+                const { url, useProxy = true } = config;
+                if (!url) throw new Error("URL is required for scraping");
+
+                // We use Jina AI's Reader API for reliable HTML-to-Markdown conversion
+                const readerUrl = `https://r.jina.ai/${url.trim()}`;
+                const response = await fetch(readerUrl, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-No-Cache': 'true'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Scraping failed: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                return {
+                    url: url,
+                    title: data.data?.title || "Scraped Content",
+                    content: data.data?.content || "",
+                    excerpt: data.data?.description || "",
+                    timestamp: new Date().toISOString()
+                };
+            }
+        },
+        {
+            id: "json_search",
+            name: "JSON Search",
+            description: "Find and extract specific data from a JSON object using simple paths.",
+            execute: async (config, context) => {
+                const { data: jsonData, path: query } = config;
+                let source = jsonData;
+
+                // If it's a string, try to parse it
+                if (typeof source === 'string') {
+                    try { source = JSON.parse(source); } catch (e) { /* ignore */ }
+                }
+
+                if (!source || !query) return { results: [], count: 0 };
+
+                const results: any[] = [];
+                const paths = query.split(',').map((p: string) => p.trim());
+
+                for (const path of paths) {
+                    const parts = path.split('.');
+                    let current = source;
+                    for (const part of parts) {
+                        if (current && typeof current === 'object') {
+                            current = current[part];
+                        } else {
+                            current = undefined;
+                            break;
+                        }
+                    }
+                    if (current !== undefined) results.push({ path, value: current });
+                }
+
+                return {
+                    results,
+                    count: results.length,
+                    firstMatch: results[0]?.value,
+                    text: results[0]?.value ? (typeof results[0].value === 'string' ? results[0].value : JSON.stringify(results[0].value)) : ''
+                };
+            }
+        },
+        {
+            id: "structurizer",
+            name: "AI Structurizer",
+            description: "Use AI to transform raw text/HTML into a clean, structured JSON schema.",
+            execute: async (config, context) => {
+                const { text: content, schema, model = "gemini-1.5-flash" } = config;
+                if (!content || !schema) throw new Error("Content and Schema are required");
+
+                // We'll use the internal AI orchestration if available, or fetch directly
+                const prompt = `
+                    You are a specialized Data Structurizer.
+                    Your task is to extract information from the provided CONTENT and map it into the following JSON SCHEMA.
+
+                    SCHEMA:
+                    ${schema}
+
+                    CONTENT:
+                    ${content.substring(0, 10000)}
+
+                    Return ONLY the raw JSON object. Do not include markdown code blocks.
+                `;
+
+                const aiAction = registry.getAction("ai", "agent");
+                if (aiAction) {
+                    const result = await aiAction.execute({
+                        prompt,
+                        provider: "google_gemini",
+                        model: "gemini-1.5-flash",
+                        temperature: 0.1
+                    }, context);
+
+                    try {
+                        const cleaned = result.text.replace(/```json/g, '').replace(/```/g, '').trim();
+                        return JSON.parse(cleaned);
+                    } catch (e) {
+                        return { raw: result.text, error: "Failed to parse AI response as JSON" };
+                    }
+                }
+
+                throw new Error("AI engine not available for structurization");
+            }
+        }
+    ]
 });
 
 // ─── CRM Capture (Save to Consumer Dashboard) ───────────────

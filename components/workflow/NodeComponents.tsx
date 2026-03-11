@@ -24,6 +24,7 @@ export const nodeColors: Record<string, { bg: string; border: string; icon: stri
     chat_model: { bg: 'bg-purple-500/10', border: 'border-purple-500/40', icon: 'text-purple-400', glow: 'shadow-purple-500/20' },
     memory: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/40', icon: 'text-yellow-400', glow: 'shadow-yellow-500/20' },
     tool: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/40', icon: 'text-cyan-400', glow: 'shadow-cyan-500/20' },
+    data_scraping: { bg: 'bg-teal-500/10', border: 'border-teal-500/40', icon: 'text-teal-400', glow: 'shadow-teal-500/20' },
 };
 
 export const nodeIcons: Record<string, any> = {
@@ -32,6 +33,7 @@ export const nodeIcons: Record<string, any> = {
     data_tool: Database, input: Upload, output: ArrowRightCircle,
     code: Code2, delay: Clock, merge: Merge, loop: Repeat,
     set_variable: SlidersHorizontal, chat_model: Cpu, memory: Database, tool: WebhookIcon,
+    data_scraping: Globe,
 };
 
 const handleStyle = '!w-3 !h-3 !border-2 !border-[var(--card)] hover:!scale-125 transition-transform';
@@ -50,6 +52,7 @@ export function CustomNode({ data, selected }: { data: any; selected?: boolean }
         notion: 'Notion', cron: 'Schedule', webhook: 'Webhook',
         if_else: 'IF/ELSE', switch: 'Switch', filter: 'Filter', parallel: 'Parallel', condition_group: 'Condition Group', loop: 'Loop', delay: 'Delay', code: 'Code',
         set_variable: 'Set Var', merge: 'Merge', transform: 'Transform',
+        data_scraping: 'Data & Scraping',
     };
 
     return (

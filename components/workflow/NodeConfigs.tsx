@@ -4,7 +4,7 @@ import { GoogleConnectButton } from './GoogleConnectButton';
 import {
     Plus, Trash2, BookOpen, Wrench, Globe, Link2,
     ChevronDown, ChevronRight, BrainCircuit, CheckCircle2,
-    FileSpreadsheet, Zap, RotateCw
+    FileSpreadsheet, Zap, RotateCw, FileText, Code2
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -1561,4 +1561,180 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
     );
 }
 
+// ─── Data & Scraping Configurations ─────────────────────────
+export function DataScrapingConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
+    if (config.actionId === 'scrape' || config.actionId === 'scraper') {
+        return (
+            <div className="space-y-3">
+                <div className="p-2.5 bg-teal-500/5 border border-teal-500/20 rounded-lg">
+                    <p className="text-[10px] text-teal-400 font-bold uppercase mb-1 flex items-center gap-2">
+                        <Globe className="w-3 h-3" /> Jina Reader Scraper
+                    </p>
+                    <p className="text-[9px] text-[var(--muted-fg)]">Convert any public URL into clean, AI-ready Markdown.</p>
+                </div>
+                <div className="space-y-1.5">
+                    <Label>URL to Scrape</Label>
+                    <Input placeholder="https://example.com" value={data.url || ''} onChange={(e: any) => updateData({ url: e.target.value })} />
+                </div>
+                <div className="space-x-2 flex items-center">
+                    <input type="checkbox" id="wait-chk" checked={!!data.waitTime} onChange={(e: any) => updateData({ waitTime: e.target.checked })} />
+                    <label htmlFor="wait-chk" className="text-[10px] text-[var(--muted-fg)]">Wait for JS execution</label>
+                </div>
+            </div>
+        );
+    }
+
+    if (config.actionId === 'html_to_md') {
+        return (
+            <div className="space-y-3">
+                <div className="space-y-1.5">
+                    <Label>Raw HTML</Label>
+                    <Textarea className="h-40 font-mono text-[10px]" value={data.html || ''} onChange={(e: any) => updateData({ html: e.target.value })} />
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+}
+
+export function JSONSearchConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    return (
+        <div className="space-y-3">
+            <div className="p-2.5 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                <p className="text-[10px] text-blue-400 font-bold uppercase mb-1">JSON Object Mapper</p>
+                <p className="text-[9px] text-[var(--muted-fg)]">Extract deeply nested fields using dot notation.</p>
+            </div>
+            <div className="space-y-1.5">
+                <Label>JSON Source</Label>
+                <Textarea className="h-24 font-mono text-[10px]" placeholder="{{node.output}}" value={data.data || ''} onChange={(e: any) => updateData({ data: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+                <Label>Field Path</Label>
+                <Input placeholder="data.user.profile.name" value={data.path || ''} onChange={(e: any) => updateData({ path: e.target.value })} />
+            </div>
+        </div>
+    );
+}
+
+export function StructurizerConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    return (
+        <div className="space-y-3">
+            <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                <p className="text-[10px] text-violet-400 font-bold uppercase mb-1 flex items-center gap-2">
+                    <BrainCircuit className="w-3 h-3" /> AI Structurizer
+                </p>
+                <p className="text-[9px] text-[var(--muted-fg)]">Turn messy text into a clean JSON object via LLM.</p>
+            </div>
+
+            <div className="space-y-1.5 p-2 bg-[var(--muted)]/50 border border-[var(--border)] rounded-md">
+                <Label>Model for Extraction</Label>
+                <Select value={data.modelConfig?.provider || 'google_gemini'}
+                    onChange={(e: any) => updateData({ modelConfig: { ...data.modelConfig, provider: e.target.value } })}>
+                    <option value="google_gemini">Google Gemini</option>
+                    <option value="groq">Groq (Llama)</option>
+                    <option value="openai">OpenAI</option>
+                </Select>
+            </div>
+
+            <div className="space-y-1.5">
+                <Label>Input Text</Label>
+                <Textarea className="h-24" placeholder="Messy scraped text..." value={data.text || ''} onChange={(e: any) => updateData({ text: e.target.value })} />
+            </div>
+
+            <div className="space-y-1.5">
+                <Label>Expected JSON Schema</Label>
+                <Textarea className="h-32 font-mono text-[10px]" placeholder='{"name": "string", "emails": ["string"]}' value={data.schema || ''} onChange={(e: any) => updateData({ schema: e.target.value })} />
+            </div>
+        </div>
+    );
+}
+
+export function FormTriggerConfig({ node, updateNode, workflowId }: { node: any; updateNode: (d: any) => void, workflowId: string }) {
+    const config = node.data.config || {};
+    const data = config.data || {};
+    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+
+    const formUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/form/${workflowId}?node=${node.id}`
+        : `/form/${workflowId}?node=${node.id}`;
+
+    return (
+        <div className="space-y-4">
+            <div className="p-3 bg-violet-500/5 border border-violet-500/20 rounded-lg flex gap-3">
+                <FileText className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                    <p className="text-[11px] font-bold text-[var(--fg)]">Aion Form</p>
+                    <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                        This workflow triggers when someone submits your hosted form.
+                    </p>
+                </div>
+            </div>
+
+            <Section title="Form Setup" icon={Globe} color="text-blue-400">
+                <div className="space-y-3">
+                    <div className="space-y-1">
+                        <Label>Public Form URL</Label>
+                        <div className="flex items-center gap-2">
+                            <Input value={formUrl} readOnly className="font-mono text-[9px] bg-[var(--muted)]/50" />
+                            {typeof window !== 'undefined' && (
+                                <button onClick={() => window.open(formUrl, '_blank')} className="p-1.5 rounded-md border border-[var(--border)] hover:bg-[var(--muted)] transition-colors">
+                                    <Link2 className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <Label>Form Title</Label>
+                        <Input placeholder="Contact Us / Inquiry Form" value={data.formTitle || ''} onChange={(e: any) => updateData({ formTitle: e.target.value })} />
+                    </div>
+
+                    <div className="space-y-1">
+                        <Label>Description</Label>
+                        <Textarea className="h-16 py-1" placeholder="Tell users what this form is for..." value={data.formDescription || ''} onChange={(e: any) => updateData({ formDescription: e.target.value })} />
+                    </div>
+                </div>
+            </Section>
+
+            <Section title="Fields (JSON)" icon={Plus} color="text-emerald-400" defaultOpen={false}>
+                <Label>Field Definitions</Label>
+                <Textarea
+                    className="h-32 font-mono text-[10px]"
+                    placeholder='[{"name": "Full Name", "type": "text"}, {"name": "Email", "type": "email"}]'
+                    value={data.fields || '[]'}
+                    onChange={(e: any) => updateData({ fields: e.target.value })}
+                />
+                <p className="text-[9px] text-[var(--muted-fg)]">Define the inputs for your form as a JSON array.</p>
+            </Section>
+
+            <Section title="Embed Snippet" icon={Code2} color="text-amber-400" defaultOpen={false}>
+                <div className="space-y-2">
+                    <p className="text-[9px] text-[var(--muted-fg)]">Copy this to embed the form on your own website.</p>
+                    <div className="bg-black/20 p-2 rounded-md border border-[var(--border)] overflow-x-auto">
+                        <code className="text-[8px] text-amber-200/80 whitespace-pre">
+                            {`<iframe
+  src="${formUrl}&embed=true"
+  width="100%"
+  height="600"
+  frameborder="0"
+></iframe>`}
+                        </code>
+                    </div>
+                </div>
+            </Section>
+        </div>
+    );
+}
