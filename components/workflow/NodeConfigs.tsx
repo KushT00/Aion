@@ -8,22 +8,26 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+// ─── Shared types ──────────────────────────────────────────
+export interface Condition { id: string; leftValue?: string; operator?: string; rightValue?: string }
+export interface SwitchRule { id: string; leftValue?: string; operator?: string; rightValue?: string }
+
 // ─── Shared helpers ─────────────────────────────────────────
 export const Label = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
-    <label className={cn("text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider block mb-1 ml-0.5", className)}>{children}</label>
+    <label className={cn("text-[10px] font-bold text-(--muted-fg) uppercase tracking-wider block mb-1 ml-0.5", className)}>{children}</label>
 );
-export const Input = ({ className = '', ...props }: any) => (
+export const Input = ({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
     <input className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 transition-shadow", className)} {...props} />
 );
-export const Textarea = ({ className = '', ...props }: any) => (
+export const Textarea = ({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
     <textarea className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 resize-none transition-shadow", className)} {...props} />
 );
-export const Select = ({ children, className = '', ...props }: any) => (
+export const Select = ({ children, className = '', ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
     <select className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500", className)} {...props}>{children}</select>
 );
 
 // ─── Section Accordion ─────────────────────────────────────
-export function Section({ title, icon: Icon, color = 'text-[var(--muted-fg)]', children, defaultOpen = true }: any) {
+export function Section({ title, icon: Icon, color = 'text-(--muted-fg)', children, defaultOpen = true }: { title: string, icon?: React.ComponentType<{ className?: string }>, color?: string, children: React.ReactNode, defaultOpen?: boolean }) {
     const [open, setOpen] = useState(defaultOpen);
     return (
         <div className="border border-[var(--border)] rounded-lg overflow-hidden">
@@ -33,7 +37,7 @@ export function Section({ title, icon: Icon, color = 'text-[var(--muted-fg)]', c
                     {Icon && <Icon className={cn('w-3 h-3', color)} />}
                     <span className="text-[11px] font-bold text-[var(--fg)]">{title}</span>
                 </div>
-                {open ? <ChevronDown className="w-3 h-3 text-[var(--muted-fg)]" /> : <ChevronRight className="w-3 h-3 text-[var(--muted-fg)]" />}
+                {open ? <ChevronDown className="w-3 h-3 text-(--muted-fg)" /> : <ChevronRight className="w-3 h-3 text-(--muted-fg)" />}
             </button>
             {open && <div className="p-3 space-y-2.5 border-t border-[var(--border)] bg-transparent">{children}</div>}
         </div>
@@ -87,12 +91,20 @@ export function ModelSelector({ value, onChange, integrationId }: { value: strin
 }
 
 // ─── AI Agent Configuration ─────────────────────────────────
-export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function AIAgentConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
+    const data = (config.data || {}) as {
+        tools?: string[];
+        apiKey?: string;
+        model?: string;
+        systemPrompt?: string;
+        userPrompt?: string;
+        knowledgeBase?: string;
+        knowledgeText?: string;
+    };
     const tools: string[] = data.tools || [];
 
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     const toggleTool = (tool: string) => {
         const next = tools.includes(tool) ? tools.filter(t => t !== tool) : [...tools, tool];
         updateData({ tools: next });
@@ -120,13 +132,13 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
                     <div className="space-y-1">
                         <Label>Provider</Label>
                         <Select value={config.integrationId || 'google_gemini'}
-                            onChange={(e: any) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
                             {INTEGRATION_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                         </Select>
                     </div>
                     <div className="space-y-1">
                         <Label>API Key</Label>
-                        <Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
+                        <Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ apiKey: e.target.value })} />
                     </div>
                 </div>
 
@@ -144,16 +156,16 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
 
                 <div className="space-y-1 pt-2">
                     <Label>Instructions (System)</Label>
-                    <Textarea className="h-14 py-1" placeholder="Who are you?" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} />
+                    <Textarea className="h-14 py-1" placeholder="Who are you?" value={data.systemPrompt || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateData({ systemPrompt: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                     <Label>Prompt (User)</Label>
-                    <Textarea className="h-16 py-1" placeholder="Task details..." value={data.userPrompt || ''} onChange={(e: any) => updateData({ userPrompt: e.target.value })} />
+                    <Textarea className="h-16 py-1" placeholder="Task details..." value={data.userPrompt || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateData({ userPrompt: e.target.value })} />
                 </div>
             </Section>
 
             <Section title="Tools" icon={Wrench} color="text-amber-400" defaultOpen={false}>
-                <p className="text-[10px] text-[var(--muted-fg)]">Give the agent capabilities beyond text generation.</p>
+                <p className="text-[10px] text-(--muted-fg)">Give the agent capabilities beyond text generation.</p>
                 <div className="space-y-2">
                     {availableTools.map(tool => (
                         <label key={tool.id} className={cn(
@@ -165,7 +177,7 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
                             <input type="checkbox" checked={tools.includes(tool.id)} onChange={() => toggleTool(tool.id)} className="accent-amber-500 w-3.5 h-3.5" />
                             <div>
                                 <p className="text-xs font-semibold text-[var(--fg)]">{tool.label}</p>
-                                <p className="text-[10px] text-[var(--muted-fg)]">{tool.desc}</p>
+                                <p className="text-[10px] text-(--muted-fg)">{tool.desc}</p>
                             </div>
                         </label>
                     ))}
@@ -175,9 +187,9 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
             <Section title="RAG / Knowledge" icon={BookOpen} color="text-blue-400" defaultOpen={false}>
                 <div className="space-y-1.5">
                     <Label>URL / Docs</Label>
-                    <Input placeholder="URL or text..." value={data.knowledgeBase || ''} onChange={(e: any) => updateData({ knowledgeBase: e.target.value })} />
+                    <Input placeholder="URL or text..." value={data.knowledgeBase || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ knowledgeBase: e.target.value })} />
                     <Label>Context</Label>
-                    <Textarea className="h-16 py-1" placeholder="Inject text..." value={data.knowledgeText || ''} onChange={(e: any) => updateData({ knowledgeText: e.target.value })} />
+                    <Textarea className="h-16 py-1" placeholder="Inject text..." value={data.knowledgeText || ''} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateData({ knowledgeText: e.target.value })} />
                 </div>
             </Section>
         </div>
@@ -185,10 +197,10 @@ export function AIAgentConfig({ node, updateNode }: { node: any; updateNode: (d:
 }
 
 // ─── Switch Configuration ───────────────────────────────────
-export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function SwitchConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const rules = config.rules || [];
-    const updateRules = (newRules: any[]) => updateNode({ config: { ...config, rules: newRules, actionId: 'evaluate', integrationId: 'switch' } });
+    const rules = (config.rules as SwitchRule[]) || [];
+    const updateRules = (newRules: SwitchRule[]) => updateNode({ config: { ...config, rules: newRules as unknown as Record<string, unknown>[], actionId: 'evaluate', integrationId: 'switch' } });
 
     const operators = [
         { value: 'equals', label: '= equals' },
@@ -203,8 +215,8 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
     ];
 
     const addRule = () => {
-        const newRule = {
-            id: `rule_${Math.random().toString(36).substr(2, 9)}`,
+        const newRule: SwitchRule = {
+            id: `rule_${crypto.randomUUID()}`,
             leftValue: '',
             operator: 'equals',
             rightValue: '',
@@ -213,27 +225,27 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
     };
 
     const removeRule = (id: string) => {
-        updateRules(rules.filter((r: any) => r.id !== id));
+        updateRules(rules.filter((r) => r.id !== id));
     };
 
-    const updateRule = (id: string, kv: any) => {
-        updateRules(rules.map((r: any) => r.id === id ? { ...r, ...kv } : r));
+    const updateRule = (id: string, kv: Partial<SwitchRule>) => {
+        updateRules(rules.map((r) => r.id === id ? { ...r, ...kv } : r));
     };
 
     return (
         <div className="space-y-4">
             <div className="p-2 bg-orange-500/5 border border-orange-500/20 rounded-lg">
-                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                <p className="text-[10px] text-(--muted-fg) leading-tight">
                     Workflow will follow the first matching case. Add cases below.
                 </p>
             </div>
 
             <div className="space-y-3">
-                {rules.map((rule: any, idx: number) => (
+                {rules.map((rule, idx) => (
                     <div key={rule.id} className="p-3 border border-[var(--border)] rounded-lg bg-[var(--muted)]/30 space-y-2 relative group/rule">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-orange-400 uppercase">Case {idx + 1}</span>
-                            <button onClick={() => removeRule(rule.id)} className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors">
+                            <button onClick={() => removeRule(rule.id)} className="text-(--muted-fg) hover:text-rose-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                             </button>
                         </div>
@@ -243,7 +255,7 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
                             <Input
                                 placeholder="{{node.field}} or value"
                                 value={rule.leftValue || ''}
-                                onChange={(e: any) => updateRule(rule.id, { leftValue: e.target.value })}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRule(rule.id, { leftValue: e.target.value })}
                             />
                         </div>
 
@@ -252,18 +264,18 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
                                 <Label>Operator</Label>
                                 <Select
                                     value={rule.operator || 'equals'}
-                                    onChange={(e: any) => updateRule(rule.id, { operator: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateRule(rule.id, { operator: e.target.value })}
                                 >
                                     {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
                                 </Select>
                             </div>
-                            {!['is_empty', 'is_not_empty'].includes(rule.operator) && (
+                            {!['is_empty', 'is_not_empty'].includes(rule.operator || '') && (
                                 <div className="space-y-1.5">
                                     <Label>Right Value</Label>
                                     <Input
                                         placeholder="Compare to..."
                                         value={rule.rightValue || ''}
-                                        onChange={(e: any) => updateRule(rule.id, { rightValue: e.target.value })}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRule(rule.id, { rightValue: e.target.value })}
                                     />
                                 </div>
                             )}
@@ -274,14 +286,14 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
 
             <button
                 onClick={addRule}
-                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-orange-500/40 hover:text-orange-400 transition-all uppercase"
+                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-(--muted-fg) hover:border-orange-500/40 hover:text-orange-400 transition-all uppercase"
             >
                 <Plus className="w-3 h-3" />
                 Add Case
             </button>
 
             <div className="p-2.5 bg-[var(--muted)] rounded-lg border border-[var(--border)]">
-                <p className="text-[9px] text-[var(--muted-fg)] flex items-center gap-2">
+                <p className="text-[9px] text-(--muted-fg) flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
                     If no cases match, execution follows <b>Default</b>.
                 </p>
@@ -291,10 +303,10 @@ export function SwitchConfig({ node, updateNode }: { node: any; updateNode: (d: 
 }
 
 // ─── IF / ELSE Configuration ────────────────────────────────
-export function IfElseConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function IfElseConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { leftValue?: string; operator?: string; rightValue?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     const operators = [
         { value: 'equals', label: '= equals' },
@@ -311,24 +323,24 @@ export function IfElseConfig({ node, updateNode }: { node: any; updateNode: (d: 
     return (
         <div className="space-y-3">
             <div className="p-2 bg-orange-500/5 border border-orange-500/20 rounded-lg">
-                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                <p className="text-[10px] text-(--muted-fg) leading-tight">
                     Check <span className="text-emerald-400 font-bold">True</span> or <span className="text-rose-400 font-bold">False</span> handles.
                 </p>
             </div>
             <div className="space-y-2">
                 <Label>Left Value</Label>
-                <Input placeholder="{{node_label.field}} or literal value" value={data.leftValue || ''} onChange={(e: any) => updateData({ leftValue: e.target.value })} />
+                <Input placeholder="{{node_label.field}} or literal value" value={data.leftValue || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ leftValue: e.target.value })} />
             </div>
             <div className="space-y-2">
                 <Label>Operator</Label>
-                <Select value={data.operator || 'equals'} onChange={(e: any) => updateData({ operator: e.target.value })}>
+                <Select value={data.operator || 'equals'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateData({ operator: e.target.value })}>
                     {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
                 </Select>
             </div>
-            {!['is_empty', 'is_not_empty'].includes(data.operator) && (
+            {!['is_empty', 'is_not_empty'].includes(data.operator || '') && (
                 <div className="space-y-2">
                     <Label>Right Value</Label>
-                    <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: any) => updateData({ rightValue: e.target.value })} />
+                    <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ rightValue: e.target.value })} />
                 </div>
             )}
         </div>
@@ -336,10 +348,10 @@ export function IfElseConfig({ node, updateNode }: { node: any; updateNode: (d: 
 }
 
 // ─── Filter Configuration ───────────────────────────────────
-export function FilterConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function FilterConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv }, integrationId: 'filter', actionId: 'evaluate' } });
+    const data = (config.data || {}) as { leftValue?: string; operator?: string; rightValue?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv }, integrationId: 'filter', actionId: 'evaluate' } });
 
     const operators = [
         { value: 'equals', label: '= equals' },
@@ -356,24 +368,24 @@ export function FilterConfig({ node, updateNode }: { node: any; updateNode: (d: 
     return (
         <div className="space-y-3">
             <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
-                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                <p className="text-[10px] text-(--muted-fg) leading-tight">
                     Workflow will <span className="text-violet-400 font-bold uppercase">Stop</span> if the condition below is not met.
                 </p>
             </div>
             <div className="space-y-2">
                 <Label>Left Value</Label>
-                <Input placeholder="{{node_label.field}} or literal value" value={data.leftValue || ''} onChange={(e: any) => updateData({ leftValue: e.target.value })} />
+                <Input placeholder="{{node_label.field}} or literal value" value={data.leftValue || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ leftValue: e.target.value })} />
             </div>
             <div className="space-y-2">
                 <Label>Operator</Label>
-                <Select value={data.operator || 'equals'} onChange={(e: any) => updateData({ operator: e.target.value })}>
+                <Select value={data.operator || 'equals'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateData({ operator: e.target.value })}>
                     {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
                 </Select>
             </div>
-            {!['is_empty', 'is_not_empty'].includes(data.operator) && (
+            {!['is_empty', 'is_not_empty'].includes(data.operator || '') && (
                 <div className="space-y-2">
                     <Label>Right Value</Label>
-                    <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: any) => updateData({ rightValue: e.target.value })} />
+                    <Input placeholder="Value to compare against" value={data.rightValue || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ rightValue: e.target.value })} />
                 </div>
             )}
         </div>
@@ -381,11 +393,11 @@ export function FilterConfig({ node, updateNode }: { node: any; updateNode: (d: 
 }
 
 // ─── Parallel Configuration ─────────────────────────────────
-export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function ParallelConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const branches = config.branches || [{ id: 'branch_1', label: 'Branch 1' }];
+    const branches = (config.branches as { id: string; label: string }[]) || [{ id: 'branch_1', label: 'Branch 1' }];
 
-    const updateBranches = (newBranches: any[]) => {
+    const updateBranches = (newBranches: Record<string, unknown>[]) => {
         updateNode({
             config: {
                 ...config,
@@ -397,23 +409,23 @@ export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d
     };
 
     const addBranch = () => {
-        const id = `branch_${Date.now()}`;
+        const id = `branch_${crypto.randomUUID()}`;
         updateBranches([...branches, { id, label: `Branch ${branches.length + 1}` }]);
     };
 
     const removeBranch = (id: string) => {
         if (branches.length <= 1) return;
-        updateBranches(branches.filter((b: any) => b.id !== id));
+        updateBranches(branches.filter((b: { id: string }) => b.id !== id));
     };
 
     const updateBranchLabel = (id: string, label: string) => {
-        updateBranches(branches.map((b: any) => b.id === id ? { ...b, label } : b));
+        updateBranches(branches.map((b: { id: string }) => b.id === id ? { ...b, label } : b));
     };
 
     return (
         <div className="space-y-4">
             <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
-                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                <p className="text-[10px] text-(--muted-fg) leading-tight">
                     This node sends the exact same input data to <span className="text-violet-400 font-bold uppercase">All</span> connected branches.
                 </p>
             </div>
@@ -425,12 +437,12 @@ export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d
                 </div>
 
                 <div className="space-y-2">
-                    {branches.map((branch: any, idx: number) => (
+                    {branches.map((branch: { id: string; label: string }, idx: number) => (
                         <div key={branch.id} className="flex items-center gap-2 group">
                             <div className="flex-1 relative">
                                 <Input
                                     value={branch.label}
-                                    onChange={(e: any) => updateBranchLabel(branch.id, e.target.value)}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateBranchLabel(branch.id, e.target.value)}
                                     className="pr-8 h-8 text-[11px]"
                                     placeholder={`Branch ${idx + 1} Name`}
                                 />
@@ -441,7 +453,7 @@ export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d
                             <button
                                 onClick={() => removeBranch(branch.id)}
                                 disabled={branches.length <= 1}
-                                className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors disabled:opacity-30"
+                                className="text-(--muted-fg) hover:text-rose-500 transition-colors disabled:opacity-30"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -451,7 +463,7 @@ export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d
 
                 <button
                     onClick={addBranch}
-                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-2"
+                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-(--muted-fg) hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-2"
                 >
                     <Plus className="w-3 h-3" />
                     Add Branch
@@ -462,13 +474,14 @@ export function ParallelConfig({ node, updateNode }: { node: any; updateNode: (d
 }
 
 // ─── Condition Group Configuration ──────────────────────────
-export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function ConditionGroupConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const conditions = data.conditions || [{ id: `cond_${Date.now()}`, leftValue: '', operator: 'equals', rightValue: '' }];
+    const data = (config.data || {}) as { conditions?: Condition[]; logicalOperator?: string };
+    // Use a stable initial condition if none exists
+    const conditions = data.conditions || [{ id: 'cond_initial', leftValue: '', operator: 'equals', rightValue: '' }];
     const logicalOperator = data.logicalOperator || 'and';
 
-    const updateData = (kv: any) => {
+    const updateData = (kv: Record<string, unknown>) => {
         updateNode({
             config: {
                 ...config,
@@ -493,7 +506,7 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
 
     const addCondition = () => {
         const newCondition = {
-            id: `cond_${Math.random().toString(36).substr(2, 9)}`,
+            id: `cond_${crypto.randomUUID()}`,
             leftValue: '',
             operator: 'equals',
             rightValue: '',
@@ -506,16 +519,16 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
         updateData({ conditions: conditions.filter((c: any) => c.id !== id) });
     };
 
-    const updateCondition = (id: string, kv: any) => {
+    const updateCondition = (id: string, kv: Record<string, unknown>) => {
         updateData({
-            conditions: conditions.map((c: any) => c.id === id ? { ...c, ...kv } : c)
+            conditions: conditions.map((c: { id: string }) => c.id === id ? { ...c, ...kv } : c)
         });
     };
 
     return (
         <div className="space-y-4">
             <div className="p-2 bg-violet-500/5 border border-violet-500/20 rounded-lg">
-                <p className="text-[10px] text-[var(--muted-fg)] leading-tight">
+                <p className="text-[10px] text-(--muted-fg) leading-tight">
                     Evaluate multiple conditions. Branch to <span className="text-emerald-400 font-bold">TRUE</span> if the logic below passes.
                 </p>
             </div>
@@ -531,7 +544,7 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
                                 "flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all border",
                                 logicalOperator === op
                                     ? "bg-violet-500 border-violet-600 text-white shadow-sm"
-                                    : "bg-[var(--muted)] border-[var(--border)] text-[var(--muted-fg)] hover:border-violet-500/50"
+                                    : "bg-[var(--muted)] border-[var(--border)] text-(--muted-fg) hover:border-violet-500/50"
                             )}
                         >
                             {op}
@@ -542,11 +555,11 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
 
             <div className="space-y-3">
                 <Label>Conditions</Label>
-                {conditions.map((cond: any, idx: number) => (
+                {conditions.map((cond: { id: string; leftValue?: string; operator?: string; rightValue?: string }, idx: number) => (
                     <div key={cond.id} className="p-3 border border-[var(--border)] rounded-lg bg-[var(--muted)]/30 space-y-2 relative group/cond">
                         <div className="flex items-center justify-between">
                             <span className="text-[9px] font-bold text-violet-400 uppercase">Condition {idx + 1}</span>
-                            <button onClick={() => removeCondition(cond.id)} className="text-[var(--muted-fg)] hover:text-rose-500 transition-colors">
+                            <button onClick={() => removeCondition(cond.id)} className="text-(--muted-fg) hover:text-rose-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                             </button>
                         </div>
@@ -555,7 +568,7 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
                             <Input
                                 placeholder="Left side (e.g. {{node.field}})"
                                 value={cond.leftValue || ''}
-                                onChange={(e: any) => updateCondition(cond.id, { leftValue: e.target.value })}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateCondition(cond.id, { leftValue: e.target.value })}
                                 className="h-8"
                             />
                         </div>
@@ -563,16 +576,16 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
                         <div className="grid grid-cols-2 gap-2">
                             <Select
                                 value={cond.operator || 'equals'}
-                                onChange={(e: any) => updateCondition(cond.id, { operator: e.target.value })}
+                                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateCondition(cond.id, { operator: e.target.value })}
                                 className="h-8"
                             >
                                 {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
                             </Select>
-                            {!['is_empty', 'is_not_empty'].includes(cond.operator) && (
+                            {cond.operator && !['is_empty', 'is_not_empty'].includes(cond.operator) && (
                                 <Input
                                     placeholder="Right side"
                                     value={cond.rightValue || ''}
-                                    onChange={(e: any) => updateCondition(cond.id, { rightValue: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateCondition(cond.id, { rightValue: e.target.value })}
                                     className="h-8"
                                 />
                             )}
@@ -582,7 +595,7 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
 
                 <button
                     onClick={addCondition}
-                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-[var(--muted-fg)] hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-1"
+                    className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-[var(--border)] rounded-lg text-[10px] font-bold text-(--muted-fg) hover:border-violet-500/40 hover:text-violet-400 transition-all uppercase mt-1"
                 >
                     <Plus className="w-3 h-3" />
                     Add Condition
@@ -593,13 +606,13 @@ export function ConditionGroupConfig({ node, updateNode }: { node: any; updateNo
 }
 
 // ─── Retry Configuration ────────────────────────────────────
-export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function RetryConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
+    const data = (config.data || {}) as { maxAttempts?: string; delay?: string };
     const maxAttempts = data.maxAttempts || '3';
     const delay = data.delay || '2';
 
-    const updateData = (kv: any) => {
+    const updateData = (kv: Record<string, unknown>) => {
         updateNode({
             config: {
                 ...config,
@@ -616,7 +629,7 @@ export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: a
                 <RotateCw className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                     <p className="text-[11px] font-bold text-[var(--fg)]">Retry Mechanism</p>
-                    <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                    <p className="text-[10px] text-(--muted-fg) leading-relaxed">
                         If the preceding node fails, this node will trigger a re-execution.
                     </p>
                 </div>
@@ -631,10 +644,10 @@ export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: a
                         max="10"
                         placeholder="e.g. 3"
                         value={maxAttempts}
-                        onChange={(e: any) => updateData({ maxAttempts: e.target.value })}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ maxAttempts: e.target.value })}
                         className="h-8 border-amber-500/20 focus:border-amber-500/50"
                     />
-                    <p className="text-[9px] text-[var(--muted-fg)]">Maximum number of retries before giving up.</p>
+                    <p className="text-[9px] text-(--muted-fg)">Maximum number of retries before giving up.</p>
                 </div>
 
                 <div className="space-y-1.5 pt-2 border-t border-[var(--border)]">
@@ -645,14 +658,14 @@ export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: a
                         max="60"
                         placeholder="e.g. 2"
                         value={delay}
-                        onChange={(e: any) => updateData({ delay: e.target.value })}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ delay: e.target.value })}
                         className="h-8 border-amber-500/20 focus:border-amber-500/50"
                     />
-                    <p className="text-[9px] text-[var(--muted-fg)]">Wait time between attempts.</p>
+                    <p className="text-[9px] text-(--muted-fg)">Wait time between attempts.</p>
                 </div>
             </div>
 
-            <div className="text-[9px] text-[var(--muted-fg)] italic px-1">
+            <div className="text-[9px] text-(--muted-fg) italic px-1">
                 Note: This node effectively wraps the execution of the node connected to its input.
             </div>
         </div>
@@ -660,87 +673,87 @@ export function RetryConfig({ node, updateNode }: { node: any; updateNode: (d: a
 }
 
 // ─── Slack Configuration ────────────────────────────────────
-export function SlackConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function SlackConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { webhookUrl?: string; channel?: string; username?: string; text?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     return (
         <div className="space-y-3">
             <div className="space-y-2"><Label>Incoming Webhook URL</Label>
-                <Input placeholder="https://hooks.slack.com/services/..." value={data.webhookUrl || ''} onChange={(e: any) => updateData({ webhookUrl: e.target.value })} />
-                <p className="text-[10px] text-[var(--muted-fg)]">Create one at <a href="https://api.slack.com/messaging/webhooks" target="_blank" className="text-violet-400 hover:underline">api.slack.com</a></p>
+                <Input placeholder="https://hooks.slack.com/services/..." value={data.webhookUrl || ''} onChange={(e) => updateData({ webhookUrl: e.target.value })} />
+                <p className="text-[10px] text-(--muted-fg)">Create one at <a href="https://api.slack.com/messaging/webhooks" target="_blank" className="text-violet-400 hover:underline">api.slack.com</a></p>
             </div>
             <div className="space-y-2"><Label>Channel (optional override)</Label>
-                <Input placeholder="#general" value={data.channel || ''} onChange={(e: any) => updateData({ channel: e.target.value })} />
+                <Input placeholder="#general" value={data.channel || ''} onChange={(e) => updateData({ channel: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Bot Name (optional)</Label>
-                <Input placeholder="AION" value={data.username || ''} onChange={(e: any) => updateData({ username: e.target.value })} />
+                <Input placeholder="AION" value={data.username || ''} onChange={(e) => updateData({ username: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Message</Label>
-                <Textarea className="h-28" placeholder="{{ai_node.text}}" value={data.text || ''} onChange={(e: any) => updateData({ text: e.target.value })} />
+                <Textarea className="h-28" placeholder="{{ai_node.text}}" value={data.text || ''} onChange={(e) => updateData({ text: e.target.value })} />
             </div>
         </div>
     );
 }
 
 // ─── Telegram Configuration ─────────────────────────────────
-export function TelegramConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function TelegramConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { botToken?: string; chatId?: string; text?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     return (
         <div className="space-y-3">
             <div className="p-2.5 bg-sky-500/5 border border-sky-500/20 rounded-lg">
                 <p className="text-[10px] text-sky-400 font-semibold mb-1">Telegram Bot API</p>
                 <div className="space-y-2">
                     <Label>Bot Token</Label>
-                    <Input type="password" placeholder="1234567890:AAF..." value={data.botToken || ''} onChange={(e: any) => updateData({ botToken: e.target.value })} />
-                    <p className="text-[9px] text-[var(--muted-fg)] leading-tight">Paste your token from <a href="https://t.me/BotFather" target="_blank" className="text-sky-400 hover:underline">@BotFather</a></p>
+                    <Input type="password" placeholder="1234567890:AAF..." value={data.botToken || ''} onChange={(e) => updateData({ botToken: e.target.value })} />
+                    <p className="text-[9px] text-(--muted-fg) leading-tight">Paste your token from <a href="https://t.me/BotFather" target="_blank" className="text-sky-400 hover:underline">@BotFather</a></p>
                 </div>
             </div>
             <div className="space-y-2">
                 <Label>Chat ID (Optional)</Label>
-                <Input placeholder="-100..." value={data.chatId || ''} onChange={(e: any) => updateData({ chatId: e.target.value })} />
+                <Input placeholder="-100..." value={data.chatId || ''} onChange={(e) => updateData({ chatId: e.target.value })} />
             </div>
             <div className="space-y-2">
                 <Label>Message Content</Label>
-                <Textarea className="h-28" placeholder="Hello!" value={data.text || ''} onChange={(e: any) => updateData({ text: e.target.value })} />
+                <Textarea className="h-28" placeholder="Hello!" value={data.text || ''} onChange={(e) => updateData({ text: e.target.value })} />
             </div>
         </div>
     );
 }
 
 // ─── Notion Configuration ───────────────────────────────────
-export function NotionConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function NotionConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { apiKey?: string; pageId?: string; databaseId?: string; content?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     return (
         <div className="space-y-3">
             <div className="space-y-2"><Label>Integration Token</Label>
-                <Input type="password" placeholder="secret_..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
+                <Input type="password" placeholder="secret_..." value={data.apiKey || ''} onChange={(e) => updateData({ apiKey: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Action</Label>
-                <Select value={config.actionId || 'create_page'} onChange={(e: any) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                <Select value={config.actionId || 'create_page'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, actionId: e.target.value } })}>
                     <option value="create_page">Create Page</option>
                     <option value="append_block">Append to Page</option>
                 </Select>
             </div>
             <div className="space-y-2"><Label>Page / Database ID</Label>
-                <Input placeholder="abc123def..." value={data.pageId || data.databaseId || ''} onChange={(e: any) => updateData({ pageId: e.target.value, databaseId: e.target.value })} />
+                <Input placeholder="abc123def..." value={data.pageId || data.databaseId || ''} onChange={(e) => updateData({ pageId: e.target.value, databaseId: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Content</Label>
-                <Textarea className="h-24" value={data.content || ''} onChange={(e: any) => updateData({ content: e.target.value })} />
+                <Textarea className="h-24" value={data.content || ''} onChange={(e) => updateData({ content: e.target.value })} />
             </div>
         </div>
     );
 }
 
 // ─── OpenRouter Configuration ───────────────────────────────
-export function OpenRouterConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function OpenRouterConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { apiKey?: string; model?: string; systemPrompt?: string; userPrompt?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
     const popularModels = [
         { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)' },
         { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)' },
@@ -752,49 +765,49 @@ export function OpenRouterConfig({ node, updateNode }: { node: any; updateNode: 
         <div className="space-y-3">
             <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 rounded-lg">
                 <p className="text-[10px] text-violet-400 font-semibold">300+ Models Available</p>
-                <p className="text-[10px] text-[var(--muted-fg)]">Get key at <a href="https://openrouter.ai/keys" target="_blank" className="text-violet-400 hover:underline">openrouter.ai</a></p>
+                <p className="text-[10px] text-(--muted-fg)">Get key at <a href="https://openrouter.ai/keys" target="_blank" className="text-violet-400 hover:underline">openrouter.ai</a></p>
             </div>
             <div className="space-y-2"><Label>API Key</Label>
-                <Input type="password" placeholder="sk-or-..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} />
+                <Input type="password" placeholder="sk-or-..." value={data.apiKey || ''} onChange={(e) => updateData({ apiKey: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Model</Label>
-                <Select value={data.model || ''} onChange={(e: any) => updateData({ model: e.target.value })}>
+                <Select value={data.model || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateData({ model: e.target.value })}>
                     <option value="">-- Select model --</option>
                     {popularModels.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </Select>
-                <Input placeholder="Custom Model ID..." value={data.model || ''} onChange={(e: any) => updateData({ model: e.target.value })} />
+                <Input placeholder="Custom Model ID..." value={data.model || ''} onChange={(e) => updateData({ model: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>System Prompt</Label>
-                <Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} />
+                <Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e) => updateData({ systemPrompt: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>User Prompt</Label>
-                <Textarea className="h-24" placeholder="{{node.text}}" value={data.userPrompt || ''} onChange={(e: any) => updateData({ userPrompt: e.target.value })} />
+                <Textarea className="h-24" placeholder="{{node.text}}" value={data.userPrompt || ''} onChange={(e) => updateData({ userPrompt: e.target.value })} />
             </div>
         </div>
     );
 }
 
 // ─── Code Node Configuration ────────────────────────────────
-export function CodeConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function CodeConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
+    const data = (config.data || {}) as { code?: string };
     return (
         <div className="space-y-3">
-            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 rounded-lg text-[10px] text-[var(--muted-fg)]">
+            <div className="p-2.5 bg-cyan-500/5 border border-cyan-500/20 rounded-lg text-[10px] text-(--muted-fg)">
                 <p className="text-cyan-400 font-semibold uppercase mb-1">JavaScript Sandbox</p>
                 <code className="bg-[var(--muted)] px-1 rounded">$input</code> = previous outputs
             </div>
             <div className="space-y-2"><Label>Code</Label>
-                <Textarea className="h-48 font-mono text-xs" value={data.code || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, code: e.target.value } } })} />
+                <Textarea className="h-48 font-mono text-xs" value={data.code || ''} onChange={(e) => updateNode({ config: { ...config, data: { ...data, code: e.target.value } } })} />
             </div>
         </div>
     );
 }
 
 // ─── Set Variable Configuration ─────────────────────────────
-export function SetVariableConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function SetVariableConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
+    const data = (config.data || {}) as { varList?: { key: string; value: string }[] };
     const vars: { key: string; value: string }[] = data.varList || [{ key: '', value: '' }];
     return (
         <div className="space-y-3">
@@ -802,7 +815,7 @@ export function SetVariableConfig({ node, updateNode }: { node: any; updateNode:
                 {vars.map((v, i) => (
                     <div key={i} className="flex gap-2 items-center">
                         <Input placeholder="key" className="w-24" value={v.key} onChange={(e: any) => { const n = [...vars]; n[i].key = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
-                        <span className="text-[var(--muted-fg)]">=</span>
+                        <span className="text-(--muted-fg)">=</span>
                         <Input placeholder="value" value={v.value} onChange={(e: any) => { const n = [...vars]; n[i].value = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
                     </div>
                 ))}
@@ -813,28 +826,28 @@ export function SetVariableConfig({ node, updateNode }: { node: any; updateNode:
 }
 
 // ─── Delay Configuration ────────────────────────────────────
-export function DelayConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function DelayConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
+    const data = (config.data || {}) as { seconds?: string };
     return (
         <div className="space-y-3">
             <Label>Delay (seconds)</Label>
-            <Input type="number" placeholder="5" value={data.seconds || ''} onChange={(e: any) => updateNode({ config: { ...config, data: { ...data, seconds: e.target.value } } })} />
+            <Input type="number" placeholder="5" value={data.seconds || ''} onChange={(e) => updateNode({ config: { ...config, data: { ...data, seconds: e.target.value } } })} />
         </div>
     );
 }
 
 // ─── Unified AI Configuration ────────────────────────────────
-export function AIConfig({ node, updateNode }: { node: any, updateNode: (data: any) => void }) {
+export function AIConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (data: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const integrationId = config.integrationId || 'google_gemini';
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { [key: string]: unknown };
+    const integrationId = (config.integrationId as string) || 'google_gemini';
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     return (
         <div className="space-y-4">
             <div className="space-y-1"><Label>Provider</Label>
-                <Select value={integrationId} onChange={(e: any) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
+                <Select value={integrationId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
                     <option value="google_gemini">Google Gemini</option>
                     <option value="openai">OpenAI GPT</option>
                     <option value="groq">Groq (Llama)</option>
@@ -1104,7 +1117,7 @@ export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogl
                                 onClick={() => updateNode({ config: { ...config, actionId: 'create_doc' } })}
                                 className={cn(
                                     "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                    actionID === 'create_doc' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                    actionID === 'create_doc' ? "bg-violet-500 text-white shadow-sm" : "text-(--muted-fg) hover:bg-[var(--card)]"
                                 )}
                             >
                                 <Plus className="w-3 h-3 inline-block mr-1 mb-0.5" />
@@ -1114,7 +1127,7 @@ export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogl
                                 onClick={() => updateNode({ config: { ...config, actionId: 'append_text' } })}
                                 className={cn(
                                     "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                    actionID === 'append_text' ? "bg-violet-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                    actionID === 'append_text' ? "bg-violet-500 text-white shadow-sm" : "text-(--muted-fg) hover:bg-[var(--card)]"
                                 )}
                             >
                                 <BookOpen className="w-3 h-3 inline-block mr-1 mb-0.5" />
@@ -1124,7 +1137,7 @@ export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogl
                                 onClick={() => updateNode({ config: { ...config, actionId: 'get_doc' } })}
                                 className={cn(
                                     "flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                    actionID === 'get_doc' ? "bg-emerald-500 text-white shadow-sm" : "text-[var(--muted-fg)] hover:bg-[var(--card)]"
+                                    actionID === 'get_doc' ? "bg-emerald-500 text-white shadow-sm" : "text-(--muted-fg) hover:bg-[var(--card)]"
                                 )}
                             >
                                 <Link2 className="w-3 h-3 inline-block mr-1 mb-0.5" />
@@ -1210,9 +1223,9 @@ export function DocsConfig({ node, updateNode, googleIntegration, onConnectGoogl
                                 {/* How to use the output */}
                                 <div className="p-2.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg space-y-1.5">
                                     <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Output — Use As KB</p>
-                                    <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                                    <p className="text-[9px] text-(--muted-fg) leading-relaxed">
                                         This node outputs the full document text. Connect it to an
-                                        <span className="text-purple-400 font-semibold"> AI Agent's Knowledge (KB) ◆</span> port, or reference it with:
+                                        <span className="text-purple-400 font-semibold"> AI Agent&apos;s Knowledge (KB) ◆</span> port, or reference it with:
                                     </p>
                                     <code className="block text-[9px] bg-[var(--muted)] px-2 py-1 rounded text-emerald-300 font-mono">
                                         {`{{${data.documentName || 'Google Docs'}.text}}`}
@@ -1400,7 +1413,7 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
                     value={data.inputArray || ''}
                     onChange={(e: any) => updateData({ inputArray: e.target.value })}
                 />
-                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed ml-0.5">
+                <p className="text-[9px] text-(--muted-fg) leading-relaxed ml-0.5">
                     Use <code className="bg-[var(--muted)] px-1 rounded">{'{{NodeName.values}}'}</code> for Google Sheets,
                     or <code className="bg-[var(--muted)] px-1 rounded">{'{{NodeName.items}}'}</code> for plain arrays.
                 </p>
@@ -1416,7 +1429,7 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
                 />
                 <div>
                     <p className="text-xs font-semibold text-[var(--fg)]">First row is headers</p>
-                    <p className="text-[10px] text-[var(--muted-fg)]">Maps column names as object keys (recommended for Sheets)</p>
+                    <p className="text-[10px] text-(--muted-fg)">Maps column names as object keys (recommended for Sheets)</p>
                 </div>
             </label>
 
@@ -1426,11 +1439,11 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
                 <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                         <code className="text-[10px] bg-[var(--muted)] px-2 py-0.5 rounded text-orange-300 font-mono">{'{{currentItem.ColumnName}}'}</code>
-                        <span className="text-[9px] text-[var(--muted-fg)]">any column value</span>
+                        <span className="text-[9px] text-(--muted-fg)">any column value</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <code className="text-[10px] bg-[var(--muted)] px-2 py-0.5 rounded text-orange-300 font-mono">{'{{currentIndex}}'}</code>
-                        <span className="text-[9px] text-[var(--muted-fg)]">0-based row number</span>
+                        <span className="text-[9px] text-(--muted-fg)">0-based row number</span>
                     </div>
                 </div>
             </div>
@@ -1438,7 +1451,7 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
             {/* Example for leads scenario */}
             <div className="p-3 bg-[var(--muted)] rounded-lg border border-[var(--border)] space-y-1.5">
                 <p className="text-[9px] font-bold text-[var(--fg)] uppercase tracking-wider">📋 Example — Leads Scenario</p>
-                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                <p className="text-[9px] text-(--muted-fg) leading-relaxed">
                     Input: <code className="text-violet-400">{'{{Google Sheets.values}}'}</code><br />
                     In AI prompt: <code className="text-violet-400">{'{{currentItem.Name}}, {{currentItem.Company}}'}</code><br />
                     Doc title: <code className="text-violet-400">{'Proposal for {{currentItem.Company}}'}</code>
@@ -1450,10 +1463,10 @@ export function LoopConfig({ node, updateNode }: { node: any; updateNode: (d: an
 
 // ─── CRM Capture Configuration ───────────────────────────────
 // Lets creators configure what data gets saved to the buyer's CRM dashboard
-export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function CRMCaptureConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { resultType?: string; title?: string; captureFields?: string; tags?: string; sourceNodeId?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     return (
         <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200">
@@ -1465,7 +1478,7 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                     </div>
                     <p className="text-[11px] font-black text-teal-400 uppercase tracking-wider">CRM Capture</p>
                 </div>
-                <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                <p className="text-[10px] text-(--muted-fg) leading-relaxed">
                     This node saves the upstream data as a <span className="text-teal-400 font-bold">business result</span> in
                     the buyer&apos;s CRM Dashboard. Use this to capture leads, proposals, extracted data — anything the buyer
                     should see as a deliverable.
@@ -1489,7 +1502,7 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                                 "p-2 rounded-lg border text-left transition-all",
                                 (data.resultType || 'lead') === t.id
                                     ? "bg-teal-500/10 border-teal-500/50 text-teal-400"
-                                    : "border-[var(--border)] hover:border-teal-500/30 text-[var(--muted-fg)]"
+                                    : "border-[var(--border)] hover:border-teal-500/30 text-(--muted-fg)"
                             )}
                         >
                             <p className="text-[10px] font-bold">{t.label}</p>
@@ -1507,7 +1520,7 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                     value={data.title || ''}
                     onChange={(e: any) => updateData({ title: e.target.value })}
                 />
-                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                <p className="text-[9px] text-(--muted-fg) ml-0.5">
                     Use <code className="bg-[var(--muted)] px-1 rounded">{'{{variable}}'}</code> for dynamic titles
                 </p>
             </div>
@@ -1518,9 +1531,9 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                 <Input
                     placeholder="name, email, phone, company"
                     value={data.captureFields || ''}
-                    onChange={(e: any) => updateData({ captureFields: e.target.value })}
+                    onChange={(e) => updateData({ captureFields: e.target.value })}
                 />
-                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                <p className="text-[9px] text-(--muted-fg) ml-0.5">
                     Comma-separated. Leave empty to capture entire upstream output.
                 </p>
             </div>
@@ -1531,7 +1544,7 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                 <Input
                     placeholder="hot-lead, auto-generated, q1"
                     value={data.tags || ''}
-                    onChange={(e: any) => updateData({ tags: e.target.value })}
+                    onChange={(e) => updateData({ tags: e.target.value })}
                 />
             </div>
 
@@ -1541,9 +1554,9 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
                 <Input
                     placeholder="Auto-detect (leave empty)"
                     value={data.sourceNodeId || ''}
-                    onChange={(e: any) => updateData({ sourceNodeId: e.target.value })}
+                    onChange={(e) => updateData({ sourceNodeId: e.target.value })}
                 />
-                <p className="text-[9px] text-[var(--muted-fg)] ml-0.5">
+                <p className="text-[9px] text-(--muted-fg) ml-0.5">
                     If empty, captures from the immediate upstream node.
                 </p>
             </div>
@@ -1551,7 +1564,7 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
             {/* How it works */}
             <div className="p-3 bg-[var(--muted)] rounded-lg border border-[var(--border)] space-y-1.5">
                 <p className="text-[9px] font-bold text-[var(--fg)] uppercase tracking-wider">💡 How it works</p>
-                <p className="text-[9px] text-[var(--muted-fg)] leading-relaxed">
+                <p className="text-[9px] text-(--muted-fg) leading-relaxed">
                     When a buyer runs this automation, any data flowing through this node will be
                     saved to their <span className="text-teal-400 font-semibold">CRM Dashboard</span>. They can
                     view, search, filter, and export these results.
@@ -1562,10 +1575,10 @@ export function CRMCaptureConfig({ node, updateNode }: { node: any; updateNode: 
 }
 
 // ─── Data & Scraping Configurations ─────────────────────────
-export function DataScrapingConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function DataScrapingConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { url?: string; waitTime?: boolean; html?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     if (config.actionId === 'scrape' || config.actionId === 'scraper') {
         return (
@@ -1574,15 +1587,15 @@ export function DataScrapingConfig({ node, updateNode }: { node: any; updateNode
                     <p className="text-[10px] text-teal-400 font-bold uppercase mb-1 flex items-center gap-2">
                         <Globe className="w-3 h-3" /> Jina Reader Scraper
                     </p>
-                    <p className="text-[9px] text-[var(--muted-fg)]">Convert any public URL into clean, AI-ready Markdown.</p>
+                    <p className="text-[9px] text-(--muted-fg)">Convert any public URL into clean, AI-ready Markdown.</p>
                 </div>
                 <div className="space-y-1.5">
                     <Label>URL to Scrape</Label>
-                    <Input placeholder="https://example.com" value={data.url || ''} onChange={(e: any) => updateData({ url: e.target.value })} />
+                    <Input placeholder="https://example.com" value={data.url || ''} onChange={(e) => updateData({ url: e.target.value })} />
                 </div>
                 <div className="space-x-2 flex items-center">
                     <input type="checkbox" id="wait-chk" checked={!!data.waitTime} onChange={(e: any) => updateData({ waitTime: e.target.checked })} />
-                    <label htmlFor="wait-chk" className="text-[10px] text-[var(--muted-fg)]">Wait for JS execution</label>
+                    <label htmlFor="wait-chk" className="text-[10px] text-(--muted-fg)">Wait for JS execution</label>
                 </div>
             </div>
         );
@@ -1602,16 +1615,16 @@ export function DataScrapingConfig({ node, updateNode }: { node: any; updateNode
     return null;
 }
 
-export function JSONSearchConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function JSONSearchConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { data?: string; path?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     return (
         <div className="space-y-3">
             <div className="p-2.5 bg-blue-500/5 border border-blue-500/20 rounded-lg">
                 <p className="text-[10px] text-blue-400 font-bold uppercase mb-1">JSON Object Mapper</p>
-                <p className="text-[9px] text-[var(--muted-fg)]">Extract deeply nested fields using dot notation.</p>
+                <p className="text-[9px] text-(--muted-fg)">Extract deeply nested fields using dot notation.</p>
             </div>
             <div className="space-y-1.5">
                 <Label>JSON Source</Label>
@@ -1625,10 +1638,10 @@ export function JSONSearchConfig({ node, updateNode }: { node: any; updateNode: 
     );
 }
 
-export function StructurizerConfig({ node, updateNode }: { node: any; updateNode: (d: any) => void }) {
+export function StructurizerConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { modelConfig?: { provider: string }; text?: string; schema?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     return (
         <div className="space-y-3">
@@ -1636,7 +1649,7 @@ export function StructurizerConfig({ node, updateNode }: { node: any; updateNode
                 <p className="text-[10px] text-violet-400 font-bold uppercase mb-1 flex items-center gap-2">
                     <BrainCircuit className="w-3 h-3" /> AI Structurizer
                 </p>
-                <p className="text-[9px] text-[var(--muted-fg)]">Turn messy text into a clean JSON object via LLM.</p>
+                <p className="text-[9px] text-(--muted-fg)">Turn messy text into a clean JSON object via LLM.</p>
             </div>
 
             <div className="space-y-1.5 p-2 bg-[var(--muted)]/50 border border-[var(--border)] rounded-md">
@@ -1662,10 +1675,10 @@ export function StructurizerConfig({ node, updateNode }: { node: any; updateNode
     );
 }
 
-export function FormTriggerConfig({ node, updateNode, workflowId }: { node: any; updateNode: (d: any) => void, workflowId: string }) {
+export function FormTriggerConfig({ node, updateNode, workflowId }: { node: { id: string; data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void, workflowId: string }) {
     const config = node.data.config || {};
-    const data = config.data || {};
-    const updateData = (kv: any) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    const data = (config.data || {}) as { formTitle?: string; formDescription?: string; fields?: string };
+    const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
 
     const formUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/form/${workflowId}?node=${node.id}`
@@ -1677,7 +1690,7 @@ export function FormTriggerConfig({ node, updateNode, workflowId }: { node: any;
                 <FileText className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                     <p className="text-[11px] font-bold text-[var(--fg)]">Aion Form</p>
-                    <p className="text-[10px] text-[var(--muted-fg)] leading-relaxed">
+                    <p className="text-[10px] text-(--muted-fg) leading-relaxed">
                         This workflow triggers when someone submits your hosted form.
                     </p>
                 </div>
@@ -1699,12 +1712,12 @@ export function FormTriggerConfig({ node, updateNode, workflowId }: { node: any;
 
                     <div className="space-y-1">
                         <Label>Form Title</Label>
-                        <Input placeholder="Contact Us / Inquiry Form" value={data.formTitle || ''} onChange={(e: any) => updateData({ formTitle: e.target.value })} />
+                        <Input placeholder="Contact Us / Inquiry Form" value={data.formTitle || ''} onChange={(e) => updateData({ formTitle: e.target.value })} />
                     </div>
 
                     <div className="space-y-1">
                         <Label>Description</Label>
-                        <Textarea className="h-16 py-1" placeholder="Tell users what this form is for..." value={data.formDescription || ''} onChange={(e: any) => updateData({ formDescription: e.target.value })} />
+                        <Textarea className="h-16 py-1" placeholder="Tell users what this form is for..." value={data.formDescription || ''} onChange={(e) => updateData({ formDescription: e.target.value })} />
                     </div>
                 </div>
             </Section>
@@ -1715,14 +1728,14 @@ export function FormTriggerConfig({ node, updateNode, workflowId }: { node: any;
                     className="h-32 font-mono text-[10px]"
                     placeholder='[{"name": "Full Name", "type": "text"}, {"name": "Email", "type": "email"}]'
                     value={data.fields || '[]'}
-                    onChange={(e: any) => updateData({ fields: e.target.value })}
+                    onChange={(e) => updateData({ fields: e.target.value })}
                 />
-                <p className="text-[9px] text-[var(--muted-fg)]">Define the inputs for your form as a JSON array.</p>
+                <p className="text-[9px] text-(--muted-fg)">Define the inputs for your form as a JSON array.</p>
             </Section>
 
             <Section title="Embed Snippet" icon={Code2} color="text-amber-400" defaultOpen={false}>
                 <div className="space-y-2">
-                    <p className="text-[9px] text-[var(--muted-fg)]">Copy this to embed the form on your own website.</p>
+                    <p className="text-[9px] text-(--muted-fg)">Copy this to embed the form on your own website.</p>
                     <div className="bg-black/20 p-2 rounded-md border border-[var(--border)] overflow-x-auto">
                         <code className="text-[8px] text-amber-200/80 whitespace-pre">
                             {`<iframe

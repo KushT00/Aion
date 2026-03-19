@@ -35,7 +35,12 @@ const INTEGRATION_INFO: Record<string, { name: string; howToGet: string; type: '
     serpapi: { name: 'SerpAPI Search Key', howToGet: 'Get one at https://serpapi.com/manage-api-key', type: 'api_key' },
 };
 
-function buildSystemPrompt(listing: any, integrations: string[], instance: any, credentials: any[]) {
+function buildSystemPrompt(
+    listing: { title: string; description: string | null; category: string | null },
+    integrations: string[],
+    instance: { pricing_tier: string },
+    credentials: { integration_key: string; is_valid: boolean }[]
+) {
     const validatedKeys = credentials.filter(c => c.is_valid).map(c => c.integration_key);
     const pendingIntegrations = integrations.filter(k => !validatedKeys.includes(k));
 
@@ -148,7 +153,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
         }
 
-        const listing = instance.listing as any;
+        const instanceData = instance as unknown as { listing: Record<string, unknown> | Record<string, unknown>[] };
+        const listingRaw = instanceData.listing;
+        const listing = (Array.isArray(listingRaw) ? listingRaw[0] : listingRaw) as unknown as {
+            id: string;
+            title: string;
+            description: string | null;
+            category: string | null;
+            workflow_id: string;
+            workflow?: {
+                id: string;
+                name: string;
+                nodes: string | unknown[];
+                edges: string | unknown[];
+            }
+        };
 
         // 2. Figure out required integrations from workflow nodes
         const workflowData = listing?.workflow;
@@ -161,8 +180,8 @@ export async function POST(req: NextRequest) {
             const integrationTypes = new Set<string>();
             for (const node of nodes) {
                 const nodeType = (node.type || '').toLowerCase();
-                const data = node.data || {};
-                const explicitType = data.integrationType;
+                const data = (node.data || {}) as Record<string, unknown>;
+                const explicitType = data.integrationType as string | undefined;
 
                 if (explicitType) integrationTypes.add(explicitType);
 
@@ -178,7 +197,6 @@ export async function POST(req: NextRequest) {
                 if (nodeType.includes('anthropic')) integrationTypes.add('anthropic');
                 if (nodeType.includes('serp')) integrationTypes.add('serpapi');
 
-                // Scan for ANY api key fields or labeled fields
                 Object.keys(data).forEach(k => {
                     const low = k.toLowerCase();
                     if (low.includes('apikey') || low.includes('token') || low.includes('credential')) {
@@ -356,10 +374,11 @@ export async function POST(req: NextRequest) {
             instanceStatus: instance.status,
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[AI ONBOARDING ERROR]', error);
+        const errorMessage = error instanceof Error ? error.message : 'AI onboarding failed';
         return NextResponse.json(
-            { error: error.message || 'AI onboarding failed' },
+            { error: errorMessage },
             { status: 500 }
         );
     }

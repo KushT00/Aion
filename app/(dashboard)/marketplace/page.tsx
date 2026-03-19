@@ -49,7 +49,7 @@ const categoryColors: Record<string, { color: string; bg: string; accent: string
     'Finance': { color: 'text-amber-400', bg: 'bg-amber-500/10', accent: 'border-amber-500/30' },
 };
 
-const categoryIcons: Record<string, any> = {
+const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
     'Lead Gen': Globe,
     'Social Media': MessageCircle,
     'E-commerce': Package,
@@ -127,7 +127,7 @@ export default function MarketplacePage() {
                 console.error('Failed to fetch listings:', data.error);
             }
         } catch (err: any) {
-            if (err.name !== 'AbortError') console.error('Error fetching listings:', err);
+            if (err?.name !== 'AbortError') console.error('Error fetching listings:', err);
         } finally {
             setIsLoading(false);
         }

@@ -50,11 +50,39 @@ const integrationLabels: Record<string, { name: string; desc: string; type: 'api
     api: { name: 'Custom API', desc: 'HTTP Endpoint URL', type: 'api_key' },
 };
 
+interface Listing {
+    id: string;
+    title: string;
+    description: string;
+    price: number;
+    category: string;
+    tags?: string[];
+    rating_avg: number;
+    rating_count: number;
+    usage_count: number;
+    created_at: string;
+    seller?: {
+        id: string;
+        full_name: string | null;
+    };
+    seller_id: string;
+}
+
+interface Review {
+    id: string;
+    score: number;
+    comment: string | null;
+    created_at: string;
+    user?: {
+        full_name: string | null;
+    };
+}
+
 export default function MarketplaceDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const [listing, setListing] = useState<any>(null);
-    const [reviews, setReviews] = useState<any[]>([]);
+    const [listing, setListing] = useState<Listing | null>(null);
+    const [reviews, setReviews] = useState<Review[]>([]);
     const [requiredIntegrations, setRequiredIntegrations] = useState<string[]>([]);
     const [hasPurchased, setHasPurchased] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -84,8 +112,9 @@ export default function MarketplaceDetailPage() {
                     setRequiredIntegrations(data.requiredIntegrations || []);
                     setHasPurchased(data.hasPurchased || false);
                 }
-            } catch (err: any) {
-                if (err.name !== 'AbortError' && isMounted) setError('Failed to load listing');
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name !== 'AbortError' && isMounted) setError('Failed to load listing');
+                else if (isMounted) setError('Failed to load listing');
             } finally {
                 if (isMounted) setIsLoading(false);
             }
@@ -94,7 +123,7 @@ export default function MarketplaceDetailPage() {
         return () => { isMounted = false; controller.abort(); };
     }, [params.id]);
 
-    const formatPrice = (price: any) => {
+    const formatPrice = (price: number | string) => {
         const num = Number(price);
         if (isNaN(num)) return '$0';
         if (num === 0) return 'Free';
@@ -108,7 +137,7 @@ export default function MarketplaceDetailPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    listingId: listing.id,
+                    listingId: listing?.id,
                     pricingTier: pricingTab,
                 }),
             });
@@ -136,8 +165,9 @@ export default function MarketplaceDetailPage() {
             setTimeout(() => {
                 router.push(targetUrl);
             }, 1000);
-        } catch (err) {
-            toast.error('Something went wrong. Please try again.');
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : 'Something went wrong';
+            toast.error(errorMsg);
         } finally {
             setIsPurchasing(false);
         }
@@ -268,7 +298,7 @@ export default function MarketplaceDetailPage() {
                         {requiredIntegrations.length > 0 && (
                             <div className="space-y-6">
                                 <h3 className="text-sm font-black uppercase tracking-widest text-[var(--muted-fg)] flex items-center gap-2">
-                                    <Key className="w-4 h-4" /> What You'll Need to Connect
+                                    <Key className="w-4 h-4" /> What You&apos;ll Need to Connect
                                 </h3>
                                 <p className="text-xs text-[var(--muted-fg)]">
                                     With <span className="text-primary-400 font-bold">BYOK</span> you provide these yourself. With <span className="text-emerald-400 font-bold">Managed</span>, the creator provides all resources for you.
@@ -337,7 +367,7 @@ export default function MarketplaceDetailPage() {
                                     Reviews ({reviews.length})
                                 </h2>
                                 <div className="space-y-4">
-                                    {reviews.map((review: any) => (
+                                    {reviews.map((review: Review) => (
                                         <Card key={review.id} className="p-6 space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
@@ -592,7 +622,12 @@ export default function MarketplaceDetailPage() {
             <ContactCreatorModal
                 isOpen={isContactModalOpen}
                 onClose={() => setIsContactModalOpen(false)}
-                listing={listing}
+                listing={{
+                    id: listing.id,
+                    title: listing.title,
+                    seller_id: listing.seller_id,
+                    seller: listing.seller || { id: listing.seller_id, full_name: 'Unknown Creator' }
+                }}
             />
         </div>
     );

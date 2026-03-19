@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
         }
 
         // 2. Get workflow nodes to determine required integrations
-        const listing = instance.listing as any;
-        const rawWorkflow = (instance as any).workflow;
+        const listing = instance.listing;
+        const rawWorkflow = instance.workflow;
 
         // Handle Supabase returning array for joins
         const workflow = Array.isArray(rawWorkflow) ? rawWorkflow[0] : rawWorkflow;
@@ -63,7 +63,6 @@ export async function GET(req: NextRequest) {
             for (const node of nodes) {
                 const nodeType = (node.type || '').toLowerCase();
                 const config = node.config || {};
-                const data = config.data || {};
                 const explicitType = config.integrationId;
 
                 if (explicitType) integrationTypes.add(explicitType);
@@ -98,16 +97,23 @@ export async function GET(req: NextRequest) {
             .select('integration_key, is_valid, credential_data')
             .eq('instance_id', instance.id);
 
+        // 4. Fetch User Integrations (global OAuth)
+        const { data: userIntegrations } = await supabase
+            .from('user_integrations')
+            .select('provider, is_valid, account_email')
+            .eq('user_id', user.id);
+
         return NextResponse.json({
             instance: normalizedInstance,
             requiredIntegrations,
-            credentials: (credentials || []).map(c => ({
+            credentials: (credentials || []).map((c: { integration_key: string; is_valid: boolean; credential_data: unknown }) => ({
                 ...c,
                 credential_data: c.is_valid ? { value: '••••••••' } : c.credential_data,
             })),
+            userIntegrations: userIntegrations || [],
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[INSTANCE DETAILS ERROR]', error);
-        return NextResponse.json({ error: error.message || 'Failed' }, { status: 500 });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
     }
 }

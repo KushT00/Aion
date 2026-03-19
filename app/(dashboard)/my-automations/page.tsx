@@ -34,8 +34,25 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     error: { label: 'Error', color: 'text-rose-400', bg: 'bg-rose-500/10' },
 };
 
+interface Automation {
+    purchaseId: string;
+    instanceId?: string;
+    status: string;
+    total_runs: number;
+    total_successes: number;
+    last_run_at: string | null;
+    pricing_tier?: string;
+    listing?: {
+        title: string;
+        category: string;
+        seller?: {
+            full_name: string | null;
+        };
+    };
+}
+
 export default function MyAutomationsPage() {
-    const [automations, setAutomations] = useState<any[]>([]);
+    const [automations, setAutomations] = useState<Automation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -51,8 +68,8 @@ export default function MyAutomationsPage() {
                 if (isMounted && res.ok) {
                     setAutomations(data.automations || []);
                 }
-            } catch (err: any) {
-                if (err.name !== 'AbortError') console.error(err);
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name !== 'AbortError') console.error(err);
             } finally {
                 if (isMounted) setIsLoading(false);
             }
@@ -66,7 +83,7 @@ export default function MyAutomationsPage() {
     });
 
     // Create instance if missing (for old purchases that don't have one)
-    const handleCreateInstance = async (purchaseId: string, item: any) => {
+    const handleCreateInstance = async (purchaseId: string) => {
         try {
             toast.loading('Creating instance...', { id: 'create-inst' });
             const res = await fetch('/api/marketplace/create-instance', {
@@ -263,7 +280,7 @@ export default function MyAutomationsPage() {
                                     ) : (
                                         // No instance yet — offer to create one
                                         <Button
-                                            onClick={() => handleCreateInstance(item.purchaseId, item)}
+                                            onClick={() => handleCreateInstance(item.purchaseId as string)}
                                             className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400"
                                         >
                                             <Key className="w-4 h-4 mr-2" />
@@ -277,7 +294,7 @@ export default function MyAutomationsPage() {
                                             variant="outline"
                                             size="icon"
                                             disabled={togglingId === item.instanceId}
-                                            onClick={() => handleToggleInstance(item.instanceId, status)}
+                                            onClick={() => item.instanceId && handleToggleInstance(item.instanceId, status)}
                                             className={cn(
                                                 "h-12 w-12 rounded-xl transition-all",
                                                 status === 'active'
@@ -318,7 +335,7 @@ export default function MyAutomationsPage() {
                     </div>
                     <h3 className="font-black text-2xl uppercase italic mb-2">Build your workforce</h3>
                     <p className="text-[var(--muted-fg)] max-w-sm mx-auto mb-8 font-medium">
-                        You haven't deployed any automations yet. Browse the marketplace to find AI agents ready to work for you.
+                        You haven&apos;t deployed any automations yet. Browse the marketplace to find AI agents ready to work for you.
                     </p>
                     <Link href="/marketplace">
                         <Button className="rounded-2xl px-10 h-14 font-black uppercase tracking-widest italic shadow-xl shadow-primary-500/20">

@@ -38,6 +38,21 @@ async function validateKey(integrationKey: string, value: string): Promise<boole
                 const res = await fetch(`https://api.telegram.org/bot${value}/getMe`);
                 return res.ok;
             }
+            case 'anthropic': {
+                const res = await fetch('https://api.anthropic.com/v1/models', {
+                    headers: {
+                        'x-api-key': value,
+                        'anthropic-version': '2023-06-01'
+                    }
+                });
+                return res.ok;
+            }
+            case 'openrouter': {
+                const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+                    headers: { 'Authorization': `Bearer ${value}` }
+                });
+                return res.ok;
+            }
             default:
                 // If we don't have a validator for it, just assume valid for now
                 return true;
@@ -134,8 +149,51 @@ export async function POST(req: NextRequest) {
 
 
         return NextResponse.json({ success: true, message: 'Credential saved securely' });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[SAVE CREDENTIAL ERROR]', error);
-        return NextResponse.json({ error: error.message || 'Failed to save credential' }, { status: 500 });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to save credential' }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const supabase = await createClient();
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+
+        if (authErr || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { instanceId, integrationKey } = await req.json();
+
+        if (!instanceId || !integrationKey) {
+            return NextResponse.json({ error: 'Missing instanceId or integrationKey' }, { status: 400 });
+        }
+
+        // 1. Verify ownership
+        const { data: instance, error: instErr } = await supabase
+            .from('consumer_instances')
+            .select('id')
+            .eq('id', instanceId)
+            .eq('buyer_id', user.id)
+            .single();
+
+        if (instErr || !instance) {
+            return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+        }
+
+        // 2. Delete the credential
+        const { error: deleteErr } = await supabase
+            .from('consumer_credentials')
+            .delete()
+            .eq('instance_id', instanceId)
+            .eq('integration_key', integrationKey);
+
+        if (deleteErr) throw deleteErr;
+
+        return NextResponse.json({ success: true, message: 'Credential removed' });
+    } catch (error: unknown) {
+        console.error('[DELETE CREDENTIAL ERROR]', error);
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
     }
 }

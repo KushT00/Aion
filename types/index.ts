@@ -60,7 +60,17 @@ export type NodeType =
   | 'chat_model'
   | 'memory'
   | 'tool'
-  | 'output';
+  | 'output'
+  | 'data_scraping'
+  | 'if_else'
+  | 'switch'
+  | 'filter'
+  | 'parallel'
+  | 'condition_group'
+  | 'loop'
+  | 'retry'
+  | 'merge'
+  | 'crm_capture';
 
 export interface WorkflowNode {
   id: string;

@@ -12,14 +12,10 @@ import {
     addEdge,
     useNodesState,
     useEdgesState,
-    useReactFlow,
-    useNodeConnections,
     type Connection,
     type Node,
     type Edge,
     type NodeTypes,
-    Handle,
-    Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
@@ -27,28 +23,27 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
     Save, Play, Undo2, Redo2, Download, Upload,
-    Cpu, Globe, GitFork, ArrowRightCircle, MessageSquare,
-    X, Zap, Settings2, Database, Clock, Search, Info,
+    Cpu, Globe, GitFork,
+    X, Zap, Settings2, Database, Clock, Search,
     Webhook as WebhookIcon, Calendar, Mail,
     BrainCircuit, Code2, SlidersHorizontal, Merge, Repeat,
-    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity, Sparkles, RotateCw,
+    Send, FileSpreadsheet, FileText, Hash, Timer, Trash2, Terminal, Activity, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registry } from '@/lib/workflow/integrations/registry';
-import { WorkflowRunner, RunLog } from '@/lib/workflow/runner';
+import { WorkflowRunner, type RunLog } from '@/lib/workflow/runner';
 import { WorkflowNode, WorkflowEdge, NodeType } from '@/types';
+import { PaletteItem, NodeData, ExecutionLog, CloudRun } from '@/types/builder';
 import { nodeTypes as customNodeTypes, nodeColors, nodeIcons } from '@/components/workflow/NodeComponents';
 import { useIntegrations } from '@/hooks/useIntegrations';
 import { useAuth } from '@/hooks/use-auth';
-import { GoogleConnectButton } from '@/components/workflow/GoogleConnectButton';
 import {
     AIAgentConfig, IfElseConfig, SwitchConfig, FilterConfig, ParallelConfig, ConditionGroupConfig, RetryConfig, SlackConfig, TelegramConfig,
-    NotionConfig, SheetsConfig, DocsConfig, CodeConfig, ModelSelector,
+    NotionConfig, SheetsConfig, DocsConfig, CodeConfig,
     SetVariableConfig, DelayConfig, AIConfig, GoogleCalendarConfig,
     GoogleGmailConfig, DiscordConfig, APIConfig, ToolConfig, MemoryConfig, LoopConfig,
     CRMCaptureConfig, DataScrapingConfig, JSONSearchConfig, StructurizerConfig,
     FormTriggerConfig,
-    Input, Label
 } from '@/components/workflow/NodeConfigs';
 import { PublishingPanel } from '@/components/workflow/PublishingPanel';
 
@@ -62,7 +57,7 @@ const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
 // ─── Node Palette — all nodes grouped by category ──────────
-const paletteCategories: { category: PaletteCategory; color: string; items: any[] }[] = [
+const paletteCategories: { category: PaletteCategory; color: string; items: PaletteItem[] }[] = [
     {
         category: 'Triggers',
         color: 'text-amber-400',
@@ -141,24 +136,7 @@ const paletteCategories: { category: PaletteCategory; color: string; items: any[
         ],
     },
 ];
-// Flat list for drag-drop
-const paletteItems = paletteCategories.flatMap(c => c.items);
-
 // ─── Helper for Google Connection status across configs ──────
-function GoogleConnectionSection({ scope = 'all' }: { scope?: any }) {
-    const { getIntegration, connectGoogle } = useIntegrations();
-    const integration = getIntegration('google');
-
-    return (
-        <GoogleConnectButton
-            isConnected={!!integration}
-            isValid={integration?.is_valid}
-            accountEmail={integration?.account_email}
-            onConnect={() => connectGoogle(scope)}
-            onDisconnect={() => { }}
-        />
-    );
-}
 
 // ─── Specialized Configuration Components ──────────────────
 
@@ -166,11 +144,11 @@ function GoogleConnectionSection({ scope = 'all' }: { scope?: any }) {
 
 
 
-function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, updateNode: (data: any) => void, workflowId: string | null }) {
+function TriggerConfiguration({ node, updateNode, workflowId }: { node: Node<NodeData>, updateNode: (data: Partial<NodeData>) => void, workflowId: string | null }) {
     const config = node.data.config || {};
     const data = config.data || {};
 
-    const updateData = (kv: any) => {
+    const updateData = (kv: Record<string, unknown>) => {
         updateNode({
             config: {
                 ...config,
@@ -228,8 +206,9 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
             } else {
                 toast.error(`Sync failed: ${result.description}`, { id: tid });
             }
-        } catch (err: any) {
-            toast.error(`Error: ${err.message}`, { id: tid });
+        } catch (err) {
+            const error = err as Error;
+            toast.error(`Error: ${error.message}`, { id: tid });
         }
     };
 
@@ -273,7 +252,7 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                             type="text"
                             placeholder="* * * * *"
                             className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs font-mono text-[var(--fg)] outline-none focus:ring-1 focus:ring-amber-500"
-                            value={data.cron || '0 * * * *'}
+                            value={(data.cron as string) || '0 * * * *'}
                             onChange={(e) => updateData({ cron: e.target.value })}
                         />
                         <div className="text-[9px] text-amber-600 dark:text-amber-400 font-mono ml-1">
@@ -291,7 +270,7 @@ function TriggerConfiguration({ node, updateNode, workflowId }: { node: any, upd
                             type="password"
                             placeholder="123456... BotFather Token"
                             className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[11px] text-[var(--fg)] outline-none focus:ring-1 focus:ring-sky-500"
-                            value={data.botToken || ''}
+                            value={(data.botToken as string) || ''}
                             onChange={(e) => updateData({ botToken: e.target.value })}
                         />
                     </div>
@@ -358,17 +337,17 @@ function BuilderContent() {
     // Stable, component-scoped Supabase client
     const supabase = useMemo(() => createClient(), []);
 
-    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes as Node<NodeData>[]);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [workflowId, setWorkflowId] = useState<string | null>(searchParams.get('id'));
     const [workflowName, setWorkflowName] = useState('Untitled Workflow');
     const [isExecuting, setIsExecuting] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [executionLogs, setExecutionLogs] = useState<{ nodeId: string; status: string; timestamp: string; output?: any; error?: string }[]>([]);
+    const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
     const [showConsole, setShowConsole] = useState(false);
     const [activeConsoleTab, setActiveConsoleTab] = useState<'logs' | 'history'>('logs');
-    const [cloudRunHistory, setCloudRunHistory] = useState<any[]>([]);
+    const [cloudRunHistory, setCloudRunHistory] = useState<CloudRun[]>([]);
     const [paletteSearch, setPaletteSearch] = useState('');
     const [consoleHeight, setConsoleHeight] = useState(300);
     const [isResizing, setIsResizing] = useState(false);
@@ -424,9 +403,9 @@ function BuilderContent() {
                 } else {
                     toast.error('Invalid workflow file format');
                 }
-            } catch (err) {
+            } catch (_err) {
                 toast.error('Failed to parse workflow file');
-                console.error(err);
+                console.error(_err);
             }
             // Reset input
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -435,7 +414,7 @@ function BuilderContent() {
     };
 
     // Google integration status
-    const { isConnected: isGoogleConnected, getIntegration, connectGoogle, getAccessToken, disconnect: disconnectIntegration, refresh: refreshIntegrations } = useIntegrations();
+    const { getIntegration, connectGoogle, getAccessToken, disconnect: disconnectIntegration } = useIntegrations();
 
     // Load workflow from Supabase or Local Storage
     useEffect(() => {
@@ -508,11 +487,11 @@ function BuilderContent() {
             if (edgesError) console.error('Error loading workflow edges:', edgesError);
 
             if (wfNodes && wfNodes.length > 0) {
-                setNodes(wfNodes.map((n: any) => {
-                    const config = n.config as any || {};
-                    const integId = config?.integrationId;
+                 setNodes(wfNodes.map((n) => {
+                    const config = n.config as Record<string, unknown> || {};
+                    const integId = config?.integrationId as string | undefined;
 
-                    let rfType = config?.rfType || 'custom';
+                    let rfType = (config?.rfType as string) || 'custom';
                     if (!config?.rfType) {
                         // fallback for older records without rfType
                         if (integId === 'if_else') rfType = 'if_else';
@@ -522,16 +501,17 @@ function BuilderContent() {
                     }
 
                     // The 'input' dbType bypass requires us to load visual state from originalType
-                    let logicType = config?.originalType || n.type;
+                    let logicType = (config?.originalType as string) || n.type;
 
                     // Recover lost types from older saves where everything was forced to 'input'
                     if (logicType === 'input' && !config?.originalType) {
-                        if (config?.actionId === 'model') logicType = 'chat_model';
+                        const actionId = config?.actionId as string | undefined;
+                        if (actionId === 'model') logicType = 'chat_model';
                         else if (integId === 'memory') logicType = 'memory';
                         else if (integId === 'tool') logicType = 'tool';
-                        else if (config?.actionId === 'chat') logicType = 'ai_action';
-                        else if (['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
-                        else if (['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
+                        else if (actionId === 'chat') logicType = 'ai_action';
+                        else if (integId && ['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
+                        else if (integId && ['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
                         else if (integId === 'api') logicType = 'api_action';
                         else if (integId === 'if_else' || integId === 'switch') logicType = 'logic_gate';
                         else logicType = 'data_tool'; // generic fallback
@@ -541,12 +521,12 @@ function BuilderContent() {
                         id: n.id,
                         type: rfType,
                         position: { x: n.position_x, y: n.position_y },
-                        data: { label: n.label, type: logicType, config }
+                        data: { label: n.label, type: logicType, config } as unknown as NodeData
                     };
                 }));
             }
             if (wfEdges) {
-                setEdges(wfEdges.map((e: any) => {
+                setEdges(wfEdges.map((e) => {
                     let sourceH: string | null = null;
                     let targetH: string | null = null;
                     let realLabel: string | null = null;
@@ -560,7 +540,7 @@ function BuilderContent() {
                                 targetH = parsed.targetHandle || null;
                                 realLabel = parsed.label || null;
                             }
-                        } catch (err) { }
+                        } catch (_err) { }
                     } else {
                         realLabel = e.label || null;
                     }
@@ -604,8 +584,8 @@ function BuilderContent() {
                 schema: 'public',
                 table: 'workflow_runs',
                 filter: `workflow_id=eq.${workflowId}`
-            }, (payload: any) => {
-                setCloudRunHistory(prev => [payload.new, ...prev]);
+            }, (payload) => {
+                setCloudRunHistory(prev => [payload.new as CloudRun, ...prev]);
                 // Automatically open console on new cloud run
                 setShowConsole(true);
                 setActiveConsoleTab('history');
@@ -616,8 +596,8 @@ function BuilderContent() {
                 schema: 'public',
                 table: 'workflow_runs',
                 filter: `workflow_id=eq.${workflowId}`
-            }, (payload: any) => {
-                setCloudRunHistory(prev => prev.map(r => r.id === payload.new.id ? payload.new : r));
+            }, (payload) => {
+                setCloudRunHistory(prev => prev.map(r => r.id === (payload.new as CloudRun).id ? (payload.new as CloudRun) : r));
             })
             .subscribe();
 
@@ -642,11 +622,11 @@ function BuilderContent() {
     const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
     // Helper to update the selected node's data
-    const updateNode = useCallback((newData: any) => {
+    const updateNode = useCallback((newData: Partial<NodeData>) => {
         if (!selectedNodeId) return;
         setNodes(nds => nds.map(n =>
             n.id === selectedNodeId
-                ? { ...n, data: { ...(n.data as any), ...newData } }
+                ? { ...n, data: { ...(n.data as unknown as NodeData), ...newData } as unknown as NodeData }
                 : n
         ));
     }, [selectedNodeId, setNodes]);
@@ -663,8 +643,8 @@ function BuilderContent() {
             const targetNode = nodes.find(n => n.id === params.target);
             const sourceNode = nodes.find(n => n.id === params.source);
 
-            if (targetNode && (targetNode.data as any).type === 'ai_action') {
-                const sourceType = (sourceNode?.data as any).type;
+            if (targetNode && (targetNode.data as NodeData).type === 'ai_action') {
+                const sourceType = (sourceNode?.data as NodeData).type;
                 if (params.targetHandle === 'chat_model' && sourceType !== 'chat_model') {
                     toast.error(`Only a Chat Model node can be connected here (Found: ${sourceType})`);
                     return;
@@ -700,19 +680,19 @@ function BuilderContent() {
 
     const addNode = useCallback(
         (type: NodeType, label: string, integrationId?: string, nodeType: string = 'custom', actionId?: string) => {
-            setNodes((nds) => {
-                const count = nds.filter(n => (n.data as any).label?.startsWith(label)).length + 1;
+            setNodes((nds: Node<NodeData>[]): Node<NodeData>[] => {
+                const count = nds.filter(n => (n.data as NodeData).label?.startsWith(label)).length + 1;
                 const id = crypto.randomUUID();
                 const defaultActionId = actionId || registry.getIntegration(integrationId || '')?.actions[0]?.id;
-                const newNode: Node = {
+                const newNode: Node<NodeData> = {
                     id,
                     type: nodeType,
                     position: { x: 250 + Math.random() * 200, y: 200 + Math.random() * 200 },
                     data: {
                         label: count > 1 ? `${label} ${count}` : label,
                         type,
-                        config: integrationId ? { integrationId, actionId: defaultActionId } : {}
-                    },
+                        config: (integrationId ? { integrationId, actionId: defaultActionId } : {}) as Record<string, unknown>
+                    } as unknown as NodeData,
                 };
                 return [...nds, newNode];
             });
@@ -759,8 +739,9 @@ function BuilderContent() {
             }
 
             toast.success('Workflow saved!', { id: toastId });
-        } catch (error: any) {
-            console.error('❌ [SAVE] Process failed:', error);
+        } catch (err) {
+            console.error('❌ [SAVE] Process failed:', err);
+            const error = err as Error;
             const errorMessage = error.message || 'Unknown error';
             toast.error(`Save failed: ${errorMessage}`, { id: toastId });
         } finally {
@@ -780,22 +761,22 @@ function BuilderContent() {
             const engineNodes: WorkflowNode[] = nodes.map(n => ({
                 id: n.id,
                 workflow_id: 'local',
-                type: (n.data as any).type as NodeType,
-                label: (n.data as any).label,
+                type: (n.data as unknown as NodeData).type as NodeType,
+                label: (n.data as unknown as NodeData).label,
                 position_x: n.position.x,
                 position_y: n.position.y,
-                config: (n.data as any).config || {},
+                config: (n.data as unknown as NodeData).config || {},
                 created_at: new Date().toISOString()
             }));
 
             const engineEdges: WorkflowEdge[] = edges.map(e => {
                 // FAIL-SAFE: Check every possible property ReactFlow might use
-                let sH = e.sourceHandle || (e as any).source_id || (e as any).src_handle || null;
-                const tH = e.targetHandle || (e as any).target_id || (e as any).tgt_handle || null;
+                const sH = e.sourceHandle || (e as unknown as { source_id?: string }).source_id || (e as unknown as { src_handle?: string }).src_handle || null;
+                const tH = e.targetHandle || (e as unknown as { target_id?: string }).target_id || (e as unknown as { tgt_handle?: string }).tgt_handle || null;
 
                 // Polyfill for IF/ELSE nodes if sourceHandle is missing
                 const srcNode = nodes.find(n => n.id === e.source);
-                const srcType = (srcNode?.data as any)?.type || srcNode?.type;
+                const srcType = (srcNode?.data as NodeData)?.type || srcNode?.type;
 
                 if (!sH && (srcType === 'if_else' || srcType === 'logic_gate')) {
                     console.warn(`⚠️ [BUILDER] Edge ${e.id} from IF/ELSE node ${e.source} is missing a handle ID. Output may be dual-path.`);
@@ -822,21 +803,21 @@ function BuilderContent() {
 
             // 2. Extract Trigger Data
             // We look for 'input' (manual) or 'trigger' (webhook/cron) nodes
-            const triggerNode = nodes.find(n => ['input', 'trigger'].includes((n.data as any).type));
+            const triggerNode = nodes.find(n => ['input', 'trigger'].includes((n.data as NodeData).type));
 
             // Priority: triggerData (Manual Input) -> config.data (Legacy Code)
-            let triggerData = (triggerNode?.data as any)?.config?.triggerData || (triggerNode?.data as any)?.config?.data || {};
+            let triggerData = ((triggerNode?.data as NodeData)?.config as Record<string, unknown>)?.triggerData || ((triggerNode?.data as NodeData)?.config as Record<string, unknown>)?.data || {};
 
             // LOCAL RUN FIX:
             // If running locally and no chat_id is provided, inject a mock one so Telegram action doesn't fail validation.
             // This allows users to test the "AI -> Telegram" flow without a real webhook event.
-            if (!triggerData.chat_id) {
+            if (!(triggerData as { chat_id?: string }).chat_id) {
                 console.log("Injecting mock data for local execution");
                 triggerData = {
                     ...triggerData,
                     chat_id: "123456789",
-                    text: triggerData.text || "Hello from Aion Builder!" // Mock Text
-                };
+                    text: (triggerData as { text?: string }).text || "Hello from Aion Builder!" // Mock Text
+                } as Record<string, unknown>;
             }
 
             // 3. Initialize Runner with environment context (tokens)
@@ -918,7 +899,7 @@ function BuilderContent() {
                         value={workflowName}
                         onChange={(e) => setWorkflowName(e.target.value)}
                         placeholder="Name your worker..."
-                        className="bg-transparent border-none text-sm font-medium text-[var(--muted-fg)] focus:text-[var(--fg)] outline-none w-64 px-2 py-1 rounded transition-colors"
+                        className="bg-transparent border-none text-sm font-medium text-(--muted-fg) focus:text-[var(--fg)] outline-none w-64 px-2 py-1 rounded transition-colors"
                     />
                 </div>
                 <div className="flex items-center gap-2">
@@ -990,7 +971,7 @@ function BuilderContent() {
                     {/* Search */}
                     <div className="p-2.5 border-b border-[var(--border)]">
                         <div className="relative">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--muted-fg)]" />
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-(--muted-fg)" />
                             <input
                                 placeholder="Filter nodes..."
                                 value={paletteSearch}
@@ -1020,7 +1001,7 @@ function BuilderContent() {
                                                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md border border-transparent hover:border-[var(--border)] hover:bg-[var(--muted)] transition-all text-left group"
                                             >
                                                 <div className="w-6 h-6 rounded-md bg-[var(--muted)] flex items-center justify-center shrink-0 group-hover:bg-[var(--card)] transition-colors">
-                                                    <item.icon className="w-3 h-3 text-[var(--muted-fg)] group-hover:text-violet-400 transition-colors" />
+                                                    <item.icon className="w-3 h-3 text-(--muted-fg) group-hover:text-violet-400 transition-colors" />
                                                 </div>
                                                 <span className="text-[11px] font-medium text-[var(--fg)] truncate">{item.label}</span>
                                             </button>
@@ -1050,7 +1031,7 @@ function BuilderContent() {
                         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
                         snapToGrid={true}
                         snapGrid={[15, 15]}
-                        className="bg-[var(--bg)]"
+                        className="bg-(--bg)"
                     >
                         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
                         <Controls className="!rounded-xl !border-[var(--border)]" />
@@ -1068,16 +1049,16 @@ function BuilderContent() {
                         {/* Panel Header */}
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border)] bg-[var(--muted)]/30">
                             <div className="flex items-center gap-2">
-                                <div className={cn("p-1.5 rounded-lg", nodeColors[(selectedNode.data as any).type as any]?.bg)}>
+                                <div className={cn("p-1.5 rounded-lg", (nodeColors[(selectedNode.data as NodeData).type] || nodeColors.input).bg)}>
                                     {(() => {
-                                        const Icon = nodeIcons[(selectedNode.data as any).type as any] || Settings2;
-                                        return <Icon className={cn("w-3.5 h-3.5", nodeColors[(selectedNode.data as any).type as any]?.icon)} />;
+                                        const Icon = nodeIcons[(selectedNode.data as NodeData).type] || Settings2;
+                                        return <Icon className={cn("w-3.5 h-3.5", (nodeColors[(selectedNode.data as NodeData).type] || nodeColors.input).icon)} />;
                                     })()}
                                 </div>
                                 <div className="min-w-0">
                                     <h3 className="text-xs font-bold text-[var(--fg)] leading-none truncate">Settings</h3>
-                                    <p className="text-[8px] text-[var(--muted-fg)] uppercase font-semibold tracking-wider mt-0.5 truncate">
-                                        {((selectedNode.data as any).type as string).replace('_', ' ')}
+                                    <p className="text-[8px] text-(--muted-fg) uppercase font-semibold tracking-wider mt-0.5 truncate">
+                                        {(selectedNode.data as NodeData).type.replace('_', ' ')}
                                     </p>
                                 </div>
                             </div>
@@ -1101,7 +1082,7 @@ function BuilderContent() {
                                 </button>
                                 <button
                                     onClick={() => setSelectedNodeId(null)}
-                                    className="p-1 rounded-md text-[var(--muted-fg)] hover:bg-[var(--muted)] transition-colors"
+                                    className="p-1 rounded-md text-(--muted-fg) hover:bg-[var(--muted)] transition-colors"
                                 >
                                     <X className="w-3.5 h-3.5" />
                                 </button>
@@ -1111,10 +1092,10 @@ function BuilderContent() {
                         <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
                             {/* Base Settings */}
                             <div className="space-y-1">
-                                <label className="text-[9px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-0.5 opacity-70">Label</label>
+                                <label className="text-[9px] font-bold text-(--muted-fg) uppercase tracking-tight ml-0.5 opacity-70">Label</label>
                                 <input
                                     type="text"
-                                    value={(selectedNode.data as any).label}
+                                    value={(selectedNode.data as NodeData).label}
                                     onChange={(e) => updateNode({ label: e.target.value })}
                                     className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[11px] text-[var(--fg)] outline-none focus:ring-1 focus:ring-primary-500 font-medium"
                                 />
@@ -1123,7 +1104,7 @@ function BuilderContent() {
                             {/* Specialized Settings dispatcher */}
                             <div className="pt-3 border-t border-[var(--border)]">
                                 {(() => {
-                                    const nodeData = selectedNode.data as any;
+                                    const nodeData = selectedNode.data as NodeData;
                                     const integId = nodeData?.config?.integrationId;
 
                                     // Trigger nodes
@@ -1249,7 +1230,7 @@ function BuilderContent() {
                                     // Fallback — raw JSON
                                     return (
                                         <div className="space-y-1.5">
-                                            <label className="text-[9px] font-bold text-[var(--muted-fg)] uppercase tracking-tight ml-0.5">JSON Config</label>
+                                            <label className="text-[9px] font-bold text-(--muted-fg) uppercase tracking-tight ml-0.5">JSON Config</label>
                                             <textarea
                                                 className="w-full bg-[var(--muted)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[10px] font-mono text-[var(--fg)] h-32 outline-none focus:ring-1 focus:ring-violet-500 resize-none shadow-inner"
                                                 value={JSON.stringify(nodeData.config || {}, null, 2)}
@@ -1335,7 +1316,7 @@ function BuilderContent() {
                                     {executionLogs.length === 0 && (
                                         <div className="flex flex-col items-center justify-center h-full opacity-30 text-white">
                                             <Terminal className="w-8 h-8 mb-2" />
-                                            <p>No local logs yet. Click 'Run' to test.</p>
+                                            <p>No local logs yet. Click &apos;Run&apos; to test.</p>
                                         </div>
                                     )}
                                     {executionLogs.map((log, i) => (
@@ -1345,7 +1326,7 @@ function BuilderContent() {
                                                 log.status === 'error' ? "border-red-500 bg-red-500/5" : "border-emerald-500 bg-emerald-500/5"
                                         )}>
                                             <div className="flex items-center gap-4">
-                                                <span className="text-[var(--muted-fg)] min-w-[80px] font-mono">{log.timestamp}</span>
+                                                <span className="text-(--muted-fg) min-w-[80px] font-mono">{log.timestamp}</span>
                                                 <span className={cn(
                                                     "font-bold uppercase text-[10px] px-1.5 py-0.5 rounded",
                                                     log.status === 'running' ? "bg-primary-500/20 text-primary-500" :
@@ -1358,7 +1339,7 @@ function BuilderContent() {
                                                 </span>
                                             </div>
                                             <div className="text-[11px] mt-1">
-                                                {log.status === 'running' && <span className="text-[var(--muted-fg)]">Processing node logic...</span>}
+                                                {log.status === 'running' && <span className="text-(--muted-fg)">Processing node logic...</span>}
                                                 {log.status === 'success' && <span className="text-emerald-500/80">Execution completed successfully.</span>}
                                                 {log.status === 'error' && (
                                                     <div className="space-y-1">
@@ -1369,8 +1350,8 @@ function BuilderContent() {
                                                     </div>
                                                 )}
                                             </div>
-                                            {log.output && (
-                                                <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
+                                            {log.output != null && (
+                                                <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-(--muted-fg) border border-[var(--border)] overflow-x-auto">
                                                     <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
                                                     <pre>{JSON.stringify(log.output, null, 2)}</pre>
                                                 </div>
@@ -1386,9 +1367,9 @@ function BuilderContent() {
                                             <p>No remote executions detected for this workflow.</p>
                                         </div>
                                     )}
-                                    {cloudRunHistory.map((run: any) => {
-                                        let logs: any[] = [];
-                                        try { logs = typeof run.logs === 'string' ? JSON.parse(run.logs) : (run.logs || []); } catch (e) { }
+                                    {cloudRunHistory.map((run: CloudRun) => {
+                                        let logs: ExecutionLog[] = [];
+                                        try { logs = typeof run.logs === 'string' ? JSON.parse(run.logs) : (run.logs as ExecutionLog[] || []); } catch { }
 
                                         const getStatusColor = (s: string) => {
                                             if (s === 'success') return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
@@ -1404,9 +1385,9 @@ function BuilderContent() {
                                                             {run.status === 'running' && <Activity className="w-2.5 h-2.5 mr-1.5 animate-pulse" />}
                                                             {run.status}
                                                         </Badge>
-                                                        <span className="text-xs font-mono text-[var(--muted-fg)]">{new Date(run.started_at).toLocaleString()}</span>
+                                                        <span className="text-xs font-mono text-(--muted-fg)">{new Date(run.created_at || run.started_at as string).toLocaleString()}</span>
                                                     </div>
-                                                    <div className="text-[10px] font-mono text-[var(--muted-fg)] opacity-50 uppercase tracking-tighter">ID: {run.id.slice(-8)}</div>
+                                                    <div className="text-[10px] font-mono text-(--muted-fg) opacity-50 uppercase tracking-tighter">ID: {run.id.slice(-8)}</div>
                                                 </div>
 
                                                 {run.error && (
@@ -1419,33 +1400,37 @@ function BuilderContent() {
                                                 <div className="p-4 space-y-3">
                                                     {logs.length > 0 ? (
                                                         <div className="space-y-1.5">
-                                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Execution Steps</p>
-                                                            {logs.map((log: any, i: number) => (
+                                                            <p className="text-[10px] font-bold text-(--muted-fg) uppercase tracking-wider mb-2">Execution Steps</p>
+                                                            {logs.map((log: ExecutionLog, i: number) => (
                                                                 <div key={i} className="flex items-center gap-3 text-xs border-l-2 border-violet-500/10 pl-3 py-0.5">
                                                                     <div className={cn(
                                                                         "w-1.5 h-1.5 rounded-full",
                                                                         log.status === 'success' ? 'bg-emerald-500' : (log.status === 'failed' ? 'bg-rose-500' : 'bg-blue-500 animate-pulse')
                                                                     )} />
-                                                                    <span className="font-semibold text-[var(--fg)] min-w-[120px]">
-                                                                        {(nodes.find(n => n.id === log.nodeId)?.data as any)?.label || 'Node'}
+                                                                    <span className="font-semibold text-(--fg) min-w-[120px]">
+                                                                        {(nodes.find(n => n.id === log.nodeId)?.data as NodeData)?.label || 'Node'}
                                                                     </span>
-                                                                    <span className="text-[10px] text-[var(--muted-fg)] italic">{log.status}</span>
-                                                                    {log.output && <span className="text-[9px] text-violet-400 opacity-70 ml-auto font-mono">Output: {typeof log.output === 'object' ? 'JSON' : log.output.toString().slice(0, 20)}</span>}
+                                                                    <span className="text-[10px] text-(--muted-fg) italic">{log.status}</span>
+                                                                    {log.output != null && (
+                                                                        <span className="text-[9px] text-violet-400 opacity-70 ml-auto font-mono">
+                                                                            Output: {typeof log.output === 'object' ? 'JSON' : String(log.output).slice(0, 20)}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     ) : (
                                                         <div className="flex items-center justify-center p-8 bg-[var(--muted)]/30 rounded-lg border border-dashed border-[var(--border)]">
                                                             <div className="text-center">
-                                                                <Activity className="w-5 h-5 text-[var(--muted-fg)] mx-auto mb-2 animate-pulse opacity-50" />
-                                                                <p className="text-[10px] font-medium text-[var(--muted-fg)]">Waiting for background session logs...</p>
+                                                                <Activity className="w-5 h-5 text-(--muted-fg) mx-auto mb-2 animate-pulse opacity-50" />
+                                                                <p className="text-[10px] font-medium text-(--muted-fg)">Waiting for background session logs...</p>
                                                             </div>
                                                         </div>
                                                     )}
 
-                                                    {run.output && (
+                                                    {run.output != null && (
                                                         <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                                                            <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Final Output</p>
+                                                            <p className="text-[10px] font-bold text-(--muted-fg) uppercase tracking-wider mb-2">Final Output</p>
                                                             <pre className="text-[10px] bg-[var(--muted)] p-3 rounded-lg overflow-x-auto font-mono text-violet-400 border border-[var(--border)]">
                                                                 {JSON.stringify(run.output, null, 2)}
                                                             </pre>
@@ -1489,9 +1474,10 @@ function BuilderContent() {
                         // Sync nodes
                         await supabase.from('workflow_nodes').delete().eq('workflow_id', currentWfId);
                         const nodesToInsert = nodes.map(n => {
-                            const realType = (n.data as any).type;
+                            const nodeData = n.data as NodeData;
+                            const realType = nodeData.type;
                             const rfType = n.type;
-                            const config = (n.data as any).config || {};
+                            const config = nodeData.config || {};
                             return {
                                 id: n.id,
                                 workflow_id: currentWfId,
@@ -1530,7 +1516,7 @@ function BuilderContent() {
                         }
 
                         return currentWfId;
-                    } catch (err: any) {
+                    } catch (err) {
                         console.error('Auto-save for publish failed:', err);
                         return null;
                     }

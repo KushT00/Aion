@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { WorkflowRunner } from "@/lib/workflow/runner";
+import { WorkflowRunner, type RunLog } from "@/lib/workflow/runner";
+import { WorkflowEdge } from "@/types";
+import fs from 'fs';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -92,7 +94,7 @@ export async function POST(
         // Implement the same edge-parsing hack used in the builder 
         // to retrieve `sourceHandle` and `targetHandle` from the JSON label
         // because the PostgREST cache doesn't acknowledge the columns yet.
-        const parsedEdges = workflow.edges.map((e: any) => {
+        const parsedEdges = workflow.edges.map((e: WorkflowEdge) => {
             let sourceH = e.source_handle;
             let targetH = e.target_handle;
             let realLabel = e.label;
@@ -134,12 +136,11 @@ export async function POST(
         }
 
         // 7. Execute Synchronously
-        const fs = require('fs');
         fs.appendFileSync('debug_webhook.log', `\n\n--- TARGET WORKFLOW EXECUTION: ${new Date().toISOString()} ---\n`);
         fs.appendFileSync('debug_webhook.log', `TRIGGER DATA:\n${JSON.stringify(triggerData, null, 2)}\n`);
         fs.appendFileSync('debug_webhook.log', `PARSED EDGES:\n${JSON.stringify(parsedEdges, null, 2)}\n`);
 
-        await runner.execute(triggerData, (log) => {
+        await runner.execute(triggerData, (log: RunLog) => {
             console.log(`[${log.status}] Node ${log.nodeId}:`, log.output || log.error);
             fs.appendFileSync('debug_webhook.log', `\n[${log.status}] Node ${log.nodeId}:\n${JSON.stringify(log.output || log.error, null, 2)}`);
         });
@@ -152,8 +153,9 @@ export async function POST(
         }
 
         return NextResponse.json({ ok: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Webhook Execution Error:", error);
-        return NextResponse.json({ ok: false, error: error.message }, { status: 200 });
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        return NextResponse.json({ ok: false, error: errorMessage }, { status: 200 });
     }
 }

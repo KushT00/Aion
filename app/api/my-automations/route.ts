@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
     try {
         const supabase = await createClient();
         const { data: { user }, error: authErr } = await supabase.auth.getUser();
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
         // Now fetch instances for these purchases
         const purchaseIds = (purchases || []).map(p => p.id);
-        let instanceMap: Record<string, any> = {};
+        const instanceMap: Record<string, { id: string; purchase_id: string; status: string; pricing_tier: string; total_runs: number; total_successes: number; total_failures: number; last_run_at: string | null }> = {};
 
         if (purchaseIds.length > 0) {
             const { data: instances } = await supabase
@@ -73,10 +73,11 @@ export async function GET(req: NextRequest) {
         });
 
         return NextResponse.json({ automations });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[MY AUTOMATIONS ERROR]', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch your automations';
         return NextResponse.json(
-            { error: error.message || 'Failed to fetch your automations' },
+            { error: errorMessage },
             { status: 500 }
         );
     }

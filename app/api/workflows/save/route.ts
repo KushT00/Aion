@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         if (delNodesErr) throw delNodesErr;
 
         if (nodes && nodes.length > 0) {
-            const nodesToInsert = nodes.map((n: any) => {
+            const nodesToInsert = nodes.map((n: { id: string; type: string; position: { x: number; y: number }; data: { label: string; type: string; config?: Record<string, unknown> } }) => {
                 const realType = n.data?.type;
                 const rfType = n.type;
                 const config = n.data?.config || {};
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         if (delEdgesErr) throw delEdgesErr;
 
         if (edges && edges.length > 0) {
-            const edgesToInsert = edges.map((e: any) => {
+            const edgesToInsert = edges.map((e: { id: string; source: string; target: string; sourceHandle?: string; targetHandle?: string; label?: string | { label?: string } }) => {
                 // If it's a temp ID from React Flow, we should really ensure it's a UUID
                 // But generally e.id is fine if it matches schema.
                 return {
@@ -109,8 +109,9 @@ export async function POST(request: NextRequest) {
         console.log('✅ [API_SAVE] Save successful for workflow:', currentWfId);
         return NextResponse.json({ success: true, workflowId: currentWfId });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('❌ [API_SAVE] Fatal error:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        const errorMessage = error instanceof Error ? error.message : 'Internal Server Error';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

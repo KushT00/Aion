@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
-    Bot,
-    Send,
     User,
     Loader2,
     ArrowLeft,
@@ -18,39 +16,90 @@ import {
     Sparkles,
     Zap,
     Globe,
-    Shield,
-    Eye,
-    EyeOff,
-    MessageSquare,
     X,
-    ChevronRight,
     Settings,
-    ExternalLink,
-    Copy,
-    Cpu,
     Sliders,
-    Save,
-    Info,
-    Layout,
     Box,
     FileText,
     BrainCircuit,
     Activity,
+    Bot,
+    Send,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
-// ─── Integration definitions identical to before ───
-const INTEGRATION_CARDS: Record<string, any> = {
+interface IntegrationConfig {
+    name: string;
+    icon: string;
+    color: string;
+    bg: string;
+    description: string;
+    group: string;
+}
+
+interface UserIntegration {
+    id: string;
+    provider: string;
+    is_valid: boolean;
+    [key: string]: string | boolean | number | null | undefined;
+}
+
+interface RunResult {
+    success: boolean;
+    logs: {
+        nodeId: string;
+        status: string;
+        error?: string;
+    }[];
+    [key: string]: unknown;
+}
+
+const INTEGRATION_CARDS: Record<string, IntegrationConfig> = {
     google_gemini: { name: 'Google Gemini', icon: '✦', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', description: 'AI text generation', group: 'ai' },
     groq: { name: 'Groq', icon: '⚡', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', description: 'Fast LLM inference', group: 'ai' },
     openai: { name: 'OpenAI', icon: '◈', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', description: 'GPT models', group: 'ai' },
     telegram: { name: 'Telegram Bot', icon: '✈', color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20', description: 'Messaging', group: 'messaging' },
     google_sheets: { name: 'Google Sheets', icon: '📊', color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20', description: 'Spreadsheets', group: 'google' },
     google_docs: { name: 'Google Docs', icon: '📄', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', description: 'Documents', group: 'google' },
+    anthropic: { name: 'Anthropic', icon: '⌬', color: 'text-orange-200', bg: 'bg-orange-500/10 border-orange-500/20', description: 'Claude models', group: 'ai' },
+    openrouter: { name: 'OpenRouter', icon: '🌐', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20', description: 'Unified AI API', group: 'ai' },
     slack: { name: 'Slack', icon: '♯', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', description: 'Team collaboration', group: 'messaging' },
     notion: { name: 'Notion', icon: '⬚', color: 'text-neutral-400', bg: 'bg-neutral-500/10 border-neutral-500/20', description: 'Knowledge base', group: 'utility' },
 };
+
+interface WorkflowNode {
+    id: string;
+    type: string;
+    label?: string;
+    data?: {
+        label?: string;
+        agentModel?: { provider?: string };
+        [key: string]: unknown;
+    };
+    config?: {
+        agentModel?: { provider?: string };
+        [key: string]: unknown;
+    };
+}
+
+interface Instance {
+    id: string;
+    listing?: {
+        title: string;
+        workflow?: {
+            nodes: WorkflowNode[];
+        };
+    };
+    config_overrides?: Record<string, string>;
+}
+
+interface ExecutionLog {
+    id: string;
+    status: string;
+    created_at: string;
+    [key: string]: unknown;
+}
 
 export default function InstanceSandboxPage() {
     const params = useParams();
@@ -58,20 +107,23 @@ export default function InstanceSandboxPage() {
     const instanceId = params.id as string;
 
     const [activeTab, setActiveTab] = useState<'integrations' | 'behavior' | 'logs'>('integrations');
-    const [instance, setInstance] = useState<any>(null);
+    const [instance, setInstance] = useState<Instance | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [requiredIntegrations, setRequiredIntegrations] = useState<string[]>([]);
-    const [credentials, setCredentials] = useState<Record<string, any>>({});
-    const [overrides, setOverrides] = useState<Record<string, any>>({});
+    const [credentials, setCredentials] = useState<Record<string, { isValid: boolean }>>({});
+    const [userIntegrations, setUserIntegrations] = useState<UserIntegration[]>([]);
+    const [overrides, setOverrides] = useState<Record<string, string>>({});
     const [isActivating, setIsActivating] = useState(false);
     const [inputValues, setInputValues] = useState<Record<string, string>>({});
     const [savingKey, setSavingKey] = useState<string | null>(null);
+    const [selectedAiProvider, setSelectedAiProvider] = useState<string>('groq');
+    const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
 
     // Execution States
     const [isRunning, setIsRunning] = useState(false);
-    const [lastRunResult, setLastRunResult] = useState<any>(null);
-    const [executionLogs, setExecutionLogs] = useState<any[]>([]);
+    const [lastRunResult, setLastRunResult] = useState<RunResult | null>(null);
+    const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
 
     // AI Chat
     const [chatOpen, setChatOpen] = useState(false);
@@ -90,11 +142,24 @@ export default function InstanceSandboxPage() {
                 setRequiredIntegrations(data.requiredIntegrations || []);
                 setOverrides(data.instance?.config_overrides || {});
 
-                const credMap: Record<string, any> = {};
+                const credMap: Record<string, { isValid: boolean }> = {};
                 for (const c of (data.credentials || [])) {
                     credMap[c.integration_key] = { isValid: c.is_valid };
                 }
                 setCredentials(credMap);
+                setUserIntegrations(data.userIntegrations || []);
+                setInputValues({});
+
+                // Default AI provider selection
+                const aiNode = (data.instance?.listing?.workflow?.nodes || []).find((n: WorkflowNode) => {
+                    const nodeType = (n.type || '').toLowerCase();
+                    const label = (n.label || n.data?.label || '').toLowerCase();
+                    return nodeType === 'ai' || nodeType === 'agent' || label.includes('ai agent');
+                });
+                if (aiNode) {
+                    const prov = aiNode.config?.agentModel?.provider || aiNode.data?.agentModel?.provider || 'groq';
+                    setSelectedAiProvider(prov);
+                }
 
                 // Load initial logs
                 const logRes = await fetch(`/api/ai/instance-logs?instanceId=${instanceId}`);
@@ -107,7 +172,7 @@ export default function InstanceSandboxPage() {
                 if (data.requiredIntegrations?.length > 0 && !data.allConnected) {
                     setChatOpen(true);
                 }
-            } catch (err) {
+            } catch {
                 setError('Failed to connect to AION cloud');
             } finally {
                 setIsLoading(false);
@@ -151,10 +216,9 @@ export default function InstanceSandboxPage() {
     };
 
     // ─── Save Override Logic ──────────────────────────────────────────
-    const [pendingOverrides, setPendingOverrides] = useState<Record<string, any>>({});
     const [isSavingOverride, setIsSavingOverride] = useState<string | null>(null);
 
-    const handleSaveOverride = async (nodeId: string, property: string, value: any) => {
+    const handleSaveOverride = async (nodeId: string, property: string, value: string) => {
         setIsSavingOverride(`${nodeId}.${property}`);
         try {
             const res = await fetch('/api/ai/save-override', {
@@ -180,17 +244,23 @@ export default function InstanceSandboxPage() {
         const val = inputValues[key]?.trim();
         if (!val) return;
         setSavingKey(key);
+        setCredentialErrors(prev => ({ ...prev, [key]: '' }));
         try {
             const res = await fetch('/api/ai/save-credential', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ instanceId, integrationKey: key, value: val }),
             });
+            const data = await res.json();
             if (res.ok) {
                 setCredentials(prev => ({ ...prev, [key]: { isValid: true } }));
                 setInputValues(prev => ({ ...prev, [key]: '' }));
                 toast.success('Integration connected!');
+            } else {
+                setCredentialErrors(prev => ({ ...prev, [key]: data.error || 'Invalid API Key' }));
             }
+        } catch {
+            setCredentialErrors(prev => ({ ...prev, [key]: 'Connection error' }));
         } finally {
             setSavingKey(null);
         }
@@ -213,6 +283,44 @@ export default function InstanceSandboxPage() {
         }
     };
 
+    const handleDeleteCredential = async (key: string) => {
+        const isGoogle = key.startsWith('google_') && key !== 'google_gemini';
+        const msg = isGoogle
+            ? "Are you sure you want to disconnect your Google Account? This will logout your account from the entire app."
+            : `Are you sure you want to remove this API Key?`;
+
+        if (!confirm(msg)) return;
+
+        try {
+            if (isGoogle) {
+                // 1. Global Disconnect
+                await fetch('/api/integrations?provider=google', { method: 'DELETE' });
+                // 2. Instance-specific cleanup
+                await fetch('/api/ai/save-credential', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instanceId, integrationKey: key }),
+                });
+                setUserIntegrations([]);
+            } else {
+                await fetch('/api/ai/save-credential', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instanceId, integrationKey: key }),
+                });
+            }
+
+            setCredentials(prev => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+            toast.success('Disconnected successfully');
+        } catch {
+            toast.error('Failed to disconnect');
+        }
+    };
+
     // ─── Renderers ──────────────────────────────────────────────────────
     if (isLoading) return <LoadingState />;
     if (error) return <ErrorState error={error} />;
@@ -221,21 +329,21 @@ export default function InstanceSandboxPage() {
     const allConnected = requiredIntegrations.every(k => credentials[k]?.isValid);
 
     return (
-        <div className="min-h-screen bg-[var(--bg)] flex flex-col">
+        <div className="min-h-screen bg-(--bg) flex flex-col">
             {/* Header */}
-            <header className="border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
+            <header className="border-b border-(--border) bg-(--card) px-6 py-4">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <Link href="/my-automations"><Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button></Link>
                         <div>
                             <h1 className="text-xl font-black italic uppercase tracking-tighter">Instance <span className="text-primary-400">Sandbox</span></h1>
-                            <p className="text-[10px] text-[var(--muted-fg)] font-bold uppercase tracking-widest">{instance?.listing?.title}</p>
+                            <p className="text-[10px] text-(--muted-fg) font-bold uppercase tracking-widest">{instance?.listing?.title}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 mr-4">
                             {requiredIntegrations.map(k => (
-                                <div key={k} className={cn("w-2 h-2 rounded-full", credentials[k]?.isValid ? "bg-emerald-400" : "bg-[var(--muted)]")} title={k} />
+                                <div key={k} className={cn("w-2 h-2 rounded-full", credentials[k]?.isValid ? "bg-emerald-400" : "bg-(--muted)")} title={k} />
                             ))}
                         </div>
                         <Button
@@ -265,7 +373,7 @@ export default function InstanceSandboxPage() {
             <div className="flex-1 flex overflow-hidden">
                 <main className="flex-1 overflow-y-auto p-6 lg:p-10 space-y-8">
                     {/* Tab Navigation */}
-                    <div className="flex items-center gap-1 bg-[var(--card)] border border-[var(--border)] p-1 rounded-2xl w-fit">
+                    <div className="flex items-center gap-1 bg-(--card) border border-(--border) p-1 rounded-2xl w-fit">
                         <TabButton
                             active={activeTab === 'integrations'}
                             onClick={() => setActiveTab('integrations')}
@@ -294,12 +402,11 @@ export default function InstanceSandboxPage() {
                                     <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
                                         <Key className="w-4 h-4 text-amber-400" /> Primary Credentials
                                     </h2>
-                                    <p className="text-xs text-[var(--muted-fg)] font-medium">Connect your own API keys to run this automation in your isolated environment.</p>
+                                    <p className="text-xs text-(--muted-fg) font-medium">Connect your own API keys to run this automation in your isolated environment.</p>
                                 </div>
                                 <div className="grid md:grid-cols-2 gap-4">
-                                    {requiredIntegrations.map(key => renderIntegrationCard(key))}
+                                    {renderSimplifiedIntegrations()}
                                 </div>
-                                {requiredIntegrations.length === 0 && <EmptyState icon={<Box />} title="No Credentials Needed" desc="This automation is self-contained." />}
                             </div>
                         ) : activeTab === 'behavior' ? (
                             <div className="space-y-6">
@@ -307,10 +414,10 @@ export default function InstanceSandboxPage() {
                                     <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
                                         <BrainCircuit className="w-4 h-4 text-primary-400" /> Node Configuration
                                     </h2>
-                                    <p className="text-xs text-[var(--muted-fg)] font-medium">Fine-tune the behavior of individual nodes. These changes only affect <b>your</b> instance.</p>
+                                    <p className="text-xs text-(--muted-fg) font-medium">Fine-tune the behavior of individual nodes. These changes only affect <b>your</b> instance.</p>
                                 </div>
                                 <div className="grid gap-4">
-                                    {workflowNodes.filter((n: any) => n.type !== 'start' && n.type !== 'trigger').map((node: any) => renderNodeConfigCard(node))}
+                                    {workflowNodes.filter((n: WorkflowNode) => n.type !== 'start' && n.type !== 'trigger').map((node: WorkflowNode) => renderNodeConfigCard(node))}
                                 </div>
                             </div>
                         ) : (
@@ -319,35 +426,37 @@ export default function InstanceSandboxPage() {
                                     <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
                                         <Activity className="w-4 h-4 text-emerald-400" /> Run History
                                     </h2>
-                                    <p className="text-xs text-[var(--muted-fg)] font-medium">Track your instance's performance and review step-by-step logs.</p>
+                                    <p className="text-xs text-(--muted-fg) font-medium">Track your instance&apos;s performance and review step-by-step logs.</p>
                                 </div>
                                 <div className="space-y-4">
                                     {isRunning && (
-                                        <Card className="p-12 border-primary-500/20 bg-primary-500/5 text-center flex flex-col items-center gap-4">
+                                        <Card className="p-12 text-center flex flex-col items-center gap-4 border-(--border) bg-(--bg)/50">
                                             <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
-                                            <h3 className="font-black uppercase italic italic text-primary-400">Executing Workflow...</h3>
-                                            <p className="text-[10px] text-[var(--muted-fg)] font-bold uppercase tracking-widest">Hydrating nodes and injecting credentials</p>
+                                            <h3 className="font-black uppercase italic text-primary-400">Executing Workflow...</h3>
+                                            <p className="text-[10px] text-(--muted-fg) font-bold uppercase tracking-widest">Hydrating nodes and injecting credentials</p>
                                         </Card>
                                     )}
 
                                     {lastRunResult && !isRunning && (
                                         <div className="space-y-6">
-                                            <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
-                                                <div className="flex items-center gap-3">
-                                                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                                                    <span className="text-xs font-black uppercase italic">Last Run Success</span>
+                                            <Card className="relative p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                                                        <span className="text-xs font-black uppercase italic">Last Run Success</span>
+                                                    </div>
+                                                    <Button variant="ghost" size="sm" onClick={() => setLastRunResult(null)} className="text-[9px] uppercase font-bold">Clear</Button>
                                                 </div>
-                                                <Button variant="ghost" size="sm" onClick={() => setLastRunResult(null)} className="text-[9px] uppercase font-bold">Clear</Button>
-                                            </div>
+                                            </Card>
 
                                             <div className="space-y-3">
-                                                {lastRunResult.logs?.map((log: any, i: number) => (
+                                                {lastRunResult && lastRunResult.logs?.map((log, i: number) => (
                                                     <div key={i} className="flex gap-4 group">
-                                                        <div className="w-1 bg-[var(--border)] rounded-full group-hover:bg-primary-500/30 transition-colors" />
+                                                        <div className="w-1 bg-(--border) rounded-full group-hover:bg-primary-500/30 transition-colors" />
                                                         <div className="flex-1 py-1">
                                                             <div className="flex items-center justify-between">
                                                                 <p className="text-[10px] font-black uppercase tracking-tight">
-                                                                    {workflowNodes.find((n: any) => n.id === log.nodeId)?.data?.label || 'Node'}
+                                                                    {workflowNodes.find((n: WorkflowNode) => n.id === log.nodeId)?.data?.label || 'Node'}
                                                                 </p>
                                                                 <Badge className={cn("text-[8px] font-black px-1.5", log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400')}>
                                                                     {log.status.toUpperCase()}
@@ -365,13 +474,13 @@ export default function InstanceSandboxPage() {
                                         <EmptyState icon={<FileText />} title="No Runs Yet" desc="Click 'Test Drive' to start your first execution." />
                                     )}
 
-                                    {executionLogs.map((log: any) => (
-                                        <div key={log.id} className="p-4 rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-between">
+                                    {executionLogs.map((log: ExecutionLog) => (
+                                        <div key={log.id} className="p-4 rounded-xl border border-(--border) bg-(--card) flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <Activity className={cn("w-4 h-4", log.status === 'success' ? 'text-emerald-400' : 'text-rose-400')} />
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase tracking-tight">Run #{log.id.slice(0, 4)}</p>
-                                                    <p className="text-[8px] text-[var(--muted-fg)] font-bold">{new Date(log.created_at).toLocaleString()}</p>
+                                                    <p className="text-[8px] text-(--muted-fg) font-bold">{new Date(log.created_at).toLocaleString()}</p>
                                                 </div>
                                             </div>
                                             <Badge className={cn("text-[8px] font-black", log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400')}>
@@ -387,7 +496,7 @@ export default function InstanceSandboxPage() {
 
                 {/* Optional Assistant Sidebar (Hidden by default because User hates reliance on it) */}
                 <div className={cn(
-                    "w-[350px] border-l border-[var(--border)] bg-[var(--card)] transition-all flex flex-col relative z-20",
+                    "w-[350px] border-l border-(--border) bg-(--card) transition-all flex flex-col relative z-20",
                     chatOpen ? "mr-0 opacity-100" : "-mr-[350px] opacity-0 pointer-events-none"
                 )}>
                     <AIChatSidebar
@@ -412,22 +521,123 @@ export default function InstanceSandboxPage() {
     );
 
     // ─── Sub-renderers ──────────────────────────────────────────────────
-    function renderIntegrationCard(key: string) {
-        const conf = INTEGRATION_CARDS[key] || { name: key, icon: '🔑', color: 'text-white', bg: 'bg-[var(--muted)]', group: 'other' };
-        const isConnected = credentials[key]?.isValid;
+    function renderSimplifiedIntegrations() {
+        const workflowNodes: WorkflowNode[] = instance?.listing?.workflow?.nodes || [];
+
+        // 1. Detect AI Agent
+        const aiNode = workflowNodes.find((n: WorkflowNode) => {
+            const nodeType = (n.type || '').toLowerCase();
+            const label = (n.label || n.data?.label || '').toLowerCase();
+            return nodeType === 'ai' || nodeType === 'agent' || label.includes('ai agent');
+        });
+        const hasAiAgent = !!aiNode;
+
+        // 2. Detect Google Services
+        const hasGoogleService = workflowNodes.some((n: WorkflowNode) => {
+            const type = (n.type || '').toLowerCase();
+            const label = (n.label || n.data?.label || '').toLowerCase();
+            return type.includes('google') || type.includes('sheet') || type.includes('docs') ||
+                type.includes('gmail') || type.includes('calendar') ||
+                label.includes('google') || label.includes('sheet') ||
+                label.includes('gmail') || label.includes('calendar') || label.includes('google docs');
+        });
+
+        const elements = [];
+
+        if (hasAiAgent) {
+            elements.push(
+                <div key="ai_selector" className="col-span-full space-y-6 mb-8">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-primary-400" /> Choose AI Engine
+                        </h2>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-(--muted-fg)">Select Provider</span>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                        {['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'].map(key => {
+                            const conf = INTEGRATION_CARDS[key];
+                            const isSelected = selectedAiProvider === key;
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => {
+                                        setSelectedAiProvider(key);
+                                        setCredentialErrors(prev => ({ ...prev, [key]: '' }));
+                                    }}
+                                    className={cn(
+                                        "p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 group relative overflow-hidden",
+                                        isSelected ? "border-primary-500 bg-primary-500/10" : "border-(--border) bg-(--card) hover:border-primary-500/30"
+                                    )}
+                                >
+                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-lg", conf.bg)}>
+                                        {conf.icon}
+                                    </div>
+                                    <div className="text-center">
+                                        <p className={cn("text-[10px] font-black uppercase tracking-tight", isSelected ? "text-white" : "text-(--muted-fg)")}>
+                                            {conf.name.replace('Google ', '')}
+                                        </p>
+                                        <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Managed</p>
+                                    </div>
+                                    {isSelected && <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            elements.push(
+                <div key="ai_credential" className="col-span-full mb-8">
+                    <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2 mb-4">
+                        <Zap className="w-4 h-4 text-emerald-400" /> Connect Account
+                    </h2>
+                    {renderIntegrationCard(selectedAiProvider, "API KEY")}
+                </div>
+            );
+        }
+
+        if (hasGoogleService) {
+            elements.push(
+                <div key="google_credential" className="col-span-full">
+                    {!hasAiAgent && (
+                        <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2 mb-4">
+                            <Zap className="w-4 h-4 text-emerald-400" /> Connect Account
+                        </h2>
+                    )}
+                    {renderIntegrationCard('google_sheets', "GOOGLE ACCOUNT")}
+                </div>
+            );
+        }
+
+        if (elements.length === 0) {
+            return <EmptyState icon={<Box />} title="No Credentials Needed" desc="This automation is self-contained." />;
+        }
+
+        return <div className="grid gap-8">{elements}</div>;
+    }
+
+    function renderIntegrationCard(key: string, overrideName?: string) {
+        const conf = INTEGRATION_CARDS[key] || { name: key, icon: '🔑', color: 'text-white', bg: 'bg-(--muted)', group: 'other' };
+        let isConnected = credentials[key]?.isValid;
         const isOAuth = key.startsWith('google_') && key !== 'google_gemini';
 
+        if (isOAuth) {
+            const googleInteg = userIntegrations.find(i => i.provider === 'google' && i.is_valid);
+            if (googleInteg) isConnected = true;
+        }
+
+        const displayName = overrideName || conf.name;
+
         const handleConnectGoogle = () => {
-            const scope = key === 'google_sheets' ? 'drive' : (key === 'google_docs' ? 'drive' : 'all');
-            // Store return path in cookie for the callback to find
+            const scope = 'all';
             document.cookie = `oauth_return_to=${window.location.pathname}; path=/; max-age=600`;
             window.location.href = `/api/auth/google/connect?scope=${scope}&instanceId=${instanceId}`;
         };
 
         return (
             <Card key={key} className={cn(
-                "p-5 border-[var(--border)] bg-[var(--card)] group transition-all h-full flex flex-col justify-between",
-                isConnected ? "border-emerald-500/20 bg-emerald-500/[0.02]" : "hover:border-primary-500/40"
+                "p-5 border-(--border) bg-(--card) group transition-all h-full flex flex-col justify-between",
+                isConnected ? "border-emerald-500/20 bg-emerald-500/2" : "hover:border-primary-500/40"
             )}>
                 <div>
                     <div className="flex items-center justify-between mb-4">
@@ -436,57 +646,93 @@ export default function InstanceSandboxPage() {
                                 {conf.icon}
                             </div>
                             <div>
-                                <p className="text-xs font-black uppercase tracking-tight">{conf.name}</p>
-                                <Badge className="text-[7px] font-black uppercase py-0 h-4 bg-white/5 border-none text-[var(--muted-fg)]">
-                                    {conf.group}
-                                </Badge>
+                                <p className="text-xs font-black uppercase tracking-tight">{displayName}</p>
+                                <div className="flex items-center gap-2">
+                                    <Badge className="text-[7px] font-black uppercase py-0 h-4 bg-white/5 border-none text-(--muted-fg)">
+                                        {conf.group}
+                                    </Badge>
+                                    {isConnected && (
+                                        <Badge className="text-[7px] font-black uppercase py-0 h-4 bg-emerald-500/10 border-none text-emerald-400">
+                                            Account Connected
+                                        </Badge>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        {isConnected && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
+                        {isConnected ? (
+                            <button
+                                onClick={() => handleDeleteCredential(key)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-(--muted-fg) hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                title="Disconnect"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        ) : null}
                     </div>
-                    {!isConnected && <p className="text-[10px] text-[var(--muted-fg)] font-bold mb-4 uppercase leading-tight">{conf.description}</p>}
                 </div>
 
                 {!isConnected && (
                     isOAuth ? (
-                        <Button
-                            onClick={handleConnectGoogle}
-                            className="w-full rounded-xl h-10 font-black uppercase tracking-widest text-[9px] bg-white text-black hover:bg-neutral-200"
-                        >
-                            <Globe className="w-3.5 h-3.5 mr-2" /> Connect Google Account
-                        </Button>
-                    ) : (
                         <div className="flex gap-2">
-                            <input
-                                type="password"
-                                placeholder="Paste API Key..."
-                                value={inputValues[key] || ''}
-                                onChange={(e) => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
-                                className="flex-1 bg-[var(--muted)] border-none rounded-lg px-3 py-2 text-[10px] font-mono outline-none"
-                            />
                             <Button
-                                size="sm"
-                                disabled={savingKey === key || !inputValues[key]}
-                                onClick={() => handleSaveCredential(key)}
-                                className="rounded-lg h-9 font-black uppercase tracking-widest text-[8px] bg-primary-500"
+                                onClick={handleConnectGoogle}
+                                className="flex-1 rounded-xl h-10 font-black uppercase tracking-widest text-[9px] bg-white text-black hover:bg-neutral-200"
                             >
-                                {savingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                <Globe className="w-3.5 h-3.5 mr-2" /> Connect Google Account
                             </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <input
+                                        type="password"
+                                        placeholder={`Paste your ${conf.name} API Key...`}
+                                        value={inputValues[key] || ''}
+                                        onChange={(e) => setInputValues(prev => ({ ...prev, [key]: e.target.value }))}
+                                        className="w-full bg-(--muted) border-none rounded-lg px-3 py-2 text-[10px] font-mono outline-none pr-8"
+                                    />
+                                    {inputValues[key] ? (
+                                        <button
+                                            onClick={() => setInputValues(prev => ({ ...prev, [key]: '' }))}
+                                            className="absolute right-2 top-2 text-(--muted-fg) hover:text-white"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    ) : null}
+                                </div>
+                                <Button
+                                    size="sm"
+                                    disabled={savingKey === key || !inputValues[key]}
+                                    onClick={() => handleSaveCredential(key)}
+                                    className="rounded-lg h-9 font-black uppercase tracking-widest text-[8px] bg-primary-500"
+                                >
+                                    {savingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                </Button>
+                            </div>
+                            {credentialErrors[key] && (
+                                <p className="text-[9px] font-black uppercase italic text-rose-400 animate-in fade-in slide-in-from-top-1">
+                                    {credentialErrors[key]}
+                                </p>
+                            )}
                         </div>
                     )
                 )}
                 {isConnected && (
-                    <div className="flex items-center gap-2 text-[9px] font-black uppercase text-emerald-400 italic">
-                        <Shield className="w-3 h-3" /> Securely Synchronized
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[9px] font-black uppercase text-emerald-400 italic">
+                            <CheckCircle2 className="w-3 h-3" /> Securely Synchronized
+                        </div>
+                        <span className="text-[8px] text-(--muted-fg) font-mono">****-****-****-****</span>
                     </div>
                 )}
             </Card>
         );
     }
 
-    function renderNodeConfigCard(node: any) {
+    function renderNodeConfigCard(node: WorkflowNode) {
         // Find configurable node properties
-        const data = node.data || {};
+        const data = (node.data || {}) as Record<string, unknown>;
         const configurableKeys = Object.keys(data).filter(k =>
             !['integrationType', 'label', 'description', 'id', 'type', 'icon', 'onIntegrationClick'].includes(k) &&
             typeof data[k] !== 'object'
@@ -495,9 +741,9 @@ export default function InstanceSandboxPage() {
         if (configurableKeys.length === 0) return null;
 
         return (
-            <Card key={node.id} className="p-5 border-[var(--border)] bg-[var(--card)]">
+            <Card key={node.id} className="p-5 border-(--border) bg-(--card)">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-[var(--muted)] flex items-center justify-center text-primary-400">
+                    <div className="w-10 h-10 rounded-xl bg-(--muted) flex items-center justify-center text-primary-400">
                         <Settings className="w-5 h-5" />
                     </div>
                     <div className="flex-1">
@@ -505,7 +751,7 @@ export default function InstanceSandboxPage() {
                             {node.data?.label || node.type}
                             <span className="text-[8px] font-mono opacity-40">#{node.id.slice(0, 6)}</span>
                         </h4>
-                        <p className="text-[10px] text-[var(--muted-fg)] font-bold uppercase tracking-widest">{node.type}</p>
+                        <p className="text-[10px] text-(--muted-fg) font-bold uppercase tracking-widest">{node.type}</p>
                     </div>
                 </div>
 
@@ -513,17 +759,18 @@ export default function InstanceSandboxPage() {
                     {configurableKeys.map(prop => (
                         <div key={prop} className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-[var(--muted-fg)]">{prop.replace(/([A-Z])/g, ' $1')}</label>
+                                <label className="text-[9px] font-black uppercase tracking-widest text-(--muted-fg)">{prop.replace(/([A-Z])/g, ' $1')}</label>
                                 {overrides[`${node.id}.${prop}`] !== undefined && (
                                     <span className="text-[7px] font-black tracking-widest text-primary-400 uppercase italic">Override Active</span>
                                 )}
                             </div>
                             <div className="flex gap-2">
                                 <input
-                                    className="flex-1 bg-[var(--muted)] border-none rounded-lg px-3 py-2.5 text-xs font-bold outline-none ring-primary-500/20 focus:ring-1"
-                                    defaultValue={overrides[`${node.id}.${prop}`] || data[prop]}
+                                    className="flex-1 bg-(--muted) border-none rounded-lg px-3 py-2.5 text-xs font-bold outline-none ring-primary-500/20 focus:ring-1"
+                                    defaultValue={(overrides[`${node.id}.${prop}`] || data[prop]) as string}
                                     onBlur={(e) => {
-                                        if (e.target.value !== (overrides[`${node.id}.${prop}`] || data[prop])) {
+                                        const currentVal = (overrides[`${node.id}.${prop}`] || data[prop]) as string;
+                                        if (e.target.value !== currentVal) {
                                             handleSaveOverride(node.id, prop, e.target.value);
                                         }
                                     }}
@@ -538,13 +785,13 @@ export default function InstanceSandboxPage() {
     }
 }
 
-function TabButton({ active, onClick, icon, label }: any) {
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
     return (
         <button
             onClick={onClick}
             className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                active ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20" : "text-[var(--muted-fg)] hover:bg-white/5"
+                active ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20" : "text-(--muted-fg) hover:bg-white/5"
             )}
         >
             {icon} {label}
@@ -554,10 +801,10 @@ function TabButton({ active, onClick, icon, label }: any) {
 
 function LoadingState() {
     return (
-        <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center">
+        <div className="min-h-screen bg-(--bg) flex items-center justify-center">
             <div className="flex flex-col items-center gap-4 animate-pulse">
                 <Box className="w-10 h-10 text-primary-500 animate-bounce" />
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--muted-fg)]">Waking up your instance...</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-(--muted-fg)">Waking up your instance...</p>
             </div>
         </div>
     );
@@ -565,14 +812,14 @@ function LoadingState() {
 
 function ErrorState({ error }: { error: string }) {
     return (
-        <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
+        <div className="min-h-screen bg-(--bg) flex items-center justify-center p-6">
             <div className="max-w-md w-full flex flex-col items-center gap-8 text-center">
                 <div className="w-24 h-24 rounded-[3rem] bg-rose-500/10 flex items-center justify-center">
                     <AlertCircle className="w-12 h-12 text-rose-400" />
                 </div>
                 <div className="space-y-2">
-                    <h2 className="text-2xl font-black uppercase italic italic text-rose-400">Configuration Failed</h2>
-                    <p className="text-sm text-[var(--muted-fg)] font-medium leading-relaxed">{error}</p>
+                    <h2 className="text-2xl font-black uppercase italic text-rose-400">Configuration Failed</h2>
+                    <p className="text-sm text-(--muted-fg) font-medium leading-relaxed">{error}</p>
                 </div>
                 <Link href="/my-automations" className="w-full">
                     <Button variant="outline" className="w-full rounded-2xl h-14 font-black uppercase italic border-2">
@@ -584,22 +831,22 @@ function ErrorState({ error }: { error: string }) {
     );
 }
 
-function EmptyState({ icon, title, desc }: any) {
+function EmptyState({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
     return (
-        <div className="p-12 border-2 border-dashed border-[var(--border)] rounded-[2rem] text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--muted)] flex items-center justify-center mx-auto text-primary-400">
+        <div className="p-12 border-2 border-dashed border-(--border) rounded-4xl text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-(--muted) flex items-center justify-center mx-auto text-primary-400">
                 {icon}
             </div>
             <h3 className="text-sm font-black uppercase italic">{title}</h3>
-            <p className="text-xs text-[var(--muted-fg)] font-medium">{desc}</p>
+            <p className="text-xs text-(--muted-fg) font-medium">{desc}</p>
         </div>
     );
 }
 
 // ─── AI Chat Components ───────────────────────────────────────────
 
-function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
-    const [messages, setMessages] = useState<any[]>([
+function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: { instanceId: string; onClose: () => void; onCredentialUpdate: (key: string) => void }) {
+    const [messages, setMessages] = useState<{ role: string; content: string }[]>([
         { role: 'assistant', content: "Hello! I'm your AION guide. I'll help you connect your accounts and set up this automation. What can I do for you?" }
     ]);
     const [inputValue, setInputValue] = useState('');
@@ -633,11 +880,9 @@ function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
                 setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
             }
             if (data.credentialStored) {
-                // Future: backend should specify WHICH credential was stored
-                // For now, let's refresh credentials list by calling a hook or parent
                 onCredentialUpdate('detected_by_ai');
             }
-        } catch (err) {
+        } catch {
             setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I lost my connection. Please check your internet and try again." }]);
         } finally {
             setIsSending(false);
@@ -646,7 +891,7 @@ function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
 
     return (
         <>
-            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg)]/50">
+            <div className="p-4 border-b border-(--border) flex items-center justify-between bg-(--bg)/50">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center text-primary-400">
                         <Bot className="w-4 h-4" />
@@ -662,20 +907,20 @@ function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
-                {messages.map((m: any, i: number) => (
+                {messages.map((m: { role: string; content: string }, i: number) => (
                     <div key={i} className={cn(
                         "flex gap-3 max-w-[90%]",
                         m.role === 'user' ? "ml-auto flex-row-reverse" : ""
                     )}>
                         <div className={cn(
-                            "w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-1",
-                            m.role === 'user' ? "bg-primary-500/20 text-primary-400" : "bg-[var(--muted)] text-[var(--muted-fg)]"
+                            "w-6 h-6 rounded-full shrink-0 flex items-center justify-center mt-1",
+                            m.role === 'user' ? "bg-primary-500/20 text-primary-400" : "bg-(--muted) text-(--muted-fg)"
                         )}>
                             {m.role === 'user' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
                         </div>
                         <div className={cn(
                             "rounded-2xl p-3 text-[11px] font-medium leading-relaxed shadow-sm",
-                            m.role === 'user' ? "bg-primary-600 text-white rounded-tr-none" : "bg-[var(--muted)] text-[var(--foreground)] rounded-tl-none"
+                            m.role === 'user' ? "bg-primary-600 text-white rounded-tr-none" : "bg-(--muted) text-(--foreground) rounded-tl-none"
                         )}>
                             {m.content}
                         </div>
@@ -683,20 +928,20 @@ function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
                 ))}
                 {isSending && (
                     <div className="flex gap-3 max-w-[90%]">
-                        <div className="w-6 h-6 rounded-full bg-[var(--muted)] flex items-center justify-center animate-spin">
+                        <div className="w-6 h-6 rounded-full bg-(--muted) flex items-center justify-center animate-spin">
                             <Bot className="w-3 h-3" />
                         </div>
-                        <div className="bg-[var(--muted)] rounded-2xl rounded-tl-none p-3 shadow-sm">
-                            <Loader2 className="w-3 h-3 animate-spin text-[var(--muted-fg)]" />
+                        <div className="bg-(--muted) rounded-2xl rounded-tl-none p-3 shadow-sm">
+                            <Loader2 className="w-3 h-3 animate-spin text-(--muted-fg)" />
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="p-4 border-t border-[var(--border)] bg-[var(--bg)]/50">
+            <div className="p-4 border-t border-(--border) bg-(--bg)/50">
                 <div className="relative group">
                     <input
-                        className="w-full bg-[var(--muted)] border border-transparent focus:border-primary-500/50 rounded-2xl px-4 py-3 text-[11px] font-bold outline-none ring-primary-500/10 focus:ring-4 transition-all pr-12"
+                        className="w-full bg-(--muted) border border-transparent focus:border-primary-500/50 rounded-2xl px-4 py-3 text-[11px] font-bold outline-none ring-primary-500/10 focus:ring-4 transition-all pr-12"
                         placeholder="Say something like 'help me set up'..."
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
@@ -710,7 +955,7 @@ function AIChatSidebar({ instanceId, onClose, onCredentialUpdate }: any) {
                         {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </button>
                 </div>
-                <p className="text-[7px] text-[var(--muted-fg)] font-black uppercase text-center mt-3 tracking-[0.1em]">
+                <p className="text-[7px] text-(--muted-fg) font-black uppercase text-center mt-3 tracking-widest">
                     Powered by AION-Gemini Agent Orchestration
                 </p>
             </div>
