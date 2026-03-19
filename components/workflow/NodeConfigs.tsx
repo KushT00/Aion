@@ -131,7 +131,7 @@ export function AIAgentConfig({ node, updateNode }: { node: { data: { config?: R
                 <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                         <Label>Provider</Label>
-                        <Select value={config.integrationId || 'google_gemini'}
+                        <Select value={(config.integrationId as string) || 'google_gemini'}
                             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, integrationId: e.target.value, actionId: 'chat' } })}>
                             {INTEGRATION_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                         </Select>
@@ -144,7 +144,7 @@ export function AIAgentConfig({ node, updateNode }: { node: { data: { config?: R
 
                 {config.integrationId !== 'openrouter' && (
                     <ModelSelector
-                        integrationId={config.integrationId || 'google_gemini'}
+                        integrationId={(config.integrationId as string) || 'google_gemini'}
                         value={data.model || (
                             config.integrationId === 'groq' ? 'llama-3.3-70b-versatile' :
                                 config.integrationId === 'openai' ? 'openai/gpt-oss-120b' :
@@ -734,7 +734,7 @@ export function NotionConfig({ node, updateNode }: { node: { data: { config?: Re
                 <Input type="password" placeholder="secret_..." value={data.apiKey || ''} onChange={(e) => updateData({ apiKey: e.target.value })} />
             </div>
             <div className="space-y-2"><Label>Action</Label>
-                <Select value={config.actionId || 'create_page'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, actionId: e.target.value } })}>
+                <Select value={(config.actionId as string) || 'create_page'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateNode({ config: { ...config, actionId: e.target.value } })}>
                     <option value="create_page">Create Page</option>
                     <option value="append_block">Append to Page</option>
                 </Select>
@@ -855,11 +855,11 @@ export function AIConfig({ node, updateNode }: { node: { data: { config?: Record
                 </Select>
             </div>
             {integrationId !== 'openrouter' && (
-                <ModelSelector integrationId={integrationId} value={data.model || (integrationId === 'groq' ? 'llama-3.3-70b-versatile' : integrationId === 'openai' ? 'openai/gpt-oss-120b' : 'gemini-2.0-flash')} onChange={(model) => updateData({ model })} />
+                <ModelSelector integrationId={integrationId as string} value={data.model as string || (integrationId === 'groq' ? 'llama-3.3-70b-versatile' : integrationId === 'openai' ? 'openai/gpt-oss-120b' : 'gemini-2.0-flash')} onChange={(model) => updateData({ model })} />
             )}
-            <div className="space-y-2"><Label>API Key</Label><Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} /></div>
-            <div className="space-y-2"><Label>System Prompt</Label><Textarea className="h-20" value={data.systemPrompt || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} /></div>
-            <div className="space-y-2"><Label>User Message</Label><Textarea className="h-28" placeholder="{{trigger.text}}" value={data.userPrompt || ''} onChange={(e: any) => updateData({ userPrompt: e.target.value })} /></div>
+            <div className="space-y-2"><Label>API Key</Label><Input type="password" placeholder="Key..." value={data.apiKey as string || ''} onChange={(e: any) => updateData({ apiKey: e.target.value })} /></div>
+            <div className="space-y-2"><Label>System Prompt</Label><Textarea className="h-20" value={data.systemPrompt as string || ''} onChange={(e: any) => updateData({ systemPrompt: e.target.value })} /></div>
+            <div className="space-y-2"><Label>User Message</Label><Textarea className="h-28" placeholder="{{trigger.text}}" value={data.userPrompt as string || ''} onChange={(e: any) => updateData({ userPrompt: e.target.value })} /></div>
         </div>
     );
 }
