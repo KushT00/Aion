@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,9 +25,11 @@ import {
     Activity,
     Bot,
     Send,
+    Workflow,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { BehaviorWorkflowEditor } from '@/components/workflow/BehaviorWorkflowEditor';
 
 interface IntegrationConfig {
     name: string;
@@ -92,6 +94,7 @@ interface Instance {
         };
     };
     config_overrides?: Record<string, string>;
+    pricing_tier?: string;
 }
 
 interface ExecutionLog {
@@ -132,6 +135,13 @@ export default function InstanceSandboxPage() {
     useEffect(() => {
         async function fetchAll() {
             try {
+                if (window.location.hash) {
+                    const h = window.location.hash.replace('#', '');
+                    if (h === 'integrations' || h === 'behavior' || h === 'logs') {
+                        setActiveTab(h as any);
+                    }
+                }
+
                 const res = await fetch(`/api/ai/instance-details?instanceId=${instanceId}`);
                 const data = await res.json();
                 if (!res.ok) {
@@ -154,10 +164,24 @@ export default function InstanceSandboxPage() {
                 const aiNode = (data.instance?.listing?.workflow?.nodes || []).find((n: WorkflowNode) => {
                     const nodeType = (n.type || '').toLowerCase();
                     const label = (n.label || n.data?.label || '').toLowerCase();
-                    return nodeType === 'ai' || nodeType === 'agent' || label.includes('ai agent');
+                    return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
                 });
                 if (aiNode) {
-                    const prov = aiNode.config?.agentModel?.provider || aiNode.data?.agentModel?.provider || 'groq';
+                    const overriddenProv = data.instance?.config_overrides?.[`${aiNode.id}.integrationId`];
+                    
+                    // Priority: 1. Manual Override, 2. Existing Valid API Key, 3. Node Default, 4. Groq
+                    let prov = overriddenProv;
+                    
+                    if (!prov) {
+                        const providers = ['google_gemini', 'openai', 'anthropic', 'openrouter', 'groq'];
+                        const connected = providers.find(k => credMap[k]?.isValid);
+                        if (connected) prov = connected;
+                    }
+
+                    if (!prov) {
+                        prov = aiNode.config?.agentModel?.provider || aiNode.data?.agentModel?.provider || 'groq';
+                    }
+
                     setSelectedAiProvider(prov);
                 }
 
@@ -254,6 +278,9 @@ export default function InstanceSandboxPage() {
             const data = await res.json();
             if (res.ok) {
                 setCredentials(prev => ({ ...prev, [key]: { isValid: true } }));
+                if (['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'].includes(key)) {
+                    setSelectedAiProvider(key);
+                }
                 setInputValues(prev => ({ ...prev, [key]: '' }));
                 toast.success('Integration connected!');
             } else {
@@ -264,6 +291,32 @@ export default function InstanceSandboxPage() {
         } finally {
             setSavingKey(null);
         }
+    };
+
+    const handleSaveCredentialDirect = async (key: string, val: string) => {
+        if (!val) return;
+        try {
+            const res = await fetch('/api/ai/save-credential', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instanceId, integrationKey: key, value: val }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setCredentials(prev => ({ ...prev, [key]: { isValid: true } }));
+                toast.success('Integration connected manually!');
+            } else {
+                toast.error(data.error || 'Invalid API Key');
+            }
+        } catch {
+            toast.error('Connection error');
+        }
+    };
+
+    const handleConnectGoogle = () => {
+        const scope = 'all';
+        document.cookie = `oauth_return_to=${window.location.pathname}#${activeTab}; path=/; max-age=600`;
+        window.location.href = `/api/auth/google/connect?scope=${scope}&instanceId=${instanceId}`;
     };
 
     const handleActivate = async () => {
@@ -284,15 +337,10 @@ export default function InstanceSandboxPage() {
     };
 
     const handleDeleteCredential = async (key: string) => {
-        const isGoogle = key.startsWith('google_') && key !== 'google_gemini';
-        const msg = isGoogle
-            ? "Are you sure you want to disconnect your Google Account? This will logout your account from the entire app."
-            : `Are you sure you want to remove this API Key?`;
-
-        if (!confirm(msg)) return;
-
+        const isGoogle = key.startsWith('google');
+        if (!confirm(`Are you sure you want to disconnect this ${isGoogle ? 'Google Account' : 'API key'}? This might break your automation.`)) return;
         try {
-            if (isGoogle) {
+            if (key === 'google' || key === 'google_sheets' || key === 'google_gemini' || key === 'google_calendar' || key === 'google_docs' || key === 'google_gmail') {
                 // 1. Global Disconnect
                 await fetch('/api/integrations?provider=google', { method: 'DELETE' });
                 // 2. Instance-specific cleanup
@@ -326,7 +374,10 @@ export default function InstanceSandboxPage() {
     if (error) return <ErrorState error={error} />;
 
     const workflowNodes = instance?.listing?.workflow?.nodes || [];
-    const allConnected = requiredIntegrations.every(k => credentials[k]?.isValid);
+    const allConnected = requiredIntegrations.every(k => {
+        const isManagedKey = instance?.pricing_tier === 'managed' && (k === 'groq' || k === 'google_gemini');
+        return isManagedKey || credentials[k]?.isValid;
+    });
 
     return (
         <div className="min-h-screen bg-(--bg) flex flex-col">
@@ -353,7 +404,7 @@ export default function InstanceSandboxPage() {
                             className="rounded-xl font-black uppercase tracking-widest text-[10px] px-6 h-10 border-primary-500/20 text-primary-400 hover:bg-primary-500/5 disabled:opacity-30"
                         >
                             {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Sparkles className="w-3.5 h-3.5 mr-2 text-primary-400" />}
-                            Test Drive
+                            Run Workflow
                         </Button>
                         <Button
                             onClick={handleActivate}
@@ -376,19 +427,19 @@ export default function InstanceSandboxPage() {
                     <div className="flex items-center gap-1 bg-(--card) border border-(--border) p-1 rounded-2xl w-fit">
                         <TabButton
                             active={activeTab === 'integrations'}
-                            onClick={() => setActiveTab('integrations')}
-                            icon={<Box className="w-4 h-4" />}
-                            label="Integrations (BYOK)"
+                            onClick={() => { setActiveTab('integrations'); window.location.hash = 'integrations'; }}
+                            icon={<Key className="w-4 h-4" />}
+                            label="Integrations"
                         />
                         <TabButton
                             active={activeTab === 'behavior'}
-                            onClick={() => setActiveTab('behavior')}
-                            icon={<Sliders className="w-4 h-4" />}
+                            onClick={() => { setActiveTab('behavior'); window.location.hash = 'behavior'; }}
+                            icon={<Workflow className="w-4 h-4" />}
                             label="Behavior (Freedom)"
                         />
                         <TabButton
                             active={activeTab === 'logs'}
-                            onClick={() => setActiveTab('logs')}
+                            onClick={() => { setActiveTab('logs'); window.location.hash = 'logs'; }}
                             icon={<Activity className="w-4 h-4" />}
                             label="Execution Logs"
                         />
@@ -409,15 +460,24 @@ export default function InstanceSandboxPage() {
                                 </div>
                             </div>
                         ) : activeTab === 'behavior' ? (
-                            <div className="space-y-6">
-                                <div className="space-y-2">
+                            <div className="space-y-6 flex flex-col h-[700px]">
+                                <div className="space-y-2 shrink-0">
                                     <h2 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                                        <BrainCircuit className="w-4 h-4 text-primary-400" /> Node Configuration
+                                        <BrainCircuit className="w-4 h-4 text-primary-400" /> Workflow Editor
                                     </h2>
-                                    <p className="text-xs text-(--muted-fg) font-medium">Fine-tune the behavior of individual nodes. These changes only affect <b>your</b> instance.</p>
+                                    <p className="text-xs text-(--muted-fg) font-medium">Click a node to configure it. Structural changes are disabled to ensure the workflow functions as expected.</p>
                                 </div>
-                                <div className="grid gap-4">
-                                    {workflowNodes.filter((n: WorkflowNode) => n.type !== 'start' && n.type !== 'trigger').map((node: WorkflowNode) => renderNodeConfigCard(node))}
+                                <div className="flex-1 min-h-[600px] w-full">
+                                    <BehaviorWorkflowEditor 
+                                        instance={instance}
+                                        overrides={overrides}
+                                        credentials={credentials}
+                                        userIntegrations={userIntegrations}
+                                        onSaveOverride={handleSaveOverride}
+                                        onSaveCredential={handleSaveCredentialDirect}
+                                        onDisconnectCredential={handleDeleteCredential}
+                                        onConnectGoogle={handleConnectGoogle}
+                                    />
                                 </div>
                             </div>
                         ) : (
@@ -528,7 +588,7 @@ export default function InstanceSandboxPage() {
         const aiNode = workflowNodes.find((n: WorkflowNode) => {
             const nodeType = (n.type || '').toLowerCase();
             const label = (n.label || n.data?.label || '').toLowerCase();
-            return nodeType === 'ai' || nodeType === 'agent' || label.includes('ai agent');
+            return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
         });
         const hasAiAgent = !!aiNode;
 
@@ -560,10 +620,17 @@ export default function InstanceSandboxPage() {
                             return (
                                 <button
                                     key={key}
-                                    onClick={() => {
-                                        setSelectedAiProvider(key);
-                                        setCredentialErrors(prev => ({ ...prev, [key]: '' }));
-                                    }}
+                                        onClick={() => {
+                                            setSelectedAiProvider(key);
+                                            setCredentialErrors(prev => ({ ...prev, [key]: '' }));
+                                            
+                                            if (aiNode) {
+                                                handleSaveOverride(aiNode.id, 'integrationId', key);
+                                                if (key === 'groq') handleSaveOverride(aiNode.id, 'model', 'llama-3.3-70b-versatile');
+                                                if (key === 'google_gemini') handleSaveOverride(aiNode.id, 'model', 'gemini-2.0-flash');
+                                                if (key === 'openai') handleSaveOverride(aiNode.id, 'model', 'gpt-4o-mini');
+                                            }
+                                        }}
                                     className={cn(
                                         "p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 group relative overflow-hidden",
                                         isSelected ? "border-primary-500 bg-primary-500/10" : "border-(--border) bg-(--card) hover:border-primary-500/30"
@@ -626,13 +693,12 @@ export default function InstanceSandboxPage() {
             if (googleInteg) isConnected = true;
         }
 
-        const displayName = overrideName || conf.name;
+        const isManagedKey = instance?.pricing_tier === 'managed' && (key === 'groq' || key === 'google_gemini');
+        if (isManagedKey) {
+            isConnected = true;
+        }
 
-        const handleConnectGoogle = () => {
-            const scope = 'all';
-            document.cookie = `oauth_return_to=${window.location.pathname}; path=/; max-age=600`;
-            window.location.href = `/api/auth/google/connect?scope=${scope}&instanceId=${instanceId}`;
-        };
+        const displayName = overrideName || conf.name;
 
         return (
             <Card key={key} className={cn(
@@ -659,7 +725,7 @@ export default function InstanceSandboxPage() {
                                 </div>
                             </div>
                         </div>
-                        {isConnected ? (
+                        {isConnected && !isManagedKey ? (
                             <button
                                 onClick={() => handleDeleteCredential(key)}
                                 className="w-8 h-8 rounded-full flex items-center justify-center text-(--muted-fg) hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
@@ -721,9 +787,15 @@ export default function InstanceSandboxPage() {
                 {isConnected && (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[9px] font-black uppercase text-emerald-400 italic">
-                            <CheckCircle2 className="w-3 h-3" /> Securely Synchronized
+                            <CheckCircle2 className="w-3 h-3" /> {isManagedKey ? 'Managed by Platform' : 'Securely Synchronized'}
                         </div>
-                        <span className="text-[8px] text-(--muted-fg) font-mono">****-****-****-****</span>
+                        <span className="text-[8px] text-(--muted-fg) font-mono">
+                            {isManagedKey 
+                                ? 'Auto-injected' 
+                                : (isOAuth && userIntegrations.find(i => i.provider === 'google' && i.is_valid)?.account_email 
+                                    ? String(userIntegrations.find(i => i.provider === 'google')?.account_email) 
+                                    : '****-****-****-****')}
+                        </span>
                     </div>
                 )}
             </Card>

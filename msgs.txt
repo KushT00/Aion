@@ -1,0 +1,2 @@
+﻿app/(dashboard)/my-automations/[id]/setup/page.tsx(107,10): error TS2393: Duplicate function implementation.
+app/(dashboard)/my-automations/[id]/setup/page.tsx(861,10): error TS2393: Duplicate function implementation.

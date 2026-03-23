@@ -196,7 +196,7 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
     const tools: string[] = data.config?.data?.tools || [];
     const hasKnowledge = !!(data.config?.data?.knowledgeBase);
 
-    const chatModelConnections = useNodeConnections({ handleType: 'target', handleId: 'chat_model' });
+    const chatModelConnections = useNodeConnections({ handleType: 'source', handleId: 'chat_model' });
     const isChatModelConnected = chatModelConnections.length > 0;
     const hasError = !isChatModelConnected;
 
@@ -256,13 +256,13 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
                 {/* Chat Model (Required) */}
                 <div className="relative group/handle flex flex-col items-center">
                     <Handle
-                        type="target"
+                        type="source"
                         id="chat_model"
                         position={Position.Bottom}
                         className={cn(
                             "!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0",
                             "!w-3 !h-3 !border-0 !rotate-45 transition-colors shadow-sm",
-                            hasError ? "!bg-[#ff4d4f]" : "!bg-[var(--border)] hover:!bg-purple-500"
+                            hasError ? "!bg-[#ff4d4f]" : "!bg-(--border) hover:!bg-purple-500"
                         )}
                     />
                     <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Chat Model *</span>
@@ -271,34 +271,34 @@ export function AIAgentNode({ data, selected }: { data: any; selected?: boolean 
                 {/* Knowledge Base (Optional) */}
                 <div className="relative group/handle flex flex-col items-center">
                     <Handle
-                        type="target"
+                        type="source"
                         id="knowledge"
                         position={Position.Bottom}
-                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-blue-500 transition-colors shadow-sm !rotate-45"
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-(--border) !border-0 hover:!bg-blue-500 transition-colors shadow-sm !rotate-45"
                     />
-                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Knowledge (KB)</span>
+                    <span className="absolute top-4 text-[8px] text-(--muted-fg) opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-(--card) border border-(--border) px-1 py-0.5 rounded shadow-sm">Knowledge (KB)</span>
                 </div>
 
                 {/* Memory (Optional) */}
                 <div className="relative group/handle flex flex-col items-center">
                     <Handle
-                        type="target"
+                        type="source"
                         id="memory"
                         position={Position.Bottom}
-                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-(--border) !border-0 hover:!bg-purple-500 transition-colors shadow-sm !rotate-45"
                     />
-                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Memory (History)</span>
+                    <span className="absolute top-4 text-[8px] text-(--muted-fg) opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-(--card) border border-(--border) px-1 py-0.5 rounded shadow-sm">Memory (History)</span>
                 </div>
 
                 {/* Tools (Optional, Multiple) */}
                 <div className="relative group/handle flex flex-col items-center">
                     <Handle
-                        type="target"
+                        type="source"
                         id="tools"
                         position={Position.Bottom}
-                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-[var(--border)] !border-0 hover:!bg-amber-500 transition-colors shadow-sm !rotate-45"
+                        className="!relative !transform-none !top-auto !left-auto !translate-x-0 !translate-y-0 !w-3 !h-3 !bg-(--border) !border-0 hover:!bg-amber-500 transition-colors shadow-sm !rotate-45"
                     />
-                    <span className="absolute top-4 text-[8px] text-[var(--muted-fg)] opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-[var(--card)] border border-[var(--border)] px-1 py-0.5 rounded shadow-sm">Tools</span>
+                    <span className="absolute top-4 text-[8px] text-(--muted-fg) opacity-0 group-hover/handle:opacity-100 whitespace-nowrap bg-(--card) border border-(--border) px-1 py-0.5 rounded shadow-sm">Tools</span>
                 </div>
             </div>
         </div>

@@ -22,9 +22,10 @@ export async function GET(
                     bio
                 ),
                 workflow:workflows!marketplace_listings_workflow_id_fkey (
+                    id,
+                    name,
                     tags,
-                    description,
-                    nodes
+                    description
                 )
             `)
             .eq('id', id)
@@ -35,8 +36,31 @@ export async function GET(
             return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
         }
 
+        // Fetch workflow nodes and edges using adminDb for the Marketplace preview/summary
+        const { createAdminClient } = await import('@/lib/supabase/admin');
+        const adminDb = createAdminClient();
+        const { data: nodesData } = await adminDb
+            .from('workflow_nodes')
+            .select('id, type, label, position_x, position_y, config')
+            .eq('workflow_id', (listing as any).workflow_id);
+
+        const { data: edgesData } = await adminDb
+            .from('workflow_edges')
+            .select('*')
+            .eq('workflow_id', (listing as any).workflow_id);
+
+        const nodes = nodesData || [];
+        const edges = edgesData || [];
+
+        const workflowData = {
+            ...((listing.workflow as any) || {}),
+            nodes,
+            edges
+        };
+        (listing as any).workflow = workflowData;
+
         // Fetch reviews for this listing
-        const { data: reviews } = await supabase
+        const { data: reviewsData } = await supabase
             .from('ratings')
             .select(`
                 *,
@@ -50,19 +74,16 @@ export async function GET(
             .order('created_at', { ascending: false })
             .limit(20);
 
+        const reviews = reviewsData || [];
+
         // Fetch workflow nodes to auto-detect required integrations
-        const workflowData = listing.workflow as any;
         const requiredIntegrations = new Set<string>();
 
-        if (workflowData?.nodes) {
-            const nodes = Array.isArray(workflowData.nodes)
-                ? workflowData.nodes
-                : (typeof workflowData.nodes === 'string' ? JSON.parse(workflowData.nodes) : []);
-
+        if (nodes.length > 0) {
             for (const node of nodes) {
                 const nodeType = (node.type || '').toLowerCase();
-                const data = node.data || {};
-                const explicitType = data.integrationType;
+                const config = (node.config as any) || {};
+                const explicitType = config.integrationType || config.integrationId;
 
                 if (explicitType) requiredIntegrations.add(explicitType);
 
@@ -78,7 +99,7 @@ export async function GET(
                 if (nodeType.includes('anthropic')) requiredIntegrations.add('anthropic');
 
                 // Scan for ANY api key fields or labeled fields
-                Object.keys(data).forEach(k => {
+                Object.keys(config).forEach(k => {
                     const low = k.toLowerCase();
                     if (low.includes('apikey') || low.includes('token') || low.includes('credential')) {
                         if (nodeType.includes('openai')) requiredIntegrations.add('openai');
@@ -92,7 +113,8 @@ export async function GET(
 
         // Don't leak the workflow nodes payload to the public API
         if (listing.workflow) {
-            delete listing.workflow.nodes;
+            delete (listing.workflow as any).nodes;
+            delete (listing.workflow as any).edges;
         }
 
         // Check if the current user has already purchased this listing

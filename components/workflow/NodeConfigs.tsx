@@ -6,19 +6,22 @@ import {
     ChevronDown, ChevronRight, BrainCircuit, CheckCircle2,
     FileSpreadsheet, Zap, RotateCw, FileText, Code2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 // ─── Shared types ──────────────────────────────────────────
 export interface Condition { id: string; leftValue?: string; operator?: string; rightValue?: string }
 export interface SwitchRule { id: string; leftValue?: string; operator?: string; rightValue?: string }
 
+import React from 'react';
+
 // ─── Shared helpers ─────────────────────────────────────────
 export const Label = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
     <label className={cn("text-[10px] font-bold text-(--muted-fg) uppercase tracking-wider block mb-1 ml-0.5", className)}>{children}</label>
 );
-export const Input = ({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <input className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 transition-shadow", className)} {...props} />
-);
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className = '', ...props }, ref) => (
+    <input ref={ref} className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 transition-shadow", className)} {...props} />
+));
+Input.displayName = 'Input';
 export const Textarea = ({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
     <textarea className={cn("w-full bg-[var(--muted)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:ring-1 focus:ring-violet-500 resize-none transition-shadow", className)} {...props} />
 );
@@ -92,6 +95,7 @@ export function ModelSelector({ value, onChange, integrationId }: { value: strin
 
 // ─── AI Agent Configuration ─────────────────────────────────
 export function AIAgentConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
+    const apiKeyRef = useRef<HTMLInputElement>(null);
     const config = node.data.config || {};
     const data = (config.data || {}) as {
         tools?: string[];
@@ -138,7 +142,25 @@ export function AIAgentConfig({ node, updateNode }: { node: { data: { config?: R
                     </div>
                     <div className="space-y-1">
                         <Label>API Key</Label>
-                        <Input type="password" placeholder="Key..." value={data.apiKey || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateData({ apiKey: e.target.value })} />
+                        {(data.apiKey === '••••••••••••••••••••••••' || data.apiKey === 'managed-by-aion-platform') ? (
+                            <div className="flex items-center justify-between px-2.5 py-2 border border-emerald-500/30 bg-emerald-500/5 rounded-lg">
+                                <span className="font-black text-emerald-500 flex items-center gap-2 uppercase text-[9px] tracking-widest leading-none mt-0.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {data.apiKey === 'managed-by-aion-platform' ? 'Platform Managed' : 'Global Key Secured'}
+                                </span>
+                                {data.apiKey !== 'managed-by-aion-platform' && (
+                                    <button onClick={() => updateData({ apiKey: '' })} className="text-(--muted-fg) hover:text-rose-500 transition-colors p-0.5" title="Disconnect">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex gap-2 relative">
+                                <Input type="password" placeholder="Paste your key..." className="pr-14" defaultValue={data.apiKey && data.apiKey !== '••••••••••••••••••••••••' ? data.apiKey : ''} ref={apiKeyRef} onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && apiKeyRef.current) updateData({ apiKey: apiKeyRef.current.value });
+                                }} />
+                                <button onClick={() => apiKeyRef.current && updateData({ apiKey: apiKeyRef.current.value })} className="absolute right-1 top-1 bottom-1 px-3 bg-primary-500 hover:bg-primary-600 transition-colors rounded text-[9px] font-black uppercase text-white shadow-sm">Save</button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

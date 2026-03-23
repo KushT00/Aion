@@ -100,39 +100,76 @@ export async function POST(req: NextRequest) {
 
         console.log(`🧠 [PURCHASE] Mirroring ${originalNodes?.length || 0} nodes and ${originalEdges?.length || 0} edges...`);
 
-        // Map original IDs to new IDs to maintain associations if needed, 
-        // though technical edges usually use the direct UUIDs.
-        // For technical nodes, we need to maintain their relative positions and configs.
+        // 5.4 Map original IDs to new IDs to maintain associations
         const nodeIdMap: Record<string, string> = {};
+        const nodesToInsert = (originalNodes || []).map(n => {
+            const newId = crypto.randomUUID();
+            nodeIdMap[n.id] = newId;
+            return {
+                id: newId,
+                workflow_id: newWorkflow.id,
+                type: n.type,
+                label: n.label,
+                position_x: n.position_x,
+                position_y: n.position_y,
+                config: n.config // Will be sanitized in next pass
+            };
+        });
 
-        if (originalNodes && originalNodes.length > 0) {
-            const nodesToInsert = originalNodes.map(n => {
-                const newId = crypto.randomUUID();
-                nodeIdMap[n.id] = newId;
-                return {
-                    id: newId,
-                    workflow_id: newWorkflow.id,
-                    type: n.type,
-                    label: n.label,
-                    position_x: n.position_x,
-                    position_y: n.position_y,
-                    config: n.config // Deep copy of config (prompts, etc.)
-                };
-            });
+        // 5.5 Sanitize configs (update internal node references like tools/KB)
+        nodesToInsert.forEach(n => {
+            if (n.config && typeof n.config === 'object') {
+                const conf = n.config as any;
+                const data = conf.data || {};
+                
+                // Update Tools in both top-level and data-level (for compatibility)
+                if (Array.isArray(conf.tools)) {
+                    conf.tools = conf.tools.map((id: string) => nodeIdMap[id] || id);
+                }
+                if (Array.isArray(data.tools)) {
+                    data.tools = data.tools.map((id: string) => nodeIdMap[id] || id);
+                }
+                
+                // Update Knowledge Bases
+                if (Array.isArray(conf.knowledgeBases)) {
+                    conf.knowledgeBases = conf.knowledgeBases.map((id: string) => nodeIdMap[id] || id);
+                }
+                if (Array.isArray(data.knowledgeBases)) {
+                    data.knowledgeBases = data.knowledgeBases.map((id: string) => nodeIdMap[id] || id);
+                }
+                if (typeof data.knowledgeBase === 'string' && nodeIdMap[data.knowledgeBase]) {
+                    data.knowledgeBase = nodeIdMap[data.knowledgeBase];
+                }
+            }
+        });
 
-            await adminDb.from('workflow_nodes').insert(nodesToInsert);
+        if (nodesToInsert.length > 0) {
+            console.log(`📦 [PURCHASE] Inserting ${nodesToInsert.length} cloned nodes...`);
+            const { error: nodeErr } = await adminDb.from('workflow_nodes').insert(nodesToInsert);
+            if (nodeErr) {
+                console.error('[PURCHASE] Node insertion failed:', nodeErr);
+                throw nodeErr;
+            }
         }
 
+        // 5.6 Clone edges using the map
         if (originalEdges && originalEdges.length > 0) {
             const edgesToInsert = originalEdges.map(e => ({
                 id: crypto.randomUUID(),
                 workflow_id: newWorkflow.id,
                 source_node_id: nodeIdMap[e.source_node_id] || e.source_node_id,
                 target_node_id: nodeIdMap[e.target_node_id] || e.target_node_id,
+                source_handle: e.source_handle,
+                target_handle: e.target_handle,
                 label: e.label
             }));
 
-            await adminDb.from('workflow_edges').insert(edgesToInsert);
+            console.log(`🔗 [PURCHASE] Inserting ${edgesToInsert.length} cloned edges...`);
+            const { error: edgeErr } = await adminDb.from('workflow_edges').insert(edgesToInsert);
+            if (edgeErr) {
+                console.error('[PURCHASE] Edge insertion failed:', edgeErr);
+                throw edgeErr;
+            }
         }
 
         // 6. Create a consumer instance (linked to the CLONED workflow)

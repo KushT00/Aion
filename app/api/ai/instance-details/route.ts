@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
@@ -15,21 +16,15 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing instanceId' }, { status: 400 });
         }
 
-        console.log(`[DEBUG] Fetching instance with ID: ${instanceId} for user: ${user.id}`);
-
         // 1. Fetch instance. Use OR to check if the ID provided might be a purchase_id by accident
-        // This makes the API more robust to ID swaps between purchase and instance
-        const { data: instance, error: instErr } = await supabase
+        // Use Admin client to ensure nested workflow/nodes/edges are fetched even if RLS is tight for buyers initially
+        const adminDb = createAdminClient();
+        const { data: instance, error: instErr } = await adminDb
             .from('consumer_instances')
             .select(`
-                id, status, pricing_tier, buyer_id, created_at, workflow_id,
+                id, status, pricing_tier, buyer_id, created_at, workflow_id, config_overrides,
                 listing:marketplace_listings (
                     id, title, description, category
-                ),
-                workflow:workflows!consumer_instances_workflow_id_fkey ( 
-                    id, name,
-                    nodes:workflow_nodes (id, type, label, position_x, position_y, config),
-                    edges:workflow_edges (id, source_node_id, target_node_id, label)
                 )
             `)
             .or(`id.eq.${instanceId},purchase_id.eq.${instanceId}`)
@@ -46,14 +41,27 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
         }
 
-        // 2. Get workflow nodes to determine required integrations
-        const listing = instance.listing;
-        const rawWorkflow = instance.workflow;
+        // 2. Fetch workflow details, nodes, and edges separately using Admin client to ensure visibility
+        const { data: workflow } = await adminDb
+            .from('workflows')
+            .select('id, name')
+            .eq('id', instance.workflow_id)
+            .maybeSingle();
 
-        // Handle Supabase returning array for joins
-        const workflow = Array.isArray(rawWorkflow) ? rawWorkflow[0] : rawWorkflow;
-        const nodes = workflow?.nodes || [];
-        const edges = workflow?.edges || [];
+        const { data: rawNodes } = await adminDb
+            .from('workflow_nodes')
+            .select('id, type, label, position_x, position_y, config')
+            .eq('workflow_id', instance.workflow_id);
+
+        const { data: rawEdges } = await adminDb
+            .from('workflow_edges')
+            .select('id, source_node_id, target_node_id, source_handle, target_handle, label')
+            .eq('workflow_id', instance.workflow_id);
+
+        // 3. Get workflow nodes to determine required integrations
+        const listing = instance.listing;
+        const nodes = rawNodes || [];
+        const edges = rawEdges || [];
 
         let requiredIntegrations: string[] = [];
 
@@ -61,15 +69,15 @@ export async function GET(req: NextRequest) {
             const integrationTypes = new Set<string>();
 
             for (const node of nodes) {
-                const nodeType = (node.type || '').toLowerCase();
-                const config = node.config || {};
-                const explicitType = config.integrationId;
+                const nodeConfig = (node.config as any) || {};
+                const nodeType = (nodeConfig.rfType || nodeConfig.originalType || node.type || '').toLowerCase();
+                const explicitType = nodeConfig.integrationId;
 
                 if (explicitType) integrationTypes.add(explicitType);
 
                 // Check common service types in node type strings
                 if (nodeType.includes('google') || nodeType.includes('sheet')) integrationTypes.add('google_sheets');
-                if (nodeType.includes('gemini')) integrationTypes.add('google_gemini');
+                if (nodeType.includes('gemini') || nodeType.includes('ai_agent')) integrationTypes.add('google_gemini');
                 if (nodeType.includes('telegram')) integrationTypes.add('telegram');
                 if (nodeType.includes('discord')) integrationTypes.add('discord');
                 if (nodeType.includes('slack')) integrationTypes.add('slack');

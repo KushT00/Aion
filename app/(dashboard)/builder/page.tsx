@@ -1477,7 +1477,35 @@ function BuilderContent() {
                             const nodeData = n.data as NodeData;
                             const realType = nodeData.type;
                             const rfType = n.type;
-                            const config = nodeData.config || {};
+                            const config = { ...(nodeData.config || {}) };
+                            const data = { ...(config.data as any || {}) };
+
+                            // Bake edge connections into config.data (important for AI Agents in Sandbox)
+                            const isAiNode = rfType === 'ai_agent' || rfType === 'agent' || realType === 'ai_agent' || realType === 'ai_action';
+                            if (isAiNode) {
+                                // Tools
+                                const connectedTools = edges
+                                    .filter(e => e.target === n.id && (e.targetHandle === 'tools' || e.targetHandle === 'tool'))
+                                    .map(e => e.source);
+                                if (connectedTools.length > 0) {
+                                    const existingTools = Array.isArray(data.tools) ? data.tools : [];
+                                    data.tools = Array.from(new Set([...existingTools, ...connectedTools]));
+                                }
+
+                                // Knowledge Bases
+                                const connectedKbs = edges
+                                    .filter(e => e.target === n.id && (e.targetHandle === 'knowledge' || e.targetHandle === 'kb'))
+                                    .map(e => e.source);
+                                if (connectedKbs.length > 0) {
+                                    // AIAgentConfig uses a single string for knowledgeBase URL, 
+                                    // but we can store the IDs in a separate field or just take the first one.
+                                    data.knowledgeBases = Array.from(new Set([...(data.knowledgeBases || []), ...connectedKbs]));
+                                    if (connectedKbs[0] && !data.knowledgeBase) {
+                                        data.knowledgeBase = connectedKbs[0]; // Primary KB reference
+                                    }
+                                }
+                            }
+
                             return {
                                 id: n.id,
                                 workflow_id: currentWfId,
@@ -1485,7 +1513,7 @@ function BuilderContent() {
                                 label: (n.data as any).label,
                                 position_x: n.position.x,
                                 position_y: n.position.y,
-                                config: { ...config, originalType: realType, rfType }
+                                config: { ...config, data, originalType: realType, rfType }
                             };
                         });
                         await supabase.from('workflow_nodes').insert(nodesToInsert);

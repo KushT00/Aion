@@ -1,0 +1,38 @@
+﻿[dotenv@17.3.1] injecting env (12) from .env.local -- tip: ΓÜÖ∩╕Å  suppress all logs with { quiet: true }
+URL: https://idkolxdoplkgkeyedjbg.supabase.co
+
+--- RECENT WORKFLOWS ---
+Workflow: tel (Protocol) (dfc4be6f-7c00-49ef-acf7-c21c9f0602e6)
+- Created: 2026-03-23T18:37:19.690823+00:00
+- Nodes: 0
+- Edges: 0
+Workflow: Untitled Workflow (Imported) (a8f44187-478d-46cc-bfe1-4050cc16e620)
+- Created: 2026-03-23T18:36:46.525729+00:00
+- Nodes: 7
+- Edges: 10
+Workflow: a1 (Protocol) (69807ee2-997b-4bcb-b878-ad9565da123f)
+- Created: 2026-03-19T12:27:15.404308+00:00
+- Nodes: 3
+- Edges: 2
+
+--- RECENT LISTINGS ---
+Listing: no (b0bcb1b1-f14d-4cf2-a7b5-25d5020e73a6)
+- Workflow ID: a8f44187-478d-46cc-bfe1-4050cc16e620
+  - Linked Workflow Nodes: 7
+Listing: a1 (fce24b21-1177-40cd-a68f-07c2ad4b7af8)
+- Workflow ID: 445037e7-3d2a-41f4-a490-0fbed595a16a
+  - Linked Workflow Nodes: 3
+Listing: aaf (172dd581-3b2f-462f-96ad-f442c55dba60)
+- Workflow ID: c694b99c-7d10-4852-b119-203ffde22433
+  - Linked Workflow Nodes: 1
+
+--- RECENT INSTANCES ---
+Instance: 2ee7176f-92fd-44b2-a44b-cc862164023f
+- Workflow ID: dfc4be6f-7c00-49ef-acf7-c21c9f0602e6
+  - Instance Workflow Nodes: 0
+Instance: 8587154c-4351-428d-882d-11664a35847d
+- Workflow ID: 69807ee2-997b-4bcb-b878-ad9565da123f
+  - Instance Workflow Nodes: 3
+Instance: 88636ddb-cf5a-4c64-9f08-8accd3129ea3
+- Workflow ID: b5d095f7-8dc1-4ed9-a8db-efe2e1e034f5
+  - Instance Workflow Nodes: 7
