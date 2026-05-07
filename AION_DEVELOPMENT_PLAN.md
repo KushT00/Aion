@@ -396,7 +396,6 @@ CREATE TABLE public.consumer_run_logs (
 - [x] **Log entry component** — Timestamp, node name, status, input/output preview
 - [x] **Expandable log detail** — Click to see full input/output JSON
 - [x] **Filter by status** — Success / Failed / All
-- [ ] **Filter by date range** — Today, Last 7 days, Custom
 
 #### C5. ROI & Business Analytics Dashboard
 

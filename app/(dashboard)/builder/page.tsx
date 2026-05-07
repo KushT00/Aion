@@ -828,14 +828,16 @@ function BuilderContent() {
             let triggerData = (triggerNode?.data as any)?.config?.triggerData || (triggerNode?.data as any)?.config?.data || {};
 
             // LOCAL RUN FIX:
-            // If running locally and no chat_id is provided, inject a mock one so Telegram action doesn't fail validation.
-            // This allows users to test the "AI -> Telegram" flow without a real webhook event.
-            if (!triggerData.chat_id) {
+            // If running locally and no chat_id/email is provided, inject mock data so Telegram/Gmail actions don't fail validation.
+            // This allows users to test the "AI -> Telegram" or "Webhook -> Gmail" flow without a real webhook event.
+            if (!triggerData.chat_id || !triggerData.email) {
                 console.log("Injecting mock data for local execution");
                 triggerData = {
                     ...triggerData,
-                    chat_id: "123456789",
-                    text: triggerData.text || "Hello from Aion Builder!" // Mock Text
+                    chat_id: triggerData.chat_id || "123456789",
+                    text: triggerData.text || "Hello from Aion Builder!", // Mock Text
+                    email: triggerData.email || "testuser@example.com",
+                    name: triggerData.name || "Test User"
                 };
             }
 
@@ -1372,7 +1374,19 @@ function BuilderContent() {
                                             {log.output && (
                                                 <div className="mt-2 bg-[var(--muted)] p-2 rounded text-[10px] text-[var(--muted-fg)] border border-[var(--border)] overflow-x-auto">
                                                     <div className="font-bold mb-1 opacity-50 uppercase tracking-tighter">Output Data</div>
-                                                    <pre>{JSON.stringify(log.output, null, 2)}</pre>
+                                                    <pre>{(() => {
+                                                        try { return JSON.stringify(log.output, null, 2); }
+                                                        catch(e) {
+                                                            const cache = new Set();
+                                                            return JSON.stringify(log.output, (key, value) => {
+                                                                if (typeof value === 'object' && value !== null) {
+                                                                    if (cache.has(value)) return '[Circular]';
+                                                                    cache.add(value);
+                                                                }
+                                                                return value;
+                                                            }, 2);
+                                                        }
+                                                    })()}</pre>
                                                 </div>
                                             )}
                                         </div>
@@ -1447,7 +1461,19 @@ function BuilderContent() {
                                                         <div className="mt-4 pt-4 border-t border-[var(--border)]">
                                                             <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-2">Final Output</p>
                                                             <pre className="text-[10px] bg-[var(--muted)] p-3 rounded-lg overflow-x-auto font-mono text-violet-400 border border-[var(--border)]">
-                                                                {JSON.stringify(run.output, null, 2)}
+                                                                {(() => {
+                                                                    try { return JSON.stringify(run.output, null, 2); }
+                                                                    catch(e) {
+                                                                        const cache = new Set();
+                                                                        return JSON.stringify(run.output, (key, value) => {
+                                                                            if (typeof value === 'object' && value !== null) {
+                                                                                if (cache.has(value)) return '[Circular]';
+                                                                                cache.add(value);
+                                                                            }
+                                                                            return value;
+                                                                        }, 2);
+                                                                    }
+                                                                })()}
                                                             </pre>
                                                         </div>
                                                     )}

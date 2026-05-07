@@ -408,7 +408,8 @@ registry.register({
                                                 } else if (isOfficeOrPdf) {
                                                     try {
                                                         // @ts-ignore - officeparser is an optional server-only dependency
-                                                        const officeParser = await import("officeparser");
+                                                        const officeParserName = "office" + "parser";
+                                                        const officeParser = await import(/* webpackIgnore: true */ officeParserName);
                                                         // @ts-ignore
                                                         const ast = await officeParser.parseOffice(cleanPath);
                                                         text = ast.toText();
@@ -784,6 +785,24 @@ registry.register({
                 }
 
                 return data;
+            },
+        },
+    ],
+});
+
+// Google Sheets Trigger
+registry.register({
+    id: "google_sheets_trigger",
+    name: "Google Sheets Trigger",
+    category: "trigger",
+    actions: [
+        {
+            id: "on_row_added_updated",
+            name: "On Row Added / Updated",
+            description: "Triggers the workflow when a row is added or updated",
+            execute: async (config, input) => {
+                // The payload from the sheet update is passed through
+                return input;
             },
         },
     ],
@@ -1660,6 +1679,34 @@ registry.register({
             },
         },
     ],
+});
+
+// Microsoft Word
+registry.register({
+    id: "microsoft_word",
+    name: "Microsoft Word",
+    category: "utility",
+    actions: [
+        {
+            id: "read_doc",
+            name: "Read Document",
+            description: "Read the content of a Word Document",
+            execute: async (config, input) => {
+                const { filePath } = config;
+                if (!filePath) throw new Error("File path is required to read Microsoft Word doc.");
+                try {
+                    // @ts-ignore - officeparser is an optional server-only dependency
+                    const officeParserName = "office" + "parser";
+                    const officeParser = await import(/* webpackIgnore: true */ officeParserName);
+                    // @ts-ignore
+                    const ast = await officeParser.parseOffice(filePath);
+                    return { text: ast.toText(), filePath };
+                } catch (e: any) {
+                    throw new Error(`Failed to parse Word Document: ${e.message}`);
+                }
+            }
+        }
+    ]
 });
 
 registry.register({

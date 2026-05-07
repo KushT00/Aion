@@ -11,7 +11,9 @@ const nextConfig: NextConfig = {
     ],
   },
   // Turbopack config (Next.js 16 default bundler)
-  turbopack: {},
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;

@@ -1,0 +1,163 @@
+{
+  "name": "Google Sheets Lead to Email Workflow",
+  "nodes": [
+    {
+      "id": "e3b0c442-989b-464c-b5f7-8f5b8c3a1231",
+      "type": "custom",
+      "position": {
+        "x": 350,
+        "y": 50
+      },
+      "data": {
+        "label": "Google Sheets Trigger",
+        "type": "trigger",
+        "config": {
+          "integrationId": "google_sheets_trigger",
+          "actionId": "on_row_added_updated",
+          "data": {
+            "description": "Triggered when a new row is added (produces Name, Email, etc.)"
+          }
+        }
+      }
+    },
+    {
+      "id": "a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a",
+      "type": "ai_agent",
+      "position": {
+        "x": 350,
+        "y": 250
+      },
+      "data": {
+        "label": "AI Email personalization",
+        "type": "ai_action",
+        "config": {
+          "integrationId": "groq",
+          "actionId": "chat",
+          "data": {
+            "model": "llama-3.3-70b-versatile",
+            "apiKey": "YOUR_GROQ_API_KEY",
+            "systemPrompt": "You are a professional outreach specialist for our company. Write a professional, personalized introduction email using the data provided from the client and the company information provided in your knowledge base.",
+            "userPrompt": "Write an email to Client: {{e3b0c442-989b-464c-b5f7-8f5b8c3a1231.email}} / {{e3b0c442-989b-464c-b5f7-8f5b8c3a1231.name}}. Use the company outline provided."
+          }
+        }
+      }
+    },
+    {
+      "id": "1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "type": "custom",
+      "position": {
+        "x": 150,
+        "y": 450
+      },
+      "data": {
+        "label": "Groq Llama 3.3 70B",
+        "type": "chat_model",
+        "config": {
+          "integrationId": "groq",
+          "actionId": "model",
+          "data": {
+            "model": "llama-3.3-70b-versatile",
+            "apiKey": "YOUR_GROQ_API_KEY"
+          }
+        }
+      }
+    },
+    {
+      "id": "f5e4d3c2-b1a0-4f9e-8d7c-6b5a49382716",
+      "type": "custom",
+      "position": {
+        "x": 550,
+        "y": 450
+      },
+      "data": {
+        "label": "Company Info (Google Docs/DB)",
+        "type": "data_tool",
+        "config": {
+          "integrationId": "google_docs",
+          "actionId": "get_doc",
+          "data": {
+            "documentId": "INSERT_YOUR_DOC_ID_HERE"
+          }
+        }
+      }
+    },
+    {
+      "id": "e4f5a6b7-c8d9-0e1f-2a3b-4c5d6e7f8a9b",
+      "type": "custom",
+      "position": {
+        "x": 700,
+        "y": 250
+      },
+      "data": {
+        "label": "Send Personalized Email",
+        "type": "data_tool",
+        "config": {
+          "integrationId": "google_gmail",
+          "actionId": "send_email",
+          "data": {
+            "to": "{{e3b0c442-989b-464c-b5f7-8f5b8c3a1231.email}}",
+            "subject": "Introduction & Services Proposal",
+            "body": "{{a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a.output}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "d3c2b1a0-9f8e-7d6c-5b4a-39281706f5e4",
+      "type": "custom",
+      "position": {
+        "x": 1050,
+        "y": 250
+      },
+      "data": {
+        "label": "Update Tracker (test1)",
+        "type": "data_tool",
+        "config": {
+          "integrationId": "google_sheets",
+          "actionId": "append_row",
+          "data": {
+            "spreadsheetId": "INSERT_TRACKER_SHEET_ID_HERE",
+            "range": "test1",
+            "values": "Contacted: Email sent to {{e3b0c442-989b-464c-b5f7-8f5b8c3a1231.email}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "11111111-2222-3333-4444-555555555551",
+      "source": "e3b0c442-989b-464c-b5f7-8f5b8c3a1231",
+      "target": "a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a",
+      "targetHandle": "main-in",
+      "animated": true
+    },
+    {
+      "id": "11111111-2222-3333-4444-555555555552",
+      "source": "1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "target": "a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a",
+      "targetHandle": "chat_model",
+      "animated": true
+    },
+    {
+      "id": "11111111-2222-3333-4444-555555555553",
+      "source": "f5e4d3c2-b1a0-4f9e-8d7c-6b5a49382716",
+      "target": "a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a",
+      "targetHandle": "knowledge",
+      "animated": true
+    },
+    {
+      "id": "11111111-2222-3333-4444-555555555554",
+      "source": "a9c3d4f5-b2e1-4890-a54d-3b7c8d9e0f1a",
+      "sourceHandle": "main-out",
+      "target": "e4f5a6b7-c8d9-0e1f-2a3b-4c5d6e7f8a9b",
+      "animated": true
+    },
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "source": "e4f5a6b7-c8d9-0e1f-2a3b-4c5d6e7f8a9b",
+      "target": "d3c2b1a0-9f8e-7d6c-5b4a-39281706f5e4",
+      "animated": true
+    }
+  ]
+}
