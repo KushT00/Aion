@@ -10,9 +10,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { instanceId, nodeId, property, value } = await req.json();
+        const { instanceId, nodeId, property, value, updates } = await req.json();
 
-        if (!instanceId || !nodeId || !property) {
+        if (!instanceId || !nodeId || (!property && !updates)) {
             return NextResponse.json({ error: 'Missing required configuration fields' }, { status: 400 });
         }
 
@@ -30,12 +30,20 @@ export async function POST(req: NextRequest) {
 
         // 2. Clear old override if it's identical, or update it
         const currentOverrides = instance.config_overrides || {};
-        const key = `${nodeId}.${property}`;
+        const nextOverrides = { ...currentOverrides };
 
-        const nextOverrides = {
-            ...currentOverrides,
-            [key]: value
-        };
+        const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+
+        for (const nId of nodeIds) {
+            if (updates && typeof updates === 'object') {
+                Object.entries(updates).forEach(([prop, val]) => {
+                    nextOverrides[`${nId}.${prop}`] = val;
+                });
+            } else if (property) {
+                const key = `${nId}.${property}`;
+                nextOverrides[key] = value;
+            }
+        }
 
         // 3. Save back to database
         const { error: updateErr } = await supabase

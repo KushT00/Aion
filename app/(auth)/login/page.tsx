@@ -68,6 +68,7 @@ export default function LoginPage() {
                     <button
                         onClick={handleGoogleLogin}
                         className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--fg)] font-medium text-sm hover:bg-[var(--muted)] transition-colors mb-6"
+                        suppressHydrationWarning
                     >
                         <svg className="w-5 h-5" viewBox="0 0 24 24">
                             <path
@@ -101,7 +102,7 @@ export default function LoginPage() {
                     </div>
 
                     {/* Email/Password Form */}
-                    <form onSubmit={handleLogin} className="space-y-4">
+                    <form onSubmit={handleLogin} className="space-y-4" suppressHydrationWarning>
                         <Input
                             label="Email"
                             type="email"

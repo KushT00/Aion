@@ -12,7 +12,6 @@ import {
     Pause,
     Zap,
     Activity,
-    History,
     Search,
     ArrowUpRight,
     Sparkles,
@@ -176,32 +175,32 @@ export default function MyAutomationsPage() {
                     const hasInstance = !!item.instanceId;
 
                     return (
-                        <Card key={item.purchaseId} className="relative overflow-hidden group hover:border-primary-500/40 p-0 transition-all duration-500 rounded-[2rem] border-[var(--border)] bg-[var(--card)] shadow-xl shadow-black/5">
+                        <Card key={item.purchaseId} className="relative overflow-hidden group hover:border-primary-500/40 p-0 transition-all duration-500 rounded-2xl border-[var(--border)] bg-[var(--card)] shadow-xl shadow-black/5">
                             {/* Status stripe */}
                             <div className={cn(
-                                "h-1.5 w-full",
+                                "h-1 w-full",
                                 status === 'active' ? "bg-emerald-500" :
                                     status === 'setup_required' ? "bg-amber-500" :
                                         status === 'error' ? "bg-rose-500" :
                                             "bg-[var(--muted)]"
                             )} />
 
-                            <div className="flex flex-col lg:flex-row lg:items-center p-6 gap-8">
-                                {/* Icon & Name */}
-                                <div className="flex items-center gap-6 flex-1">
+                            <div className="p-5 space-y-4">
+                                {/* Row 1: Icon + Title + Badges */}
+                                <div className="flex items-start gap-4">
                                     <div className={cn(
-                                        "w-16 h-16 rounded-[1.5rem] flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500",
+                                        "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500",
                                         status === 'active' ? "bg-emerald-500/10 text-emerald-400" :
                                             status === 'setup_required' ? "bg-amber-500/10 text-amber-400" :
                                                 "bg-primary-500/10 text-primary-400"
                                     )}>
-                                        {status === 'setup_required' ? <Key className="w-8 h-8" /> : <Bot className="w-8 h-8" />}
+                                        {status === 'setup_required' ? <Key className="w-6 h-6" /> : <Bot className="w-6 h-6" />}
                                     </div>
-                                    <div className="space-y-1.5 min-w-0">
-                                        <div className="flex items-center gap-3 flex-wrap">
-                                            <h3 className="font-black text-xl uppercase italic tracking-tighter truncate">{listing?.title || 'Automation'}</h3>
+                                    <div className="flex-1 min-w-0 space-y-1.5">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <h3 className="font-black text-lg text-[var(--fg)] tracking-tight">{listing?.title || 'Automation'}</h3>
                                             <Badge className={cn(
-                                                "font-black uppercase tracking-widest text-[8px] border",
+                                                "font-bold uppercase tracking-widest text-[8px] border shrink-0",
                                                 statusConf.bg, statusConf.color,
                                                 statusConf.pulse ? "animate-pulse" : ""
                                             )}>
@@ -211,7 +210,7 @@ export default function MyAutomationsPage() {
                                             </Badge>
                                             {item.pricing_tier && (
                                                 <Badge className={cn(
-                                                    "font-black uppercase tracking-widest text-[8px]",
+                                                    "font-bold uppercase tracking-widest text-[8px] shrink-0",
                                                     item.pricing_tier === 'managed'
                                                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                                                         : "bg-primary-500/10 text-primary-400 border-primary-500/20"
@@ -220,106 +219,110 @@ export default function MyAutomationsPage() {
                                                 </Badge>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-4 text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)]">
+                                        <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest text-[var(--muted-fg)]">
                                             <span className="flex items-center gap-1.5"><Package className="w-3 h-3" /> {listing?.category || 'Automation'}</span>
                                             <span className="flex items-center gap-1.5"><Terminal className="w-3 h-3" /> {listing?.seller?.full_name || 'Creator'}</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Stats */}
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 px-2 md:px-0">
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Total Runs</p>
-                                        <p className="text-xl font-black italic flex items-center gap-2">
-                                            <Zap className="w-4 h-4 text-amber-400" />
-                                            {item.total_runs || 0}
-                                        </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Success Rate</p>
-                                        <p className="text-xl font-black italic flex items-center gap-2 text-emerald-400">
-                                            <ArrowUpRight className="w-4 h-4" />
-                                            {item.total_runs > 0
-                                                ? `${Math.round((item.total_successes / item.total_runs) * 100)}%`
-                                                : '—'}
-                                        </p>
-                                    </div>
-                                    <div className="hidden md:block space-y-1">
-                                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--muted-fg)] opacity-50">Last Run</p>
-                                        <p className="text-sm font-black uppercase flex items-center gap-2">
-                                            <History className="w-4 h-4 text-[var(--muted-fg)]" />
-                                            {item.last_run_at
-                                                ? new Date(item.last_run_at).toLocaleDateString()
-                                                : 'Never'}
-                                        </p>
-                                    </div>
-                                </div>
+                                {/* Divider */}
+                                <div className="border-t border-[var(--border)]" />
 
-                                {/* Actions */}
-                                <div className="flex items-center gap-3 border-t lg:border-t-0 pt-6 lg:pt-0">
-                                    {hasInstance ? (
-                                        // Instance exists — link to setup or dashboard
-                                        <>
-                                            {status === 'setup_required' ? (
-                                                <Link href={`/my-automations/${item.instanceId}/setup`}>
-                                                    <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400">
-                                                        <Key className="w-4 h-4 mr-2" />
-                                                        Complete Setup
-                                                    </Button>
-                                                </Link>
-                                            ) : (
-                                                <Link href={`/my-automations/${item.instanceId}/dashboard`}>
-                                                    <Button className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
-                                                        <Activity className="w-4 h-4 mr-2" />
-                                                        View Dashboard
-                                                    </Button>
-                                                </Link>
-                                            )}
-                                        </>
-                                    ) : (
-                                        // No instance yet — offer to create one
-                                        <Button
-                                            onClick={() => handleCreateInstance(item.purchaseId as string)}
-                                            className="w-full lg:w-auto h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400"
-                                        >
-                                            <Key className="w-4 h-4 mr-2" />
-                                            Initialize Instance
-                                        </Button>
-                                    )}
+                                {/* Row 2: Stats + Actions */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    {/* Stats */}
+                                    <div className="flex items-center gap-6 md:gap-10">
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--muted-fg)] opacity-60">Total Runs</p>
+                                            <p className="text-lg font-black italic flex items-center gap-1.5">
+                                                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                                {item.total_runs || 0}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--muted-fg)] opacity-60">Success Rate</p>
+                                            <p className="text-lg font-black italic flex items-center gap-1.5 text-emerald-400">
+                                                <ArrowUpRight className="w-3.5 h-3.5" />
+                                                {item.total_runs > 0
+                                                    ? `${Math.round((item.total_successes / item.total_runs) * 100)}%`
+                                                    : '—'}
+                                            </p>
+                                        </div>
+                                        <div className="hidden md:block space-y-0.5">
+                                            <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--muted-fg)] opacity-60">Last Run</p>
+                                            <p className="text-sm font-bold flex items-center gap-1.5">
+                                                <Clock className="w-3.5 h-3.5 text-[var(--muted-fg)]" />
+                                                {item.last_run_at
+                                                    ? new Date(item.last_run_at).toLocaleDateString()
+                                                    : 'Never'}
+                                            </p>
+                                        </div>
+                                    </div>
 
-                                    {/* Pause / Resume Toggle Button */}
-                                    {hasInstance && (status === 'active' || status === 'paused') && (
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            disabled={togglingId === item.instanceId}
-                                            onClick={() => item.instanceId && handleToggleInstance(item.instanceId, status)}
-                                            className={cn(
-                                                "h-12 w-12 rounded-xl transition-all",
-                                                status === 'active'
-                                                    ? "border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50 text-amber-400"
-                                                    : "border-emerald-500/30 hover:bg-emerald-500/10 hover:border-emerald-500/50 text-emerald-400"
-                                            )}
-                                            title={status === 'active' ? 'Pause automation' : 'Resume automation'}
-                                        >
-                                            {togglingId === item.instanceId ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                            ) : status === 'active' ? (
-                                                <Pause className="w-4 h-4" />
-                                            ) : (
-                                                <Play className="w-4 h-4" />
-                                            )}
-                                        </Button>
-                                    )}
-
-                                    {hasInstance && (
-                                        <Link href={`/my-automations/${item.instanceId}/setup`}>
-                                            <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-                                                <Settings className="w-4 h-4" />
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-2.5">
+                                        {hasInstance ? (
+                                            <>
+                                                {status === 'setup_required' ? (
+                                                    <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                                        <Button className="h-10 rounded-xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400">
+                                                            <Key className="w-3.5 h-3.5 mr-1.5" />
+                                                            Complete Setup
+                                                        </Button>
+                                                    </Link>
+                                                ) : (
+                                                    <Link href={`/my-automations/${item.instanceId}/dashboard`}>
+                                                        <Button className="h-10 rounded-xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-primary-500/20 bg-gradient-to-r from-primary-600 to-primary-500">
+                                                            <Activity className="w-3.5 h-3.5 mr-1.5" />
+                                                            View Dashboard
+                                                        </Button>
+                                                    </Link>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <Button
+                                                onClick={() => handleCreateInstance(item.purchaseId as string)}
+                                                className="h-10 rounded-xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400"
+                                            >
+                                                <Key className="w-3.5 h-3.5 mr-1.5" />
+                                                Initialize Instance
                                             </Button>
-                                        </Link>
-                                    )}
+                                        )}
+
+                                        {/* Pause / Resume Toggle Button */}
+                                        {hasInstance && (status === 'active' || status === 'paused') && (
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                disabled={togglingId === item.instanceId}
+                                                onClick={() => item.instanceId && handleToggleInstance(item.instanceId, status)}
+                                                className={cn(
+                                                    "h-10 w-10 rounded-xl transition-all",
+                                                    status === 'active'
+                                                        ? "border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-500/50 text-amber-400"
+                                                        : "border-emerald-500/30 hover:bg-emerald-500/10 hover:border-emerald-500/50 text-emerald-400"
+                                                )}
+                                                title={status === 'active' ? 'Pause automation' : 'Resume automation'}
+                                            >
+                                                {togglingId === item.instanceId ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : status === 'active' ? (
+                                                    <Pause className="w-4 h-4" />
+                                                ) : (
+                                                    <Play className="w-4 h-4" />
+                                                )}
+                                            </Button>
+                                        )}
+
+                                        {hasInstance && (
+                                            <Link href={`/my-automations/${item.instanceId}/setup`}>
+                                                <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl opacity-60 hover:opacity-100 transition-opacity">
+                                                    <Settings className="w-4 h-4" />
+                                                </Button>
+                                            </Link>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </Card>

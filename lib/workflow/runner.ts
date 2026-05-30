@@ -5,6 +5,9 @@ export interface ExecutionContext {
     nodes: Record<string, any>; // nodeId -> output
     env: Record<string, string>;
     trigger: any;
+    userId?: string;
+    instanceId?: string;
+    credentials?: Record<string, any>;
 }
 
 export interface RunLog {
@@ -38,14 +41,20 @@ export class WorkflowRunner {
     private capturedResults: CapturedResult[] = [];
     private instanceId: string | null = null;
 
-    constructor(nodes: WorkflowNode[], edges: WorkflowEdge[], env: Record<string, string> = {}, instanceId?: string) {
+    private userId: string | null = null;
+
+    constructor(nodes: WorkflowNode[], edges: WorkflowEdge[], env: Record<string, string> = {}, instanceId?: string, userId?: string, credentials?: Record<string, any>) {
         this.nodes = nodes;
         this.edges = edges;
         this.instanceId = instanceId || null;
+        this.userId = userId || null;
         this.context = {
             nodes: {},
             env,
             trigger: {},
+            userId: userId || undefined,
+            instanceId: instanceId || undefined,
+            credentials: credentials || undefined,
         };
     }
 
@@ -64,62 +73,78 @@ export class WorkflowRunner {
 
                 // 2. Try to find node result (by ID or Label)
                 let nodeResult = this.context.nodes[identifier];
+                let matchedNodeLabel = identifier;
 
-                const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+                const normalize = (s: string) => (s || '').toLowerCase().replace(/[\s_-]+/g, '');
                 const target = normalize(identifier);
 
-                if (!nodeResult && identifier !== "trigger" && identifier !== "input" && identifier !== "output") {
+                if (!nodeResult && target !== "trigger" && target !== "input" && target !== "output") {
                     // Try to find by label
                     const nodeByLabel = this.nodes.find(n => normalize(n.label || '') === target);
                     if (nodeByLabel) {
                         nodeResult = this.context.nodes[nodeByLabel.id];
+                        matchedNodeLabel = nodeByLabel.label || identifier;
                         if (nodeResult) {
                             console.log(`🔍 [VAR] Matched label "${identifier}" to node ID "${nodeByLabel.id}"`);
                         } else {
-                            console.warn(`⚠️ [VAR] Node label "${identifier}" matched ID "${nodeByLabel.id}", but NO output data found yet. Is it connected?`);
+                            console.warn(`⚠️ [VAR] Node label "${identifier}" matched ID "${nodeByLabel.id}", but NO output data found yet.`);
                         }
                     }
                 }
 
                 // fallback to trigger if identifier is 'trigger', 'output', 'input'
-                // OR fallback to trigger as a general context if nothing else matches
-                let value = nodeResult || (['trigger', 'output', 'input'].includes(target) ? this.context.trigger : (this.context.trigger[identifier] ?? this.context.trigger.currentItem?.[identifier]));
+                const trigger = this.context.trigger || {};
+                let value = nodeResult || (['trigger', 'output', 'input'].includes(target) ? trigger : (trigger[identifier] ?? trigger.currentItem?.[identifier]));
 
                 // If value is still undefined but identifier is not a reserved name,
                 // it might be a property of the trigger itself (bare variable)
-                if (value === undefined && identifier !== 'trigger' && identifier !== 'input' && identifier !== 'output') {
-                    value = this.context.trigger[identifier] ?? this.context.trigger.currentItem?.[identifier];
+                if (value === undefined && target !== 'trigger' && target !== 'input' && target !== 'output') {
+                    value = trigger[identifier] ?? trigger.currentItem?.[identifier];
                 }
 
                 // --- NEW: AUTO-SCOPE RECOVERY ---
-                // If it's a loop and the user just typed {{Name}} instead of {{currentItem.Name}}
-                // and we haven't found a match yet, try currentItem.
-                if (value === undefined && this.context.trigger.currentItem) {
-                    const potentialMatch = this.context.trigger.currentItem[identifier];
+                if (value === undefined && trigger.currentItem) {
+                    const potentialMatch = trigger.currentItem[identifier];
                     if (potentialMatch !== undefined) {
                         value = potentialMatch;
                     }
                 }
 
-                // Debug log
-                if (nodeResult || value !== undefined) {
-                    console.log(`✅ RESOLVED: "${path}" -> ${typeof value === 'object' ? '[Object]' : value}`);
-                } else {
-                    console.error(`❌ FAILED TO RESOLVE: "{{${path}}}"`);
+                // If path is JUST the node name (no dots), and the value is an object, 
+                // try to find a sensible "main" string field like 'text', 'content', or 'response'
+                if (propertyPath.length === 0 && typeof value === 'object' && value !== null) {
+                    const bestStringField = value.text || value.content || value.response || value.output || value.result;
+                    if (typeof bestStringField === 'string') {
+                        value = bestStringField;
+                    }
                 }
 
-                // 3. Resolve parts
+                // 3. Resolve property drill-down (e.g. Schedule.text)
                 const effectiveParts = propertyPath[0]?.toLowerCase() === "output" ? propertyPath.slice(1) : propertyPath;
 
-                for (const part of effectiveParts) {
-                    if (value === undefined || value === null) break;
+                console.log(`🔍 [VAR-RESOLVE] Resolving "{{${path}}}". Source: ${matchedNodeLabel}. Keys: ${Object.keys(value || {}).join(', ')}`);
 
+                for (const part of effectiveParts) {
+                    if (value === undefined || value === null) {
+                        console.warn(`⚠️ [VAR-RESOLVE] Value became null/undefined at part: "${part}"`);
+                        break;
+                    }
+
+                    const oldValue = value;
                     // Fallback for .text if it doesn't exist (check common keys)
-                    if (part === 'text' && value[part] === undefined) {
+                    if (part === 'text' && (value[part] === undefined || value[part] === null)) {
                         value = value['topic'] ?? value['input'] ?? value['message'] ?? value['content'] ?? value[part];
                     } else {
                         value = value[part];
                     }
+                    console.log(`   ∟ Part "${part}": ${typeof oldValue === 'object' ? '[Object]' : oldValue} -> ${typeof value === 'object' ? '[Object]' : value}`);
+                }
+
+                // Final Resolved Value Log
+                if (value !== undefined && value !== null) {
+                    console.log(`✅ [VAR] Resolved: "${path}" -> ${typeof value === 'object' ? '[Object]' : value}`);
+                } else {
+                    console.warn(`⚠️ [VAR] FAILED TO RESOLVE: "{{${path}}}"`);
                 }
 
                 if (value !== undefined && value !== null) {
@@ -356,6 +381,8 @@ export class WorkflowRunner {
                     ...(resolvedConfig.data || {})
                 };
 
+                console.log(`🚀 [RUNNER] Node "${node.label || node.id}" (${node.type}) - Resolved Config:`, JSON.stringify(actionConfig).substring(0, 500));
+
                 const result = await action.execute(actionConfig, this.context);
 
                 // Check for stop_execution signal
@@ -368,18 +395,29 @@ export class WorkflowRunner {
                     return true; // Signal to stop
                 }
 
-                // CRITICAL FIX: Ensure trigger node propagates message content
-                const isTrigger = node.type === 'trigger' || node.config?.originalType === 'trigger';
+                // CRITICAL FIX: Ensure trigger/input nodes propagate message content (text, chat_id, etc)
+                const isTrigger = node.type === 'trigger' || node.config?.originalType === 'trigger' || node.type === 'input';
                 const extraData = isTrigger ? { ...this.context.trigger } : {};
 
-                this.context.nodes[node.id] = { ...result, ...extraData };
+                // Merge carefully: result takes priority, but we preserve extraData if result has empty/null values
+                const finalResult = { ...extraData, ...result };
+                
+                // Protect core fields from being wiped out by nulls
+                if ((result.text === undefined || result.text === null || result.text === "") && extraData.text) {
+                    finalResult.text = extraData.text;
+                }
+                if ((result.chat_id === undefined || result.chat_id === null) && extraData.chat_id) {
+                    finalResult.chat_id = extraData.chat_id;
+                }
+
+                this.context.nodes[node.id] = finalResult;
 
                 // Check for CRM capture
                 this.collectCRMCapture(node, result);
 
                 // Also update context.trigger so {{trigger.text}} works
                 if (isTrigger) {
-                    this.context.trigger = { ...this.context.trigger, ...result };
+                    this.context.trigger = { ...this.context.trigger, ...finalResult };
                 }
             } else {
                 // For nodes without integration (e.g. Input/Trigger)
@@ -581,6 +619,7 @@ export class WorkflowRunner {
 
                         const isLogicBranchNode = (node.type as string) === 'if_else' || (node.type as string) === 'switch' ||
                             node.config?.originalType === 'if_else' || node.config?.originalType === 'switch' ||
+                            node.config?.originalType === 'logic_gate' ||
                             ((node.type as string) === 'logic_gate' && (isIntegIfElse || isIntegSwitch));
 
                         if (isLogicBranchNode) {

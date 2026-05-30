@@ -83,15 +83,17 @@ export default function WorkflowsPage() {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!confirm('Are you sure you want to delete this workflow?')) return;
+        if (!confirm('Are you sure you want to delete this workflow? This will also remove any marketplace listings and consumer instances linked to it.')) return;
 
         try {
-            const { error } = await supabase.from('workflows').delete().eq('id', id);
-            if (error) throw error;
+            const res = await fetch(`/api/workflows/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Delete failed');
             toast.success('Workflow deleted');
             setWorkflows(prev => prev.filter(w => w.id !== id));
         } catch (err: any) {
-            toast.error('Delete failed');
+            toast.error(err.message || 'Delete failed');
+            console.error('[Workflows] Delete error:', err);
         }
     };
 

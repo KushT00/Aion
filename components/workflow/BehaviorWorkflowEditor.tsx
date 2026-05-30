@@ -26,7 +26,7 @@ import {
     GoogleCalendarConfig, GoogleGmailConfig, SheetsConfig, DocsConfig,
     DiscordConfig, AIConfig, FormTriggerConfig
 } from '@/components/workflow/NodeConfigs';
-import { Settings, X, Loader2, Zap, Settings2 } from 'lucide-react';
+import { Settings, X, Loader2, Zap, Settings2, Trash } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const nodeTypes = customNodeTypes as any;
@@ -43,7 +43,7 @@ interface BehaviorWorkflowEditorProps {
 }
 
 // Re-implementing TriggerConfiguration locally for Behavior tab
-function TriggerConfiguration({ node, updateNode }: { node: Node, updateNode: (data: any) => void }) {
+function TriggerConfiguration({ node, updateNode, instanceId }: { node: Node, updateNode: (data: any) => void, instanceId: string }) {
     const config = (node.data as any).config || {};
     const data = config.data || {};
 
@@ -60,6 +60,10 @@ function TriggerConfiguration({ node, updateNode }: { node: Node, updateNode: (d
     const isGmail = config.integrationId === 'google_gmail_trigger';
     const isTelegram = config.integrationId === 'telegram';
     const isWebhook = config.integrationId === 'webhook' || (!isCron && !isGmail && !isTelegram);
+
+    // Calculate webhook URL
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const webhookUrl = `${baseUrl}/api/webhooks/instance/${instanceId}`;
 
     return (
         <div className="space-y-3 animate-in fade-in slide-in-from-right-2 duration-200">
@@ -123,6 +127,15 @@ function TriggerConfiguration({ node, updateNode }: { node: Node, updateNode: (d
                             onChange={(e) => updateData({ botToken: e.target.value })}
                         />
                     </div>
+                    
+                    <div className="space-y-1 pt-1 border-t border-sky-500/10">
+                         <label className="text-[9px] font-black text-sky-400/60 uppercase tracking-widest">Webhook URL</label>
+                         <div className="flex gap-1">
+                            <input readOnly value={webhookUrl} className="flex-1 bg-black/20 border-none rounded px-2 py-1 text-[8px] font-mono text-sky-300" />
+                            <button onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL Copied'); }} className="px-2 py-1 bg-sky-500 rounded text-[8px] font-black text-white">Copy</button>
+                         </div>
+                    </div>
+
                     <Button size="sm" className="w-full h-8 text-xs bg-sky-500 hover:bg-sky-600 text-white gap-2" onClick={() => toast.success('Webhook synced via background API')}>
                         <Zap className="w-3 h-3" />
                         Sync Bot Webhook
@@ -151,8 +164,12 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
             Object.keys(overrides).forEach(key => {
                 if (key.startsWith(`${n.id}.`)) {
                     const prop = key.split('.')[1];
-                    data[prop] = overrides[key];
-                    config[prop] = overrides[key];
+                    let val = overrides[key];
+                    if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+                        try { val = JSON.parse(val); } catch(e) {}
+                    }
+                    data[prop] = val;
+                    config[prop] = val;
                 }
             });
 
@@ -170,8 +187,12 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                 if (credentials['telegram']?.isValid) {
                     data.botToken = '••••••••••••••••••••••••';
                 } else {
-                    data.botToken = '';
+                    // Strip the creator's test bot token for the consumer
+                    if (!overrides[`${n.id}.botToken`]) data.botToken = '';
                 }
+                
+                // Strip the creator's personal chat ID for the consumer
+                if (!overrides[`${n.id}.chatId`]) data.chatId = '';
             }
 
             config.data = data;
@@ -258,31 +279,46 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
         const oldConfigPayload = (oldNode?.data as any)?.config || {};
         
         Object.keys(newDataPayload).forEach(key => {
-            if (newDataPayload[key] !== oldDataPayload[key] && typeof newDataPayload[key] !== 'object') {
+            const newVal = newDataPayload[key];
+            const oldVal = oldDataPayload[key];
+            
+            // Compare stringified versions for objects/arrays
+            const isChanged = typeof newVal === 'object' 
+                ? JSON.stringify(newVal) !== JSON.stringify(oldVal)
+                : newVal !== oldVal;
+
+            if (isChanged) {
                 if (key === 'apiKey' || key === 'botToken') {
                     const integId = newConfig.integrationId || oldConfigPayload.integrationId || 'telegram';
-                    if (newDataPayload[key]) {
-                        onSaveCredential(integId, String(newDataPayload[key]));
+                    if (newVal) {
+                        onSaveCredential(integId, String(newVal));
                     } else {
                         onDisconnectCredential(integId);
                     }
                 } else {
-                    onSaveOverride(selectedNodeId, key, String(newDataPayload[key]));
+                    const strVal = typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal);
+                    onSaveOverride(selectedNodeId, key, strVal);
                 }
             }
         });
 
         if (newConfig.integrationId !== oldConfigPayload.integrationId) {
             onSaveOverride(selectedNodeId, 'integrationId', newConfig.integrationId);
-            // also trigger a model override assignment if changing AI models
             if (newConfig.integrationId === 'groq') onSaveOverride(selectedNodeId, 'model', 'llama-3.3-70b-versatile');
             if (newConfig.integrationId === 'google_gemini') onSaveOverride(selectedNodeId, 'model', 'gemini-2.0-flash');
             if (newConfig.integrationId === 'openai') onSaveOverride(selectedNodeId, 'model', 'gpt-4o-mini');
         }
 
         Object.keys(newConfig).forEach(key => {
-            if (key !== 'data' && newConfig[key] !== (oldNode?.data as any)?.config?.[key] && typeof newConfig[key] !== 'object') {
-                onSaveOverride(selectedNodeId, key, String(newConfig[key]));
+            const newVal = newConfig[key];
+            const oldVal = (oldNode?.data as any)?.config?.[key];
+            const isChanged = typeof newVal === 'object' 
+                ? JSON.stringify(newVal) !== JSON.stringify(oldVal)
+                : newVal !== oldVal;
+
+            if (key !== 'data' && isChanged) {
+                const strVal = typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal);
+                onSaveOverride(selectedNodeId, key, strVal);
             }
         });
 
@@ -330,8 +366,8 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                         return (
                             <>
                                 <div className="flex items-center justify-between px-3 py-2.5 border-b border-(--border) bg-(--muted)/30">
-                                    <div className="flex items-center gap-2">
-                                        <div className={cn("p-1.5 rounded-lg", nColorConfig.bg)}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className={cn("p-1.5 rounded-lg shrink-0", nColorConfig.bg)}>
                                             <Icon className={cn("w-3.5 h-3.5", nColorConfig.icon)} />
                                         </div>
                                         <div className="min-w-0">
@@ -341,9 +377,32 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                                             </p>
                                         </div>
                                     </div>
-                                    <button onClick={() => setSelectedNodeId(null)} className="p-1 rounded-md text-(--muted-fg) hover:bg-(--muted) transition-colors">
-                                        <X className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button 
+                                            onClick={async () => {
+                                                if (!confirm('Clear session memory? This will reset the chat history.')) return;
+                                                const { createClient } = await import('@/lib/supabase/client');
+                                                const supabase = createClient();
+                                                const config = nodeData.config || {};
+                                                const sessionId = config.data?.sessionId || config.sessionId || `session-${instance.id}-${selectedNodeId}`;
+                                                
+                                                if (sessionId) {
+                                                    const { error } = await supabase.from('workflow_sessions').delete().eq('session_id', sessionId);
+                                                    if (error) alert('Error: ' + error.message);
+                                                    else alert('Memory cleared! Now send a new message to your bot.');
+                                                } else {
+                                                    alert('Could not determine session ID.');
+                                                }
+                                            }}
+                                            className="p-1.5 rounded-md text-(--muted-fg) hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                            title="Clear Memory"
+                                        >
+                                            <Trash className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button onClick={() => setSelectedNodeId(null)} className="p-1.5 rounded-md text-(--muted-fg) hover:bg-(--muted) transition-colors">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
@@ -365,7 +424,7 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                                             // Sub-Configuration Routing
                                             if (logType === 'trigger') {
                                                 if (integId === 'form_trigger') return <FormTriggerConfig node={selectedNode as any} updateNode={updateNodeConfig} workflowId={instance.id} />;
-                                                return <TriggerConfiguration node={selectedNode as any} updateNode={updateNodeConfig} />;
+                                                return <TriggerConfiguration node={selectedNode as any} updateNode={updateNodeConfig} instanceId={instance.id} />;
                                             }
                                             
                                             if (logType === 'ai_action' && selectedNode.type === 'ai_agent') {
@@ -388,12 +447,12 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                                             
                                             if (logType === 'social_action') {
                                                 if (integId === 'slack') return <SlackConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
-                                                if (integId === 'telegram') return <TelegramConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
+                                                if (integId === 'telegram') return <TelegramConfig node={{ ...selectedNode, instanceId: instance.id } as any} updateNode={updateNodeConfig} />;
                                                 if (integId === 'discord') return <DiscordConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
                                                 return <APIConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
                                             }
                                             if (integId === 'slack') return <SlackConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
-                                            if (integId === 'telegram') return <TelegramConfig node={selectedNode as any} updateNode={updateNodeConfig} />;
+                                            if (integId === 'telegram') return <TelegramConfig node={{ ...selectedNode, instanceId: instance.id } as any} updateNode={updateNodeConfig} />;
 
                                             const googleInteg = userIntegrations?.find(i => i.provider === 'google' && i.is_valid);
                                             const fakeGoogleIntegration = googleInteg ? { is_valid: true, account_email: googleInteg.account_email } : null;
@@ -430,6 +489,14 @@ export function BehaviorWorkflowEditor({ instance, overrides, onSaveOverride,   
                                                 </div>
                                             );
                                         })()}
+                                    </div>
+                                    <div className="pt-4 mt-auto">
+                                        <Button 
+                                            onClick={() => toast.success('Node configuration saved successfully')}
+                                            className="w-full h-8 text-[10px] font-black uppercase tracking-widest bg-emerald-500 hover:bg-emerald-600 text-white"
+                                        >
+                                            Save Settings
+                                        </Button>
                                     </div>
                                 </div>
                             </>

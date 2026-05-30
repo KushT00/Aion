@@ -110,7 +110,7 @@ export async function POST(
             ...process.env as Record<string, string>,
             GOOGLE_ACCESS_TOKEN: googleAccessToken || ''
         };
-        const runner = new WorkflowRunner(nodes, edges, env);
+        const runner = new WorkflowRunner(nodes, edges, env, undefined, workflow.user_id);
         console.log(`🚀 [WEBHOOK] Starting execution for run ${run.id}...`);
 
         try {

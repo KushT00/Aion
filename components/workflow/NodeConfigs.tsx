@@ -58,14 +58,13 @@ export function ModelSelector({ value, onChange, integrationId }: { value: strin
         ]
         : integrationId === 'openai'
             ? [
-                { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'High-performance Open-source' }
+                { id: 'openai/gpt-4o', name: 'GPT-4o', desc: 'Flagship model' },
+                { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Fast & Efficient' }
             ]
             : integrationId === 'groq'
                 ? [
-                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'State-of-the-art' },
-                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra-fast' },
-                    { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 70B', desc: 'Reasoning model' },
-                    { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'High-performance Open-source' }
+                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'State-of-the-art (Best)' },
+                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra-fast (Speed)' },
                 ]
                 : [];
 
@@ -719,10 +718,20 @@ export function SlackConfig({ node, updateNode }: { node: { data: { config?: Rec
 }
 
 // ─── Telegram Configuration ─────────────────────────────────
-export function TelegramConfig({ node, updateNode }: { node: { data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
+export function TelegramConfig({ node, updateNode }: { node: { id: string; data: { config?: Record<string, unknown> } }; updateNode: (d: Record<string, unknown>) => void }) {
     const config = node.data.config || {};
     const data = (config.data || {}) as { botToken?: string; chatId?: string; text?: string };
     const updateData = (kv: Record<string, unknown>) => updateNode({ config: { ...config, data: { ...data, ...kv } } });
+    
+    // Calculate the webhook URL for the user
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const isLocal = baseUrl.includes('localhost');
+    
+    // Try to get instanceId from node props or URL
+    const instanceIdFromUrl = typeof window !== 'undefined' ? window.location.pathname.split('/')[2] : '';
+    const instanceId = (node as any).instanceId || instanceIdFromUrl || 'your-instance-id';
+    const webhookUrl = `${baseUrl}/api/webhooks/instance/${instanceId}`;
+
     return (
         <div className="space-y-3">
             <div className="p-2.5 bg-sky-500/5 border border-sky-500/20 rounded-lg">
@@ -733,6 +742,35 @@ export function TelegramConfig({ node, updateNode }: { node: { data: { config?: 
                     <p className="text-[9px] text-(--muted-fg) leading-tight">Paste your token from <a href="https://t.me/BotFather" target="_blank" className="text-sky-400 hover:underline">@BotFather</a></p>
                 </div>
             </div>
+
+            <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label className="text-violet-400">Webhook Endpoint</Label>
+                    {isLocal && <span className="text-[8px] font-black uppercase text-amber-500 animate-pulse">Ngrok Required</span>}
+                </div>
+                <div className="flex gap-2">
+                    <input 
+                        readOnly 
+                        value={webhookUrl}
+                        className="flex-1 bg-black/20 border-none rounded px-2 py-1.5 text-[9px] font-mono text-violet-300"
+                    />
+                    <button 
+                        onClick={() => {
+                            navigator.clipboard.writeText(webhookUrl);
+                            alert('Webhook URL copied!');
+                        }}
+                        className="px-2 py-1 bg-violet-500 rounded text-[9px] font-black uppercase text-white hover:bg-violet-600"
+                    >
+                        Copy
+                    </button>
+                </div>
+                <p className="text-[8px] text-(--muted-fg) leading-tight italic">
+                    {isLocal 
+                        ? "⚠️ Localhost detected. Use your NGROK URL in the browser to copy the correct link." 
+                        : "✓ Copy this URL into your bot's webhook settings."}
+                </p>
+            </div>
+
             <div className="space-y-2">
                 <Label>Chat ID (Optional)</Label>
                 <Input placeholder="-100..." value={data.chatId || ''} onChange={(e) => updateData({ chatId: e.target.value })} />
@@ -836,9 +874,9 @@ export function SetVariableConfig({ node, updateNode }: { node: { data: { config
             <div className="space-y-2">
                 {vars.map((v, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                        <Input placeholder="key" className="w-24" value={v.key} onChange={(e: any) => { const n = [...vars]; n[i].key = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
+                        <Input placeholder="key" className="w-24" value={v.key} onChange={(e: any) => { const n = [...vars]; n[i] = { ...n[i], key: e.target.value }; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
                         <span className="text-(--muted-fg)">=</span>
-                        <Input placeholder="value" value={v.value} onChange={(e: any) => { const n = [...vars]; n[i].value = e.target.value; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
+                        <Input placeholder="value" value={v.value} onChange={(e: any) => { const n = [...vars]; n[i] = { ...n[i], value: e.target.value }; updateNode({ config: { ...config, data: { ...data, varList: n } } }); }} />
                     </div>
                 ))}
             </div>

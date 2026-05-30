@@ -26,6 +26,7 @@ import {
     Bot,
     Send,
     Workflow,
+    ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -54,7 +55,8 @@ interface RunResult {
         status: string;
         error?: string;
     }[];
-    [key: string]: unknown;
+    error?: string;
+    outputs?: any;
 }
 
 const INTEGRATION_CARDS: Record<string, IntegrationConfig> = {
@@ -161,11 +163,34 @@ export default function InstanceSandboxPage() {
                 setInputValues({});
 
                 // Default AI provider selection
-                const aiNode = (data.instance?.listing?.workflow?.nodes || []).find((n: WorkflowNode) => {
-                    const nodeType = (n.type || '').toLowerCase();
-                    const label = (n.label || n.data?.label || '').toLowerCase();
+                let aiNode = (data.instance?.listing?.workflow?.nodes || []).find((n: WorkflowNode) => {
+                    const nodeType = String(n.config?.rfType || n.config?.originalType || n.type || '').toLowerCase();
+                    const label = String(n.label || n.config?.label || (n as any).data?.label || '').toLowerCase();
                     return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
                 });
+
+                // If AI Agent is connected to a separate model node, target the model node for overrides
+                if (aiNode) {
+                    const targetAiNode = aiNode;
+                    const edges = (data.instance?.listing?.workflow as any)?.edges || [];
+                    const modelEdge = edges.find((e: any) => {
+                        let targetHandle = e.target_handle || e.targetHandle;
+                        if (!targetHandle && e.label) {
+                            try {
+                                const parsed = JSON.parse(e.label);
+                                targetHandle = parsed.targetHandle;
+                            } catch (err) {}
+                        }
+                        return e.target_node_id === targetAiNode.id && targetHandle === 'chat_model';
+                    });
+                    if (modelEdge) {
+                        const modelNode = (data.instance?.listing?.workflow?.nodes || []).find((n: WorkflowNode) => n.id === modelEdge.source_node_id);
+                        if (modelNode) {
+                            aiNode = modelNode;
+                        }
+                    }
+                }
+
                 if (aiNode) {
                     const overriddenProv = data.instance?.config_overrides?.[`${aiNode.id}.integrationId`];
                     
@@ -205,53 +230,160 @@ export default function InstanceSandboxPage() {
         if (instanceId) fetchAll();
     }, [instanceId]);
 
-    // ─── Run Logic (Test Drive) ──────────────────────────────────────────
-    const handleTestDrive = async () => {
+    // ─── Run Logic ──────────────────────────────────────────────────────
+    const handleRunWorkflow = async () => {
         if (isRunning) return;
         setIsRunning(true);
+        setLastRunResult(null);
         setActiveTab('logs');
-        toast('🚀 Starting isolated test drive...', { icon: '🤖' });
+        toast('🚀 Starting workflow execution...', { icon: '🤖' });
 
         try {
             const res = await fetch('/api/ai/run-instance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ instanceId, triggerData: { test: true } }),
+                body: JSON.stringify({ instanceId, triggerData: { test: true, timestamp: new Date().toISOString() } }),
             });
             const data = await res.json();
 
-            if (res.ok) {
-                setLastRunResult(data);
-                // Refresh logs list
-                const logRes = await fetch(`/api/ai/instance-logs?instanceId=${instanceId}`);
-                if (logRes.ok) {
-                    const logData = await logRes.json();
-                    setExecutionLogs(logData.logs || []);
-                }
-                toast.success('Test drive completed successfully!');
-            } else {
-                toast.error(data.error || 'Execution failed');
+            // Always set the run result for logs display (even on failure, we may have partial logs)
+            setLastRunResult(data);
+
+            // Refresh execution history
+            const logRes = await fetch(`/api/ai/instance-logs?instanceId=${instanceId}`);
+            if (logRes.ok) {
+                const logData = await logRes.json();
+                setExecutionLogs(logData.logs || []);
             }
-        } catch {
-            toast.error('Connection error during execution');
+
+            if (res.ok && data.success) {
+                toast.success('Workflow executed successfully!');
+            } else {
+                const failedNodes = (data.logs || []).filter((l: any) => l.status === 'failed');
+                const errorMsg = failedNodes.length > 0
+                    ? `Failed at: ${failedNodes.map((l: any) => l.error || 'unknown').join(', ')}`
+                    : data.error || 'Execution failed';
+                toast.error(errorMsg, { duration: 6000 });
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Connection error during execution');
         } finally {
             setIsRunning(false);
         }
     };
 
+    // ─── Helper: Find AI Agent Node (with model-node resolution) ────────
+    const getAiNode = () => {
+        const workflowNodes: WorkflowNode[] = instance?.listing?.workflow?.nodes || [];
+        let aiNode = workflowNodes.find((n: WorkflowNode) => {
+            const nodeType = String(n.config?.rfType || n.config?.originalType || n.type || '').toLowerCase();
+            const label = String(n.label || n.config?.label || (n as any).data?.label || '').toLowerCase();
+            return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
+        });
+        if (aiNode) {
+            const targetAiNode = aiNode;
+            const edges = (instance?.listing?.workflow as any)?.edges || [];
+            const modelEdge = edges.find((e: any) => {
+                let targetHandle = e.target_handle || e.targetHandle;
+                if (!targetHandle && e.label) {
+                    try { const parsed = JSON.parse(e.label); targetHandle = parsed.targetHandle; } catch (err) {}
+                }
+                return e.target_node_id === targetAiNode.id && targetHandle === 'chat_model';
+            });
+            if (modelEdge) {
+                const modelNode = workflowNodes.find((n: WorkflowNode) => n.id === modelEdge.source_node_id);
+                if (modelNode) aiNode = modelNode;
+            }
+        }
+        return aiNode || null;
+    };
+
+    // ─── Helper: Get paired AI Agent + Model node IDs if they exist ───
+    const getAiNodePairIds = (currentNodeId: string): string[] => {
+        const workflowNodes: WorkflowNode[] = instance?.listing?.workflow?.nodes || [];
+        const edges = (instance?.listing?.workflow as any)?.edges || [];
+        
+        const ids = [currentNodeId];
+        
+        // Check if currentNodeId is the AI Agent node
+        const currentIsAgent = workflowNodes.some((n: WorkflowNode) => {
+            if (n.id !== currentNodeId) return false;
+            const nodeType = String(n.config?.rfType || n.config?.originalType || n.type || '').toLowerCase();
+            const label = String(n.label || n.config?.label || (n as any).data?.label || '').toLowerCase();
+            return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
+        });
+        
+        if (currentIsAgent) {
+            // Find model node connected to this agent via targetHandle chat_model
+            const edge = edges.find((e: any) => {
+                let targetHandle = e.target_handle || e.targetHandle;
+                if (!targetHandle && e.label) {
+                    try { const parsed = JSON.parse(e.label); targetHandle = parsed.targetHandle; } catch (err) {}
+                }
+                return e.target_node_id === currentNodeId && targetHandle === 'chat_model';
+            });
+            if (edge && edge.source_node_id) {
+                ids.push(edge.source_node_id);
+            }
+        } else {
+            // Check if currentNodeId is the Model node connected to an agent
+            const edge = edges.find((e: any) => {
+                let targetHandle = e.target_handle || e.targetHandle;
+                if (!targetHandle && e.label) {
+                    try { const parsed = JSON.parse(e.label); targetHandle = parsed.targetHandle; } catch (err) {}
+                }
+                return e.source_node_id === currentNodeId && targetHandle === 'chat_model';
+            });
+            if (edge && edge.target_node_id) {
+                ids.push(edge.target_node_id);
+            }
+        }
+        return ids;
+    };
+
     // ─── Save Override Logic ──────────────────────────────────────────
     const [isSavingOverride, setIsSavingOverride] = useState<string | null>(null);
 
-    const handleSaveOverride = async (nodeId: string, property: string, value: string) => {
-        setIsSavingOverride(`${nodeId}.${property}`);
+    const handleSaveOverride = async (nodeIdOrIds: string | string[], property: string | null, value: any, updates?: Record<string, any>) => {
+        let targetIds: string[];
+        if (Array.isArray(nodeIdOrIds)) {
+            targetIds = nodeIdOrIds;
+        } else {
+            const isModelOrProvider = property === 'integrationId' || property === 'model' || (updates && ('integrationId' in updates || 'model' in updates));
+            targetIds = isModelOrProvider ? getAiNodePairIds(nodeIdOrIds) : [nodeIdOrIds];
+        }
+
+        setIsSavingOverride(property ? `${targetIds[0]}.${property}` : `${targetIds[0]}.multiple`);
         try {
             const res = await fetch('/api/ai/save-override', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ instanceId, nodeId, property, value }),
+                body: JSON.stringify({ instanceId, nodeId: targetIds, property, value, updates }),
             });
             if (res.ok) {
-                setOverrides(prev => ({ ...prev, [`${nodeId}.${property}`]: value }));
+                setOverrides(prev => {
+                    const next = { ...prev };
+                    targetIds.forEach(nId => {
+                        if (updates) {
+                            Object.entries(updates).forEach(([prop, val]) => {
+                                next[`${nId}.${prop}`] = val;
+                            });
+                        } else if (property) {
+                            next[`${nId}.${property}`] = value;
+                        }
+                    });
+                    return next;
+                });
+
+                // Bidirectional sync: If integrationId was changed (e.g. from Behavior tab), update Integrations tab
+                const aiNode = getAiNode();
+                if (aiNode && targetIds.includes(aiNode.id)) {
+                    const changedProvider = updates?.integrationId || (property === 'integrationId' ? value : null);
+                    if (changedProvider && ['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'].includes(changedProvider)) {
+                        setSelectedAiProvider(changedProvider);
+                    }
+                }
+
                 toast.success('Behavior updated!', { icon: '⚙️' });
             } else {
                 toast.error('Failed to save behavior');
@@ -280,6 +412,21 @@ export default function InstanceSandboxPage() {
                 setCredentials(prev => ({ ...prev, [key]: { isValid: true } }));
                 if (['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'].includes(key)) {
                     setSelectedAiProvider(key);
+                    // Auto-sync the AI Agent node's provider and model in behavior config
+                    const aiNode = getAiNode();
+                    if (aiNode) {
+                        const modelMap: Record<string, string> = {
+                            'groq': 'llama-3.3-70b-versatile',
+                            'google_gemini': 'gemini-2.0-flash',
+                            'openai': 'gpt-4o-mini',
+                        };
+                        const model = modelMap[key];
+                        if (model) {
+                            handleSaveOverride(aiNode.id, null, null, { 'integrationId': key, 'model': model });
+                        } else {
+                            handleSaveOverride(aiNode.id, 'integrationId', key);
+                        }
+                    }
                 }
                 setInputValues(prev => ({ ...prev, [key]: '' }));
                 toast.success('Integration connected!');
@@ -304,6 +451,24 @@ export default function InstanceSandboxPage() {
             const data = await res.json();
             if (res.ok) {
                 setCredentials(prev => ({ ...prev, [key]: { isValid: true } }));
+                // Auto-sync provider/model to AI Agent node when saving an AI key from Behavior tab
+                if (['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'].includes(key)) {
+                    setSelectedAiProvider(key);
+                    const aiNode = getAiNode();
+                    if (aiNode) {
+                        const modelMap: Record<string, string> = {
+                            'groq': 'llama-3.3-70b-versatile',
+                            'google_gemini': 'gemini-2.0-flash',
+                            'openai': 'gpt-4o-mini',
+                        };
+                        const model = modelMap[key];
+                        if (model) {
+                            handleSaveOverride(aiNode.id, null, null, { 'integrationId': key, 'model': model });
+                        } else {
+                            handleSaveOverride(aiNode.id, 'integrationId', key);
+                        }
+                    }
+                }
                 toast.success('Integration connected manually!');
             } else {
                 toast.error(data.error || 'Invalid API Key');
@@ -363,6 +528,31 @@ export default function InstanceSandboxPage() {
                 delete next[key];
                 return next;
             });
+
+            // Auto-switch AI provider: If the disconnected key was the active AI provider,
+            // find the next valid AI provider and switch to it (including the Behavior tab override)
+            const aiProviders = ['google_gemini', 'openai', 'groq', 'anthropic', 'openrouter'];
+            if (aiProviders.includes(key) && selectedAiProvider === key) {
+                const nextValid = aiProviders.find(p => p !== key && credentials[p]?.isValid);
+                if (nextValid) {
+                    setSelectedAiProvider(nextValid);
+                    const aiNode = getAiNode();
+                    if (aiNode) {
+                        const modelMap: Record<string, string> = {
+                            'groq': 'llama-3.3-70b-versatile',
+                            'google_gemini': 'gemini-2.0-flash',
+                            'openai': 'gpt-4o-mini',
+                        };
+                        const model = modelMap[nextValid];
+                        if (model) {
+                            handleSaveOverride(aiNode.id, null, null, { 'integrationId': nextValid, 'model': model });
+                        } else {
+                            handleSaveOverride(aiNode.id, 'integrationId', nextValid);
+                        }
+                    }
+                }
+            }
+
             toast.success('Disconnected successfully');
         } catch {
             toast.error('Failed to disconnect');
@@ -399,9 +589,12 @@ export default function InstanceSandboxPage() {
                         </div>
                         <Button
                             variant="outline"
-                            onClick={handleTestDrive}
-                            disabled={!allConnected || isRunning}
-                            className="rounded-xl font-black uppercase tracking-widest text-[10px] px-6 h-10 border-primary-500/20 text-primary-400 hover:bg-primary-500/5 disabled:opacity-30"
+                            onClick={handleRunWorkflow}
+                            disabled={isRunning}
+                            className={cn(
+                                "rounded-xl font-black uppercase tracking-widest text-[10px] px-6 h-10 border-primary-500/20 hover:bg-primary-500/5 transition-all",
+                                isRunning ? "opacity-50" : "text-primary-400 cursor-pointer"
+                            )}
                         >
                             {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Sparkles className="w-3.5 h-3.5 mr-2 text-primary-400" />}
                             Run Workflow
@@ -499,39 +692,79 @@ export default function InstanceSandboxPage() {
 
                                     {lastRunResult && !isRunning && (
                                         <div className="space-y-6">
-                                            <Card className="relative p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                                            <Card className={cn(
+                                                "relative p-4 rounded-2xl border",
+                                                lastRunResult.success
+                                                    ? "bg-emerald-500/10 border-emerald-500/20"
+                                                    : "bg-rose-500/10 border-rose-500/20"
+                                            )}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-3">
-                                                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                                                        <span className="text-xs font-black uppercase italic">Last Run Success</span>
+                                                        {lastRunResult.success
+                                                            ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                                                            : <AlertCircle className="w-5 h-5 text-rose-400" />
+                                                        }
+                                                        <div>
+                                                            <span className={cn("text-xs font-black uppercase italic", lastRunResult.success ? "text-emerald-400" : "text-rose-400")}>
+                                                                {lastRunResult.success ? 'Execution Successful' : 'Execution Failed'}
+                                                            </span>
+                                                            {lastRunResult.error && (
+                                                                <p className="text-[9px] text-rose-400/80 font-medium mt-0.5">{lastRunResult.error}</p>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <Button variant="ghost" size="sm" onClick={() => setLastRunResult(null)} className="text-[9px] uppercase font-bold">Clear</Button>
                                                 </div>
                                             </Card>
 
                                             <div className="space-y-3">
-                                                {lastRunResult && lastRunResult.logs?.map((log, i: number) => (
-                                                    <div key={i} className="flex gap-4 group">
-                                                        <div className="w-1 bg-(--border) rounded-full group-hover:bg-primary-500/30 transition-colors" />
-                                                        <div className="flex-1 py-1">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className="text-[10px] font-black uppercase tracking-tight">
-                                                                    {workflowNodes.find((n: WorkflowNode) => n.id === log.nodeId)?.data?.label || 'Node'}
-                                                                </p>
-                                                                <Badge className={cn("text-[8px] font-black px-1.5", log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400')}>
-                                                                    {log.status.toUpperCase()}
-                                                                </Badge>
+                                                {lastRunResult && lastRunResult.logs?.map((log: any, i: number) => {
+                                                    const node = workflowNodes.find((n: any) => n.id === log.nodeId);
+                                                    const nodeLabel = node?.label || (node?.data as any)?.label || log.nodeId.slice(0, 8);
+                                                    
+                                                    return (
+                                                        <div key={i} className="flex gap-4 group">
+                                                            <div className={cn(
+                                                                "w-1 rounded-full transition-colors",
+                                                                log.status === 'success' ? 'bg-emerald-500/20 group-hover:bg-emerald-500/50' : 'bg-rose-500/20 group-hover:bg-rose-500/50'
+                                                            )} />
+                                                            <div className="flex-1 py-2 bg-(--bg)/30 rounded-xl px-4 border border-(--border)/50">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[10px] font-black uppercase tracking-tight text-(--foreground)">
+                                                                            {nodeLabel}
+                                                                        </span>
+                                                                        <Badge className={cn("text-[7px] font-black px-1 py-0", log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400')}>
+                                                                            {log.status.toUpperCase()}
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <span className="text-[8px] text-(--muted-fg) font-mono">
+                                                                        {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''}
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                {log.error && <p className="text-[9px] text-rose-400 font-bold mt-1 uppercase italic">{String(log.error)}</p>}
+                                                                
+                                                                {log.output && (
+                                                                    <details className="mt-2">
+                                                                        <summary className="text-[9px] text-primary-400 font-black uppercase cursor-pointer hover:underline list-none flex items-center gap-1">
+                                                                            <ChevronRight className="w-3 h-3" /> View Output Data
+                                                                        </summary>
+                                                                        <pre className="mt-2 p-3 bg-black/40 rounded-lg text-[9px] font-mono text-emerald-400/90 overflow-x-auto border border-white/5">
+                                                                            {JSON.stringify(log.output, null, 2)}
+                                                                        </pre>
+                                                                    </details>
+                                                                )}
                                                             </div>
-                                                            {log.error && <p className="text-[9px] text-rose-400 font-bold mt-1 uppercase italic">{log.error}</p>}
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
 
                                     {!isRunning && !lastRunResult && executionLogs.length === 0 && (
-                                        <EmptyState icon={<FileText />} title="No Runs Yet" desc="Click 'Test Drive' to start your first execution." />
+                                        <EmptyState icon={<FileText />} title="No Runs Yet" desc="Click 'Run Workflow' to start your first execution." />
                                     )}
 
                                     {executionLogs.map((log: ExecutionLog) => (
@@ -585,11 +818,33 @@ export default function InstanceSandboxPage() {
         const workflowNodes: WorkflowNode[] = instance?.listing?.workflow?.nodes || [];
 
         // 1. Detect AI Agent
-        const aiNode = workflowNodes.find((n: WorkflowNode) => {
-            const nodeType = (n.type || '').toLowerCase();
-            const label = (n.label || n.data?.label || '').toLowerCase();
+        let aiNode = workflowNodes.find((n: WorkflowNode) => {
+            const nodeType = String(n.config?.rfType || n.config?.originalType || n.type || '').toLowerCase();
+            const label = String(n.label || n.config?.label || (n as any).data?.label || '').toLowerCase();
             return nodeType === 'ai' || nodeType === 'ai_agent' || nodeType === 'agent' || label.includes('ai agent');
         });
+
+        // Resolve connected Model node if it exists to target for overrides
+        if (aiNode) {
+            const targetAiNode = aiNode;
+            const edges = (instance?.listing?.workflow as any)?.edges || [];
+            const modelEdge = edges.find((e: any) => {
+                let targetHandle = e.target_handle || e.targetHandle;
+                if (!targetHandle && e.label) {
+                    try {
+                        const parsed = JSON.parse(e.label);
+                        targetHandle = parsed.targetHandle;
+                    } catch (err) {}
+                }
+                return e.target_node_id === targetAiNode.id && targetHandle === 'chat_model';
+            });
+            if (modelEdge) {
+                const modelNode = workflowNodes.find((n: WorkflowNode) => n.id === modelEdge.source_node_id);
+                if (modelNode) {
+                    aiNode = modelNode;
+                }
+            }
+        }
         const hasAiAgent = !!aiNode;
 
         // 2. Detect Google Services
@@ -625,10 +880,20 @@ export default function InstanceSandboxPage() {
                                             setCredentialErrors(prev => ({ ...prev, [key]: '' }));
                                             
                                             if (aiNode) {
-                                                handleSaveOverride(aiNode.id, 'integrationId', key);
-                                                if (key === 'groq') handleSaveOverride(aiNode.id, 'model', 'llama-3.3-70b-versatile');
-                                                if (key === 'google_gemini') handleSaveOverride(aiNode.id, 'model', 'gemini-2.0-flash');
-                                                if (key === 'openai') handleSaveOverride(aiNode.id, 'model', 'gpt-4o-mini');
+                                                const modelMap: Record<string, string> = {
+                                                    'groq': 'llama-3.3-70b-versatile',
+                                                    'google_gemini': 'gemini-2.0-flash',
+                                                    'openai': 'gpt-4o-mini'
+                                                };
+                                                const model = modelMap[key];
+                                                if (model) {
+                                                    handleSaveOverride(aiNode.id, null, null, {
+                                                        'integrationId': key,
+                                                        'model': model
+                                                    });
+                                                } else {
+                                                    handleSaveOverride(aiNode.id, 'integrationId', key);
+                                                }
                                             }
                                         }}
                                     className={cn(

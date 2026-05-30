@@ -40,6 +40,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                             error && 'border-error focus:ring-error/50',
                             className,
                         )}
+                        suppressHydrationWarning
                         {...props}
                     />
                 </div>

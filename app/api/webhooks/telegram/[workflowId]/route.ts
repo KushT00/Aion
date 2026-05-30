@@ -26,9 +26,10 @@ export async function POST(
 ) {
     console.log("📍 [TELEGRAM ROUTE] POST BEGIN - CACHE BUSTER");
     const { workflowId } = await params;
+    let body: any = {};
 
     try {
-        const body = await request.json().catch(() => ({}));
+        body = await request.json().catch(() => ({}));
         console.log("████████████████████████████████████████");
         console.log("📥 TELEGRAM WEBHOOK RECEIVED!");
         console.log("UPDATE_ID:", body.update_id);
@@ -57,7 +58,11 @@ export async function POST(
         // 2. Load Workflow from Supabase (using Admin client to bypass RLS)
         const supabase = createAdminClient();
 
-        const { data: workflow, error } = await supabase
+        let workflow = null;
+        let isInstance = false;
+        let instance = null;
+
+        const { data: wfData, error } = await supabase
             .from("workflows")
             .select(`
                 *,
@@ -67,12 +72,84 @@ export async function POST(
             .eq("id", cleanWorkflowId)
             .single();
 
-        if (error || !workflow) {
-            console.log(`❌ WORKFLOW NOT FOUND: "${cleanWorkflowId}"`);
-            if (error) console.error("Supabase Error:", error.message);
-            return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
+        if (wfData) {
+            workflow = wfData;
+        } else {
+            // Self-Healing: Check if the ID belongs to a consumer instance
+            const { data: instData } = await supabase
+                .from("consumer_instances")
+                .select("*")
+                .eq("id", cleanWorkflowId)
+                .single();
+
+            if (instData) {
+                isInstance = true;
+                instance = instData;
+            }
         }
-        console.log(`✅ WORKFLOW LOADED: "${workflow.name}" (${workflow.nodes?.length || 0} nodes)`);
+
+        if (!workflow && !isInstance) {
+            console.log(`❌ NEITHER WORKFLOW NOR INSTANCE FOUND: "${cleanWorkflowId}"`);
+            if (error) console.error("Supabase Error:", error.message);
+            return NextResponse.json({ error: "Workflow or Instance not found" }, { status: 404 });
+        }
+
+        if (isInstance && instance) {
+            console.log(`🚀 [TELEGRAM ROUTE] Self-healing redirect: Running Instance ${instance.id}`);
+            const { InstanceRunner } = await import("@/lib/workflow/instance-runner");
+            const runner = new InstanceRunner(instance.id, instance.buyer_id);
+
+            const triggerData = {
+                chat_id: message.chat.id,
+                text: message.text,
+                username: message.from.first_name,
+                is_bot: message.from.is_bot || false,
+                update_id,
+                raw: body
+            };
+
+            const result = await runner.run(triggerData);
+            if (!result.success) {
+                try {
+                    const { data: rawNodes } = await supabase
+                        .from("workflow_nodes")
+                        .select("config")
+                        .eq("workflow_id", instance.workflow_id);
+
+                    const telegramNode = rawNodes?.find((n: any) => 
+                        n.config?.integrationId === "telegram" || 
+                        n.config?.actionId === "send_message" ||
+                        n.config?.actionId === "process_message"
+                    );
+
+                    let botToken = telegramNode?.config?.data?.botToken || telegramNode?.config?.botToken;
+                    
+                    const overrides = instance.config_overrides || {};
+                    const tokenOverrideKey = Object.keys(overrides).find(k => k.endsWith(".botToken"));
+                    if (tokenOverrideKey) botToken = overrides[tokenOverrideKey];
+
+                    if (botToken && triggerData.chat_id) {
+                        const errorMsg = `⚠️ *Automation Error*:\n\n${result.error || "Unknown execution failure"}`;
+                        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                chat_id: triggerData.chat_id,
+                                text: errorMsg,
+                                parse_mode: "Markdown"
+                            })
+                        });
+                    }
+                } catch (sendErr) {
+                    console.error("Failed to send execution error to Telegram:", sendErr);
+                }
+                return NextResponse.json({ ok: false, error: result.error || "Workflow execution failed" });
+            }
+            return NextResponse.json({ ok: true });
+        }
+
+        const activeWorkflow = workflow!;
+        console.log(`✅ WORKFLOW LOADED: "${activeWorkflow.name}" (${activeWorkflow.nodes?.length || 0} nodes)`);
 
 
 
@@ -94,7 +171,7 @@ export async function POST(
         // Implement the same edge-parsing hack used in the builder 
         // to retrieve `sourceHandle` and `targetHandle` from the JSON label
         // because the PostgREST cache doesn't acknowledge the columns yet.
-        const parsedEdges = workflow.edges.map((e: WorkflowEdge) => {
+        const parsedEdges = activeWorkflow.edges.map((e: WorkflowEdge) => {
             let sourceH = e.source_handle;
             let targetH = e.target_handle;
             let realLabel = e.label;
@@ -117,14 +194,14 @@ export async function POST(
             };
         });
 
-        const runner = new WorkflowRunner(workflow.nodes, parsedEdges, safeEnv);
+        const runner = new WorkflowRunner(activeWorkflow.nodes, parsedEdges, safeEnv, undefined, activeWorkflow.user_id);
 
         // 6. Create Run Record
         const { data: run, error: runError } = await supabase
             .from("workflow_runs")
             .insert({
                 workflow_id: cleanWorkflowId,
-                user_id: workflow.user_id,
+                user_id: activeWorkflow.user_id,
                 status: "running",
                 started_at: new Date().toISOString()
             })
@@ -156,6 +233,42 @@ export async function POST(
     } catch (error: unknown) {
         console.error("Webhook Execution Error:", error);
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+        try {
+            const cleanWorkflowId = workflowId.trim();
+            const supabase = createAdminClient();
+            const { data: wfData } = await supabase
+                .from("workflows")
+                .select("nodes")
+                .eq("id", cleanWorkflowId)
+                .single();
+
+            const rawNodes = (wfData as any)?.nodes || [];
+            const telegramNode = rawNodes.find((n: any) => 
+                n.config?.integrationId === "telegram" || 
+                n.config?.actionId === "send_message" ||
+                n.config?.actionId === "process_message"
+            );
+
+            const botToken = telegramNode?.config?.data?.botToken || telegramNode?.config?.botToken;
+            const chatId = body?.message?.chat?.id;
+
+            if (botToken && chatId) {
+                const errorMsg = `⚠️ *Automation Error*:\n\n${errorMessage}`;
+                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: errorMsg,
+                        parse_mode: "Markdown"
+                    })
+                });
+            }
+        } catch (sendErr) {
+            console.error("Failed to send execution error to Telegram:", sendErr);
+        }
+
         return NextResponse.json({ ok: false, error: errorMessage }, { status: 200 });
     }
 }
