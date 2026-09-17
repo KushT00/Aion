@@ -9,17 +9,14 @@ import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
     Search,
-    Play,
     Clock,
     CheckCircle,
     XCircle,
     Loader2,
-    Eye,
     ChevronDown,
     ChevronUp,
     Activity,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 import type { RunStatus } from '@/types';
 
@@ -32,8 +29,6 @@ interface RunItem {
     logs: string;
 }
 
-
-
 const statusConfig: Record<
     RunStatus,
     { icon: typeof CheckCircle; variant: 'success' | 'error' | 'info' | 'warning' | 'default'; label: string }
@@ -45,22 +40,42 @@ const statusConfig: Record<
     cancelled: { icon: XCircle, variant: 'default', label: 'Cancelled' },
 };
 
+const RUNS_CACHE_KEY = 'aion_runs_cache';
+let _runsMemoryCache: RunItem[] | null = null;
+
+function getInitialRuns(): RunItem[] {
+    if (_runsMemoryCache) return _runsMemoryCache;
+    if (typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(RUNS_CACHE_KEY);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                _runsMemoryCache = parsed;
+                return parsed;
+            }
+        } catch (e) { }
+    }
+    return [];
+}
+
 export default function RunsPage() {
-    const [runs, setRuns] = useState<RunItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [runs, setRuns] = useState<RunItem[]>(() => getInitialRuns());
+    const [isLoading, setIsLoading] = useState<boolean>(() => !getInitialRuns().length);
     const [search, setSearch] = useState('');
     const [expandedRun, setExpandedRun] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | RunStatus>('all');
 
     useEffect(() => {
-        const fetchRuns = async () => {
-            setIsLoading(true);
+        const supabase = createClient();
+
+        const fetchRuns = async (isBackground = false) => {
+            if (!isBackground && !runs.length) setIsLoading(true);
             try {
-                const supabase = createClient();
                 const { data: runsData, error } = await supabase
                     .from('workflow_runs')
                     .select('*, workflows(name)')
-                    .order('started_at', { ascending: false });
+                    .order('started_at', { ascending: false })
+                    .limit(50); // Fetch top 50 recent runs for ultra-fast query execution
 
                 if (error) throw error;
 
@@ -73,6 +88,12 @@ export default function RunsPage() {
                     logs: r.logs || (r.error ? `Error: ${r.error}` : 'No logs available.'),
                 }));
 
+                _runsMemoryCache = formatted;
+                if (typeof window !== 'undefined') {
+                    try {
+                        localStorage.setItem(RUNS_CACHE_KEY, JSON.stringify(formatted));
+                    } catch (e) { }
+                }
                 setRuns(formatted);
             } catch (err: any) {
                 console.error('Failed to fetch runs:', err.message);
@@ -81,7 +102,17 @@ export default function RunsPage() {
             }
         };
 
-        fetchRuns();
+        const hasCache = runs.length > 0;
+        fetchRuns(hasCache);
+
+        // Real-time subscription: refresh the list whenever a run is inserted or updated
+        const channel = supabase
+            .channel('workflow_runs_global')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workflow_runs' }, () => fetchRuns(true))
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'workflow_runs' }, () => fetchRuns(true))
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
     }, []);
 
     const filtered = runs.filter((r) => {

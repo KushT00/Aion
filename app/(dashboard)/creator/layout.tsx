@@ -10,15 +10,16 @@ export default function CreatorLayout({ children }: { children: React.ReactNode 
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && profile && !(profile.is_creator || profile.role === 'creator')) {
-            router.replace('/become-creator');
-        }
-        if (!loading && !profile) {
-            router.replace('/login');
+        if (!loading) {
+            if (!profile) {
+                router.replace('/login');
+            } else if (!profile.is_creator && profile.role !== 'creator') {
+                router.replace('/become-creator');
+            }
         }
     }, [profile, loading, router]);
 
-    if (loading) {
+    if (loading || !profile) {
         return (
             <div className="flex items-center justify-center h-full min-h-[60vh]">
                 <div className="flex flex-col items-center gap-3">
@@ -31,8 +32,7 @@ export default function CreatorLayout({ children }: { children: React.ReactNode 
         );
     }
 
-    // While redirecting, show nothing
-    if (!(profile?.is_creator || profile?.role === 'creator')) return null;
+    if (!(profile.is_creator || profile.role === 'creator')) return null;
 
     return <>{children}</>;
 }

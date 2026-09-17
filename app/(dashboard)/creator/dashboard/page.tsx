@@ -73,10 +73,16 @@ export default function CreatorDashboard() {
 
     if (isLoading) {
         return (
-            <div className="p-6 lg:p-10 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-                    <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-widest">Loading dashboard...</p>
+            <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-8 animate-pulse">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-28 rounded-2xl bg-[var(--card)] border border-[var(--border)]" />
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-36 rounded-2xl bg-[var(--card)] border border-[var(--border)]" />
+                    ))}
                 </div>
             </div>
         );

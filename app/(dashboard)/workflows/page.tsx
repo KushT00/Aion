@@ -12,7 +12,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
     Plus,
     Search,
-    MoreVertical,
     Edit,
     Trash2,
     Globe,
@@ -24,59 +23,69 @@ import Link from 'next/link';
 import { formatRelativeTime } from '@/lib/utils';
 import type { WorkflowStatus } from '@/types';
 
-
 const statusConfig: Record<WorkflowStatus, { label: string; variant: "default" | "success" | "warning"; icon: any }> = {
     draft: { label: 'Draft', variant: 'default', icon: GlobeLock },
     published: { label: 'Published', variant: 'success', icon: Globe },
     archived: { label: 'Archived', variant: 'warning', icon: GlobeLock },
 };
 
+const WORKFLOWS_CACHE_KEY = 'aion_workflows_cache';
+let _workflowsMemoryCache: any[] | null = null;
+
+function getInitialWorkflows(): any[] {
+    if (_workflowsMemoryCache) return _workflowsMemoryCache;
+    if (typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(WORKFLOWS_CACHE_KEY);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                _workflowsMemoryCache = parsed;
+                return parsed;
+            }
+        } catch (e) { }
+    }
+    return [];
+}
+
 export default function WorkflowsPage() {
     const supabase = createClient();
-    const [workflows, setWorkflows] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [workflows, setWorkflows] = useState<any[]>(() => getInitialWorkflows());
+    const [loading, setLoading] = useState<boolean>(() => !getInitialWorkflows().length);
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<'all' | WorkflowStatus>('all');
+    const router = useRouter();
 
-    const fetchWorkflows = async () => {
-        setLoading(true);
+    const fetchWorkflows = async (isBackground = false) => {
+        if (!isBackground && !workflows.length) {
+            setLoading(true);
+        }
         try {
-            // First check if user is authenticated
-            const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-            if (authError || !user) {
-                console.error('[Workflows] Auth error or no user:', authError?.message);
-                setWorkflows([]);
-                setLoading(false);
-                return;
-            }
-
-            console.log('[Workflows] Fetching for user:', user.id);
-
             const { data, error } = await supabase
                 .from('workflows')
                 .select('*')
                 .order('updated_at', { ascending: false });
 
-            if (error) {
-                console.error('[Workflows] Query error:', error.message, error.details);
-                throw error;
-            }
+            if (error) throw error;
 
-            console.log('[Workflows] Loaded', data?.length ?? 0, 'workflows');
-            setWorkflows(data || []);
+            const list = data || [];
+            _workflowsMemoryCache = list;
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem(WORKFLOWS_CACHE_KEY, JSON.stringify(list));
+                } catch (e) { }
+            }
+            setWorkflows(list);
         } catch (err: any) {
-            toast.error('Failed to load workflows');
             console.error('[Workflows] Fetch error:', err);
+            if (!workflows.length) toast.error('Failed to load workflows');
         } finally {
             setLoading(false);
         }
     };
 
-    const router = useRouter();
-
     useEffect(() => {
-        fetchWorkflows();
+        const hasCache = workflows.length > 0;
+        fetchWorkflows(hasCache);
     }, []);
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -89,7 +98,14 @@ export default function WorkflowsPage() {
             const { error } = await supabase.from('workflows').delete().eq('id', id);
             if (error) throw error;
             toast.success('Workflow deleted');
-            setWorkflows(prev => prev.filter(w => w.id !== id));
+            const updated = workflows.filter(w => w.id !== id);
+            setWorkflows(updated);
+            _workflowsMemoryCache = updated;
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem(WORKFLOWS_CACHE_KEY, JSON.stringify(updated));
+                } catch (e) { }
+            }
         } catch (err: any) {
             toast.error('Delete failed');
         }

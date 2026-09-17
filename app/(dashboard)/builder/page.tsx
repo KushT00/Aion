@@ -437,6 +437,13 @@ function BuilderContent() {
     // Google integration status
     const { isConnected: isGoogleConnected, getIntegration, connectGoogle, getAccessToken, disconnect: disconnectIntegration, refresh: refreshIntegrations } = useIntegrations();
 
+    const paramId = searchParams.get('id');
+    useEffect(() => {
+        if (paramId !== workflowId) {
+            setWorkflowId(paramId);
+        }
+    }, [paramId, workflowId]);
+
     // Load workflow from Supabase or Local Storage
     useEffect(() => {
         if (!workflowId) {
@@ -489,97 +496,96 @@ function BuilderContent() {
         }
 
         const loadWorkflow = async () => {
-            if (!user) {
-                console.warn("No authenticated user found while loading workflow.");
-                return;
-            }
+            const toastId = toast.loading('Loading workflow...');
 
-            const { data: wfList, error: wfError } = await supabase.from('workflows').select('name').eq('id', workflowId);
-            if (wfError) {
-                console.error('Error loading workflow name:', wfError);
-            } else if (wfList && wfList.length > 0) {
-                setWorkflowName(wfList[0].name);
-            }
+            try {
+                const { data: wfList, error: wfError } = await supabase.from('workflows').select('name').eq('id', workflowId);
+                if (wfError) {
+                    console.error('Error loading workflow name:', wfError);
+                } else if (wfList && wfList.length > 0) {
+                    setWorkflowName(wfList[0].name);
+                }
 
-            const { data: wfNodes, error: nodesError } = await supabase.from('workflow_nodes').select('*').eq('workflow_id', workflowId);
-            if (nodesError) console.error('Error loading workflow nodes:', nodesError);
+                const { data: wfNodes, error: nodesError } = await supabase.from('workflow_nodes').select('*').eq('workflow_id', workflowId);
+                if (nodesError) console.error('Error loading workflow nodes:', nodesError);
 
-            const { data: wfEdges, error: edgesError } = await supabase.from('workflow_edges').select('*').eq('workflow_id', workflowId);
-            if (edgesError) console.error('Error loading workflow edges:', edgesError);
+                const { data: wfEdges, error: edgesError } = await supabase.from('workflow_edges').select('*').eq('workflow_id', workflowId);
+                if (edgesError) console.error('Error loading workflow edges:', edgesError);
 
-            if (wfNodes && wfNodes.length > 0) {
-                setNodes(wfNodes.map((n: any) => {
-                    const config = n.config as any || {};
-                    const integId = config?.integrationId;
+                if (wfNodes && wfNodes.length > 0) {
+                    setNodes(wfNodes.map((n: any) => {
+                        const config = n.config as any || {};
+                        const integId = config?.integrationId;
 
-                    let rfType = config?.rfType || 'custom';
-                    if (!config?.rfType) {
-                        // fallback for older records without rfType
-                        if (integId === 'if_else') rfType = 'if_else';
-                        else if (integId === 'switch') rfType = 'switch';
-                        else if (config?.originalType === 'ai_action') rfType = 'ai_agent';
-                        else if (config?.originalType === 'ai_agent') rfType = 'ai_agent';
-                    }
+                        let rfType = config?.rfType || 'custom';
+                        if (!config?.rfType) {
+                            if (integId === 'if_else') rfType = 'if_else';
+                            else if (integId === 'switch') rfType = 'switch';
+                            else if (config?.originalType === 'ai_action') rfType = 'ai_agent';
+                            else if (config?.originalType === 'ai_agent') rfType = 'ai_agent';
+                        }
 
-                    // The 'input' dbType bypass requires us to load visual state from originalType
-                    let logicType = config?.originalType || n.type;
+                        let logicType = config?.originalType || n.type;
 
-                    // Recover lost types from older saves where everything was forced to 'input'
-                    if (logicType === 'input' && !config?.originalType) {
-                        if (config?.actionId === 'model') logicType = 'chat_model';
-                        else if (integId === 'memory') logicType = 'memory';
-                        else if (integId === 'tool') logicType = 'tool';
-                        else if (config?.actionId === 'chat') logicType = 'ai_action';
-                        else if (['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
-                        else if (['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
-                        else if (integId === 'api') logicType = 'api_action';
-                        else if (integId === 'if_else' || integId === 'switch') logicType = 'logic_gate';
-                        else logicType = 'data_tool'; // generic fallback
-                    }
+                        if (logicType === 'input' && !config?.originalType) {
+                            if (config?.actionId === 'model') logicType = 'chat_model';
+                            else if (integId === 'memory') logicType = 'memory';
+                            else if (integId === 'tool') logicType = 'tool';
+                            else if (config?.actionId === 'chat') logicType = 'ai_action';
+                            else if (['discord', 'slack', 'telegram'].includes(integId)) logicType = 'social_action';
+                            else if (['cron', 'webhook', 'google_gmail_trigger'].includes(integId)) logicType = 'trigger';
+                            else if (integId === 'api') logicType = 'api_action';
+                            else if (integId === 'if_else' || integId === 'switch') logicType = 'logic_gate';
+                            else logicType = 'data_tool';
+                        }
 
-                    return {
-                        id: n.id,
-                        type: rfType,
-                        position: { x: n.position_x, y: n.position_y },
-                        data: { label: n.label, type: logicType, config }
-                    };
-                }));
-            }
-            if (wfEdges) {
-                setEdges(wfEdges.map((e: any) => {
-                    let sourceH: string | null = null;
-                    let targetH: string | null = null;
-                    let realLabel: string | null = null;
+                        return {
+                            id: n.id,
+                            type: rfType,
+                            position: { x: n.position_x, y: n.position_y },
+                            data: { label: n.label, type: logicType, config }
+                        };
+                    }));
+                }
+                if (wfEdges) {
+                    setEdges(wfEdges.map((e: any) => {
+                        let sourceH: string | null = null;
+                        let targetH: string | null = null;
+                        let realLabel: string | null = null;
 
-                    // Handles are packed into the label column as JSON
-                    if (e.label && e.label.startsWith('{')) {
-                        try {
-                            const parsed = JSON.parse(e.label);
-                            if (parsed.__is_handle_data) {
-                                sourceH = parsed.sourceHandle || null;
-                                targetH = parsed.targetHandle || null;
-                                realLabel = parsed.label || null;
-                            }
-                        } catch (err) { }
-                    } else {
-                        realLabel = e.label || null;
-                    }
+                        if (e.label && e.label.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(e.label);
+                                if (parsed.__is_handle_data) {
+                                    sourceH = parsed.sourceHandle || null;
+                                    targetH = parsed.targetHandle || null;
+                                    realLabel = parsed.label || null;
+                                }
+                            } catch (err) { }
+                        } else {
+                            realLabel = e.label || null;
+                        }
 
-                    return {
-                        id: e.id,
-                        source: e.source_node_id,
-                        target: e.target_node_id,
-                        sourceHandle: sourceH,
-                        targetHandle: targetH,
-                        animated: true,
-                        label: realLabel
-                    };
-                }));
+                        return {
+                            id: e.id,
+                            source: e.source_node_id,
+                            target: e.target_node_id,
+                            sourceHandle: sourceH,
+                            targetHandle: targetH,
+                            animated: true,
+                            label: realLabel
+                        };
+                    }));
+                }
+                toast.dismiss(toastId);
+            } catch (err) {
+                console.error('Failed to load workflow:', err);
+                toast.error('Failed to load workflow data', { id: toastId });
             }
         };
 
         loadWorkflow();
-    }, [workflowId, supabase, user, setNodes, setEdges]);
+    }, [workflowId, supabase, setNodes, setEdges]);
 
     // Real-time Cloud Run History & Initial Load
     useEffect(() => {
@@ -775,6 +781,9 @@ function BuilderContent() {
         toast.loading('Starting engine...', { id: 'exec' });
 
         let runner: WorkflowRunner | null = null;
+        // Hoisted so catch/finally can always access them
+        let startTime = Date.now();
+        let runRecordId: string | null = null;
         try {
             // 1. Map ReactFlow state to engine types
             const engineNodes: WorkflowNode[] = nodes.map(n => ({
@@ -853,7 +862,24 @@ function BuilderContent() {
 
             runner = new WorkflowRunner(engineNodes, engineEdges, env);
 
-            // 4. Execute with live log updates
+            // 4. Insert a "running" record BEFORE executing so it appears in Runs page immediately
+            startTime = Date.now(); // Reset to capture actual execution start (post token fetch)
+            if (workflowId && user) {
+                const { data: runRecord } = await supabase
+                    .from('workflow_runs')
+                    .insert({
+                        workflow_id: workflowId,
+                        user_id: user.id,
+                        status: 'running',
+                        started_at: new Date(startTime).toISOString(),
+                        logs: '[]',
+                    })
+                    .select('id')
+                    .single();
+                runRecordId = runRecord?.id || null;
+            }
+
+            // 5. Execute with live log updates
             toast.loading('Executing DAG...', { id: 'exec' });
 
             await runner.execute(triggerData, (log: RunLog) => {
@@ -875,6 +901,27 @@ function BuilderContent() {
                     return [...prev, formattedLog];
                 });
             });
+
+            const duration_ms = Date.now() - startTime;
+            const finalLogs = runner.getLogs();
+            const allSuccess = finalLogs.every(l => l.status !== 'failed');
+
+            // 6. Update run record with final status + duration + serialised logs
+            if (runRecordId) {
+                const { error: updateErr } = await supabase
+                    .from('workflow_runs')
+                    .update({
+                        status: allSuccess ? 'success' : 'failed',
+                        duration_ms,
+                        logs: JSON.stringify(finalLogs),
+                        completed_at: new Date().toISOString(),
+                    })
+                    .eq('id', runRecordId);
+                if (updateErr) {
+                    console.error('[RUNS] Failed to update run record — RLS policy may be missing:', updateErr.message);
+                    console.warn('[RUNS] → Run this SQL in Supabase Dashboard: CREATE POLICY "Users can update own runs" ON public.workflow_runs FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);');
+                }
+            }
 
             toast.success('Execution completed!', { id: 'exec' });
         } catch (error: any) {
@@ -901,6 +948,19 @@ function BuilderContent() {
             }
 
             toast.error(`Error: ${error.message}`, { id: 'exec' });
+
+            // Mark the run as failed in DB so it doesn't stay stuck as 'running'
+            if (runRecordId) {
+                await supabase
+                    .from('workflow_runs')
+                    .update({
+                        status: 'failed',
+                        duration_ms: Date.now() - startTime,
+                        completed_at: new Date().toISOString(),
+                        logs: JSON.stringify(runner?.getLogs() || []),
+                    })
+                    .eq('id', runRecordId);
+            }
         } finally {
             setIsExecuting(false);
         }
