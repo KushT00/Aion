@@ -66,13 +66,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const { profile } = useAuth();
     const [collapsed, setCollapsed] = useState(false);
 
-    // Creator mode: user must BOTH have is_creator=true AND be on a creator path
+    // Creator path = any route in the creator/builder section
     const isCreatorPath = pathname.startsWith('/creator') || pathname === '/builder' || pathname.startsWith('/workflows') || pathname.startsWith('/runs');
+    // isCreator controls only the "Become a Creator" CTA visibility
     const isCreator = profile?.is_creator === true || profile?.role === 'creator';
 
-    // Show creator nav only if user IS a creator AND on a creator route
-    const navItems = (isCreator && isCreatorPath) ? creatorNav : consumerNav;
-    const sectionLabel = (isCreator && isCreatorPath) ? 'Build & Monetize' : 'Explore Marketplace';
+    // Show creator nav whenever on a creator route (even if profile hasn't loaded yet)
+    const navItems = isCreatorPath ? creatorNav : consumerNav;
+    const sectionLabel = isCreatorPath ? 'Build & Monetize' : 'Explore Marketplace';
 
     return (
         <>

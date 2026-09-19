@@ -15,16 +15,30 @@ export interface ConnectedIntegration {
     metadata: Record<string, any>;
 }
 
-export function useIntegrations() {
-    const [integrations, setIntegrations] = useState<ConnectedIntegration[]>([]);
-    const [loading, setLoading] = useState(true);
+// ─── Module-level cache (60s TTL) ────────────────────────────
+// Prevents re-fetching /api/integrations on every component mount.
+let _cache: ConnectedIntegration[] | null = null;
+let _cacheTs = 0;
+const CACHE_TTL = 60_000; // 60 seconds
 
-    const fetchIntegrations = useCallback(async () => {
+export function useIntegrations() {
+    const [integrations, setIntegrations] = useState<ConnectedIntegration[]>(_cache || []);
+    const [loading, setLoading] = useState(_cache === null);
+
+    const fetchIntegrations = useCallback(async (force = false) => {
+        const now = Date.now();
+        if (!force && _cache !== null && now - _cacheTs < CACHE_TTL) {
+            setIntegrations(_cache);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const res = await fetch('/api/integrations');
             const data = await res.json();
-            setIntegrations(data.integrations || []);
+            _cache = data.integrations || [];
+            _cacheTs = Date.now();
+            setIntegrations(_cache!);
         } catch (e) {
             console.error('Failed to fetch integrations', e);
         } finally {
@@ -55,12 +69,13 @@ export function useIntegrations() {
 
     const getAccessToken = useCallback(async (provider: string) => {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
+        // getSession() reads from localStorage — no network round-trip
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return null;
 
         const res = await fetch('/api/integrations/token', {
             method: 'POST',
-            body: JSON.stringify({ userId: user.id, provider }),
+            body: JSON.stringify({ userId: session.user.id, provider }),
         });
         if (!res.ok) return null;
         const data = await res.json();
