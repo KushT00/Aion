@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS public.consumer_instances (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     purchase_id     uuid REFERENCES public.purchases(id) ON DELETE CASCADE,
     buyer_id        uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    workflow_id     uuid NOT NULL REFERENCES public.workflows(id),
-    listing_id      uuid NOT NULL REFERENCES public.marketplace_listings(id),
+    workflow_id     uuid NOT NULL REFERENCES public.workflows(id) ON DELETE CASCADE,
+    listing_id      uuid NOT NULL REFERENCES public.marketplace_listings(id) ON DELETE CASCADE,
     pricing_tier    text NOT NULL DEFAULT 'byok'
                     CHECK (pricing_tier IN ('byok', 'managed')),
     status          text NOT NULL DEFAULT 'setup_required'

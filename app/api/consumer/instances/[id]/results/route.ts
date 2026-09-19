@@ -40,13 +40,13 @@ export async function GET(
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        // Parse query params
+        // Parse query params (clamped to safe ranges)
         const url = new URL(req.url);
         const type = url.searchParams.get('type');
         const status = url.searchParams.get('status');
         const search = url.searchParams.get('search');
-        const limit = parseInt(url.searchParams.get('limit') || '50');
-        const offset = parseInt(url.searchParams.get('offset') || '0');
+        const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '50') || 50, 1), 100);
+        const offset = Math.max(parseInt(url.searchParams.get('offset') || '0') || 0, 0);
 
         // Build query
         let query = supabase
@@ -58,7 +58,11 @@ export async function GET(
 
         if (type) query = query.eq('result_type', type);
         if (status) query = query.eq('status', status);
-        if (search) query = query.or(`title.ilike.%${search}%,data->>text.ilike.%${search}%`);
+        if (search) {
+            // Strip PostgREST filter control chars to keep the `or()` filter well-formed
+            const safe = search.replace(/[,()]/g, '').slice(0, 100);
+            if (safe) query = query.or(`title.ilike.%${safe}%,data->>text.ilike.%${safe}%`);
+        }
 
         const { data: results, error: resultsErr, count } = await query;
 
@@ -114,21 +118,55 @@ export async function POST(
     try {
         const { id: instanceId } = await params;
         const supabase = await createClient();
-        const body = await req.json();
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+
+        if (authErr || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Verify the caller owns this instance before accepting rows for it
+        const { data: instance, error: instErr } = await supabase
+            .from('consumer_instances')
+            .select('id, buyer_id')
+            .eq('id', instanceId)
+            .single();
+
+        if (instErr || !instance) {
+            return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+        }
+
+        if (instance.buyer_id !== user.id) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        const body = await req.json().catch(() => null);
+        if (!body || (typeof body !== 'object')) {
+            return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+        }
 
         // Accept both single result and array
         const results = Array.isArray(body.results) ? body.results : [body];
 
-        const rows = results.map((r: any) => ({
-            instance_id: instanceId,
-            run_log_id: r.run_log_id || null,
-            result_type: r.result_type || 'custom',
-            title: r.title || 'Untitled Result',
-            data: r.data || {},
-            tags: r.tags || [],
-            status: 'new',
-            metadata: r.metadata || {},
-        }));
+        if (results.length === 0 || results.length > 100) {
+            return NextResponse.json({ error: 'Provide between 1 and 100 results' }, { status: 400 });
+        }
+
+        const rows = results.map((r: unknown) => {
+            const rec = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
+            const tags = Array.isArray(rec.tags)
+                ? rec.tags.filter((t: unknown): t is string => typeof t === 'string').slice(0, 20)
+                : [];
+            return {
+                instance_id: instanceId,
+                run_log_id: typeof rec.run_log_id === 'string' ? rec.run_log_id : null,
+                result_type: typeof rec.result_type === 'string' ? rec.result_type.slice(0, 50) : 'custom',
+                title: typeof rec.title === 'string' ? rec.title.slice(0, 200) : 'Untitled Result',
+                data: (rec.data && typeof rec.data === 'object') ? rec.data : {},
+                tags,
+                status: 'new',
+                metadata: (rec.metadata && typeof rec.metadata === 'object') ? rec.metadata : {},
+            };
+        });
 
         const { data: inserted, error: insertErr } = await supabase
             .from('consumer_results')
@@ -170,16 +208,46 @@ export async function PATCH(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await req.json();
-        const { resultId, status, tags } = body;
+        const body = await req.json().catch(() => null);
+        const { resultId, status, tags } = body ?? {};
 
-        if (!resultId) {
+        if (!resultId || typeof resultId !== 'string') {
             return NextResponse.json({ error: 'resultId is required' }, { status: 400 });
         }
 
-        const updates: any = {};
-        if (status) updates.status = status;
-        if (tags) updates.tags = tags;
+        const ALLOWED_STATUSES = ['new', 'processing', 'processed', 'archived'];
+        const updates: Record<string, unknown> = {};
+        if (status !== undefined) {
+            if (typeof status !== 'string' || !ALLOWED_STATUSES.includes(status)) {
+                return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+            }
+            updates.status = status;
+        }
+        if (tags !== undefined) {
+            if (!Array.isArray(tags) || !tags.every((t) => typeof t === 'string')) {
+                return NextResponse.json({ error: 'Invalid tags' }, { status: 400 });
+            }
+            updates.tags = tags.slice(0, 20);
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+        }
+
+        // Verify the caller owns the instance this result belongs to
+        const { data: instance, error: instErr } = await supabase
+            .from('consumer_instances')
+            .select('id, buyer_id')
+            .eq('id', instanceId)
+            .single();
+
+        if (instErr || !instance) {
+            return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+        }
+
+        if (instance.buyer_id !== user.id) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
 
         const { data: updated, error: updateErr } = await supabase
             .from('consumer_results')

@@ -1,166 +1,176 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-    DollarSign,
-    ArrowUpRight,
-    Download,
-    TrendingUp,
-    CreditCard,
-    Calendar,
-    ArrowRight,
-    PieChart,
     Wallet,
-    CheckCircle2
+    CheckCircle2,
+    Clock,
+    RefreshCw,
+    AlertTriangle,
+    Coins,
+    ArrowRight,
 } from 'lucide-react';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
+import type { CreatorEarning, CreatorEarningsSummary } from '@/types';
 
-const payouts = [
-    { id: '1', date: 'Oct 30, 2024', amount: '$4,520', status: 'Processing', method: 'Bank Transfer •••• 4242' },
-    { id: '2', date: 'Sep 30, 2024', amount: '$3,840', status: 'Paid', method: 'Bank Transfer •••• 4242' },
-    { id: '3', date: 'Aug 30, 2024', amount: '$4,110', status: 'Paid', method: 'Bank Transfer •••• 4242' },
-];
+const fmt = (n: number) =>
+  n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function CreatorEarningsPage() {
+    const [summary, setSummary] = useState<CreatorEarningsSummary | null>(null);
+    const [earnings, setEarnings] = useState<CreatorEarning[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [releasing, setReleasing] = useState<string | null>(null);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/creator/earnings', { cache: 'no-store' });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json?.message || 'Could not load earnings.');
+            setSummary(json.summary);
+            setEarnings(json.earnings ?? []);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not load earnings.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    const release = async (id: string) => {
+        setReleasing(id);
+        try {
+            const res = await fetch('/api/creator/earnings/release', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ earningId: id }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json?.message || 'Release failed.');
+            toast.success(
+                json.alreadyProcessed
+                    ? 'Already released — no double credit.'
+                    : `+${fmt(json.amount ?? 0)} credits moved to your wallet.`,
+            );
+            await load();
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Release failed.');
+        } finally {
+            setReleasing(null);
+        }
+    };
+
     return (
         <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-10">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div className="space-y-1">
                     <h1 className="text-3xl font-bold">Earnings & Payouts</h1>
-                    <p className="text-[var(--muted-fg)]">Track your revenue generation and withdraw your available balance.</p>
+                    <p className="text-[var(--muted-fg)]">Every credit is traceable to its marketplace sale. 1 credit = $1.</p>
                 </div>
-                <Button className="rounded-xl shadow-lg shadow-primary-500/20 h-12 px-8 font-bold italic uppercase tracking-widest">
-                    Withdraw Balance
+                <Button variant="outline" className="rounded-xl h-12 px-8 font-bold gap-2" onClick={load}>
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Balance Card */}
-                <Card className="lg:col-span-2 bg-gradient-to-br from-[var(--card)] to-[var(--muted)] border-none p-8 flex flex-col justify-between group overflow-hidden relative">
-                    <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl group-hover:bg-primary-500/20 transition-all duration-700" />
-
-                    <div className="relative space-y-8">
-                        <div className="flex items-center gap-4">
-                            <div className="p-4 rounded-2xl bg-primary-500/10 text-primary-400">
-                                <Wallet className="w-8 h-8" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-[0.2em]">Available for Withdrawal</p>
-                                <h2 className="text-5xl font-black tracking-tight">$12,450.00</h2>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t border-[var(--border)]">
-                            <div>
-                                <p className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-1">Lifetime Earnings</p>
-                                <p className="text-xl font-black">$48,290</p>
-                            </div>
-                            <div>
-                                <p className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-1">Expected Next Payout</p>
-                                <p className="text-xl font-black text-emerald-400 font-italic">Nov 30</p>
-                            </div>
-                            <div>
-                                <p className="text-xs font-bold text-[var(--muted-fg)] uppercase tracking-wider mb-1">Commission Rate</p>
-                                <p className="text-xl font-black">15%</p>
-                            </div>
-                        </div>
+            {error && (
+                <Card className="p-4 border-amber-500/40 bg-amber-500/5 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                        <p className="font-bold">Earnings unavailable</p>
+                        <p className="text-[var(--muted-fg)]">{error}</p>
                     </div>
                 </Card>
+            )}
 
-                {/* Earnings breakdown by Listing */}
-                <Card className="p-6 space-y-6 flex flex-col">
-                    <h3 className="font-bold flex items-center gap-2 uppercase tracking-tighter text-sm">
-                        <PieChart className="w-4 h-4 text-primary-400" /> Revenue Source Breakdown
-                    </h3>
-                    <div className="flex-1 space-y-5">
-                        {[
-                            { name: 'Lead Magnet Pro', val: '65%', color: 'bg-primary-500' },
-                            { name: 'Notion Sync Engine', val: '25%', color: 'bg-accent-500' },
-                            { name: 'Gmail Triage Bot', val: '10%', color: 'bg-emerald-500' },
-                        ].map(s => (
-                            <div key={s.name} className="space-y-2">
-                                <div className="flex justify-between items-center text-xs font-bold uppercase tracking-tight">
-                                    <span>{s.name}</span>
-                                    <span className="text-[var(--muted-fg)]">{s.val}</span>
-                                </div>
-                                <div className="h-1.5 w-full bg-[var(--muted)] rounded-full overflow-hidden">
-                                    <div className={`${s.color} h-full rounded-full`} style={{ width: s.val }} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <Button variant="ghost" className="w-full text-[10px] font-black uppercase tracking-widest text-primary-400 hover:text-primary-300 gap-2">
-                        Detailed Analytics <ArrowRight className="w-3 h-3" />
-                    </Button>
-                </Card>
+            {/* Total / Pending / Available */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[
+                    { label: 'Total Earnings', value: summary?.total_earnings ?? 0, icon: Coins, accent: 'text-primary-400', sales: summary?.sales_count ?? 0 },
+                    { label: 'Pending Earnings', value: summary?.pending_earnings ?? 0, icon: Clock, accent: 'text-amber-400', hint: 'Release to wallet below' },
+                    { label: 'Available Earnings', value: summary?.available_earnings ?? 0, icon: Wallet, accent: 'text-emerald-400', hint: 'Released to wallet' },
+                ].map((c) => (
+                    <Card key={c.label} className="p-6 space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-[var(--muted-fg)] uppercase tracking-wider">
+                            <c.icon className={`w-4 h-4 ${c.accent}`} /> {c.label}
+                        </div>
+                        <p className="text-3xl font-black">
+                            {loading ? '···' : `${fmt(c.value)}`}
+                            <span className="text-sm font-bold text-[var(--muted-fg)] ml-1">cr</span>
+                        </p>
+                        <p className="text-[11px] text-[var(--muted-fg)]">
+                            {c.sales !== undefined ? `${c.sales} sale${c.sales === 1 ? '' : 's'}` : c.hint}
+                        </p>
+                    </Card>
+                ))}
             </div>
 
-            {/* Payout History */}
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold uppercase tracking-tight italic">Payout History</h2>
-                    <Button variant="outline" size="sm" className="rounded-xl h-9 gap-2 font-bold text-xs">
-                        <Download className="w-4 h-4" /> Export Tax Forms
-                    </Button>
+            {/* Traceable earnings rows */}
+            <Card className="p-0 overflow-hidden">
+                <div className="p-4 border-b border-[var(--border)] bg-[var(--muted)]/30">
+                    <h3 className="font-bold uppercase tracking-widest text-xs">Earnings Ledger</h3>
                 </div>
-
-                <Card className="p-0 overflow-hidden">
-                    <div className="p-4 border-b border-[var(--border)] bg-[var(--muted)]/30 grid grid-cols-4 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--muted-fg)]">
-                        <div className="pl-4">Payout Date</div>
-                        <div>Amount</div>
-                        <div>Status</div>
-                        <div>Method</div>
-                    </div>
-                    <div className="divide-y divide-[var(--border)]">
-                        {payouts.map((p) => (
-                            <div key={p.id} className="p-6 grid grid-cols-4 items-center group hover:bg-[var(--muted)]/20 transition-all">
-                                <div className="flex items-center gap-3 pl-4">
-                                    <div className="w-10 h-10 rounded-full bg-[var(--muted)] flex items-center justify-center text-[var(--muted-fg)] group-hover:text-primary-400 transition-colors">
-                                        <Calendar className="w-5 h-5" />
+                <div className="divide-y divide-[var(--border)]">
+                    {loading && earnings.length === 0 ? (
+                        <p className="p-6 text-sm text-[var(--muted-fg)] text-center">Loading earnings…</p>
+                    ) : earnings.length === 0 ? (
+                        <div className="p-6 text-center space-y-2">
+                            <p className="text-sm text-[var(--muted-fg)]">No earnings yet. Publish an automation to start earning 80% of each sale.</p>
+                            <Link href="/creator/listings" className="inline-flex items-center gap-1 text-xs font-bold text-primary-400 hover:text-primary-300">
+                                Go to listings <ArrowRight className="w-3 h-3" />
+                            </Link>
+                        </div>
+                    ) : (
+                        earnings.map((e) => (
+                            <div key={e.id} className="p-4 flex items-center justify-between gap-4 hover:bg-[var(--muted)]/20 transition-colors">
+                                <div className="flex gap-4 items-center min-w-0">
+                                    <div className="w-10 h-10 rounded-xl bg-[var(--muted)] flex items-center justify-center shrink-0">
+                                        <Coins className="w-4 h-4 text-[var(--muted-fg)]" />
                                     </div>
-                                    <span className="font-bold text-sm tracking-tight">{p.date}</span>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black">+{fmt(Number(e.amount))} cr</p>
+                                        <p className="text-xs text-[var(--muted-fg)] font-mono truncate">
+                                            sale {e.transaction_id.slice(0, 8)} · {new Date(e.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="font-black text-lg italic tracking-tighter">
-                                    {p.amount}
-                                </div>
-                                <div>
+                                <div className="flex items-center gap-3 shrink-0">
                                     <Badge
-                                        variant={p.status === 'Paid' ? 'success' : 'warning'}
-                                        pulse={p.status === 'Processing'}
-                                        dot
-                                        className="font-bold uppercase text-[9px] px-2 py-0.5"
+                                        variant={e.status === 'available' ? 'success' : e.status === 'reversed' ? 'warning' : 'primary'}
+                                        className="font-bold uppercase text-[9px]"
                                     >
-                                        {p.status}
+                                        {e.status}
                                     </Badge>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-[var(--muted-fg)] font-medium">{p.method}</span>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <ArrowRight className="w-4 h-4" />
-                                    </Button>
+                                    {e.status === 'pending' && (
+                                        <Button
+                                            size="sm"
+                                            className="rounded-xl font-bold"
+                                            disabled={releasing === e.id}
+                                            onClick={() => release(e.id)}
+                                        >
+                                            {releasing === e.id ? 'Releasing…' : 'Release to wallet'}
+                                        </Button>
+                                    )}
+                                    {e.status === 'available' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </Card>
-            </div>
-
-            {/* Security Note */}
-            <div className="p-8 rounded-3xl bg-emerald-500/5 border border-emerald-500/10 flex flex-col md:flex-row items-center gap-6 justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-2xl shadow-lg shadow-emerald-500/5">
-                        <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-[var(--fg)] uppercase tracking-tight">Verified Bank Connection</h4>
-                        <p className="text-sm text-[var(--muted-fg)]">Your Stripe account is connected and ready for instant payouts.</p>
-                    </div>
+                        ))
+                    )}
                 </div>
-                <Button variant="ghost" className="text-emerald-400 hover:text-emerald-300 font-bold uppercase tracking-widest text-xs gap-2">
-                    Manage Stripe <CreditCard className="w-4 h-4" />
-                </Button>
-            </div>
+            </Card>
+
+            <p className="text-[11px] text-[var(--muted-fg)] text-center">
+                Creator share = sale − platform fee (configurable in platform_config). Balances move only through server-side transactions — never from the browser.
+            </p>
         </div>
     );
 }

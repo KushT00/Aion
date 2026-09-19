@@ -78,7 +78,10 @@ export async function POST(
             console.log(`🔑 [WEBHOOK] Fetching Google Token for user ${workflow.user_id}...`);
             const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/token`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-secret': process.env.INTERNAL_API_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+                },
                 body: JSON.stringify({ userId: workflow.user_id, provider: 'google' })
             });
             if (tokenRes.ok) {

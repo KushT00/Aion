@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin'; // Use admin for cloning
 import { NextRequest, NextResponse } from 'next/server';
+import { PricingError, quotePurchase } from '@/lib/billing/pricing';
+import { purchaseAutomationTxn } from '@/lib/billing/marketplace';
 
 export async function POST(req: NextRequest) {
     try {
@@ -13,7 +15,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { listingId, pricingTier } = body;
+        const { listingId, pricingTier, durationDays, maxPrice } = body;
         // pricingTier: 'byok' | 'managed'
 
         if (!listingId) {
@@ -49,23 +51,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Cannot purchase your own listing' }, { status: 400 });
         }
 
-        // 4. Record the purchase
+        // 4. Atomic marketplace purchase (Part 5 — single Postgres txn):
+        // verify → server price → deduct → purchase → entitlement →
+        // marketplace split → creator earning. COMMIT or full ROLLBACK.
+        // Frontend sends ids only; the final price is never accepted
+        // from the browser (maxPrice only guards against stale quotes).
         const tier = pricingTier === 'managed' ? 'managed' : 'byok';
-        const pricePaid = tier === 'managed' ? listing.price * 2 : listing.price; // managed costs more
+        const duration = Number(durationDays ?? 30);
+        let receipt;
+        try {
+            // Server re-quotes for the maxPrice guard default.
+            const serverQuote = await quotePurchase(listingId, tier, duration);
+            receipt = await purchaseAutomationTxn(
+                user.id,
+                listingId,
+                tier,
+                duration,
+                maxPrice ?? serverQuote.customer_price,
+            );
+        } catch (e) {
+            if (e instanceof PricingError) {
+                return NextResponse.json({ error: e.code, message: e.message }, { status: e.status });
+            }
+            throw e;
+        }
 
-        const { data: purchase, error: purchaseErr } = await supabase
-            .from('purchases')
-            .insert({
-                listing_id: listingId,
-                buyer_id: user.id,
-                price_paid: pricePaid,
-                currency: listing.currency || 'USD',
-                pricing_tier: tier
-            })
-            .select('id')
-            .single();
-
-        if (purchaseErr) throw purchaseErr;
+        const purchase = { id: receipt.purchaseId };
 
         // 5. Create a DEEP CLONE of the workflow for the customer
         // We use adminDb here because the buyer (user) doesn't have SELECT permission on creator's nodes
@@ -159,13 +170,21 @@ export async function POST(req: NextRequest) {
             purchaseId: purchase.id,
             instanceId: instance.id,
             pricingTier: tier,
+            durationDays: duration,
+            creditsCharged: receipt.charged,
+            expiresAt: receipt.expiresAt,
+            creatorAmount: receipt.creatorAmount,
+            platformFee: receipt.platformFee,
             message: 'Neural protocol mirrored successfully!',
         });
 
     } catch (error: any) {
         console.error('[PURCHASE ERROR]', error);
+        // If the atomic billing committed but fulfillment (clone/instance)
+        // failed afterwards, the purchase + entitlement persist by design
+        // (money committed, fulfillment retryable via /api/marketplace/create-instance).
         return NextResponse.json(
-            { error: error.message || 'Purchase failed' },
+            { error: 'Purchase failed' },
             { status: 500 }
         );
     }

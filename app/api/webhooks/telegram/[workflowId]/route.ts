@@ -134,14 +134,8 @@ export async function POST(
         }
 
         // 7. Execute Synchronously
-        const fs = require('fs');
-        fs.appendFileSync('debug_webhook.log', `\n\n--- TARGET WORKFLOW EXECUTION: ${new Date().toISOString()} ---\n`);
-        fs.appendFileSync('debug_webhook.log', `TRIGGER DATA:\n${JSON.stringify(triggerData, null, 2)}\n`);
-        fs.appendFileSync('debug_webhook.log', `PARSED EDGES:\n${JSON.stringify(parsedEdges, null, 2)}\n`);
-
         await runner.execute(triggerData, (log) => {
             console.log(`[${log.status}] Node ${log.nodeId}:`, log.output || log.error);
-            fs.appendFileSync('debug_webhook.log', `\n[${log.status}] Node ${log.nodeId}:\n${JSON.stringify(log.output || log.error, null, 2)}`);
         });
 
         if (run) {

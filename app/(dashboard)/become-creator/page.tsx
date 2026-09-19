@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OnboardingProgress } from './components/OnboardingProgress';
 import { CreatorStep1Profile } from './components/CreatorStep1Profile';
@@ -38,6 +38,14 @@ export default function BecomeCreatorPage() {
         setCurrentStep((prev) => prev - 1);
     };
 
+    // Redirect creators away from onboarding (effect, not during render).
+    // NOTE: this hook must stay above all early returns (rules of hooks).
+    useEffect(() => {
+        if (!authLoading && profile?.is_creator && currentStep < 4) {
+            router.push('/creator/dashboard');
+        }
+    }, [authLoading, profile, currentStep, router]);
+
     if (authLoading) {
         return (
             <div className="flex items-center justify-center h-screen bg-[var(--bg)]">
@@ -47,9 +55,12 @@ export default function BecomeCreatorPage() {
     }
 
     if (profile?.is_creator && currentStep < 4) {
-        // If already a creator, redirect to dashboard unless they just finished
-        router.push('/creator/dashboard');
-        return null;
+        // Render a loading state while the redirect above takes effect
+        return (
+            <div className="flex items-center justify-center h-screen bg-[var(--bg)]">
+                <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+            </div>
+        );
     }
 
     return (

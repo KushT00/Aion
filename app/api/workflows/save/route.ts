@@ -13,8 +13,44 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // 2. Parse request body
-        const { workflowId, workflowName, nodes, edges } = await request.json();
+        // 2. Parse + validate request body
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== 'object') {
+            return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+        }
+        const { workflowId, workflowName, nodes, edges } = body as {
+            workflowId?: unknown; workflowName?: unknown; nodes?: unknown; edges?: unknown;
+        };
+
+        if (typeof workflowName !== 'string' || workflowName.trim().length === 0 || workflowName.length > 120) {
+            return NextResponse.json({ error: 'A workflow name (1-120 chars) is required' }, { status: 400 });
+        }
+        if (nodes !== undefined && !Array.isArray(nodes)) {
+            return NextResponse.json({ error: 'nodes must be an array' }, { status: 400 });
+        }
+        if (edges !== undefined && !Array.isArray(edges)) {
+            return NextResponse.json({ error: 'edges must be an array' }, { status: 400 });
+        }
+        if (Array.isArray(nodes) && nodes.length > 500) {
+            return NextResponse.json({ error: 'Too many nodes (max 500)' }, { status: 400 });
+        }
+        if (Array.isArray(edges) && edges.length > 1000) {
+            return NextResponse.json({ error: 'Too many edges (max 1000)' }, { status: 400 });
+        }
+        const nodeList = (Array.isArray(nodes) ? nodes : []) as any[];
+        const edgeList = (Array.isArray(edges) ? edges : []) as any[];
+
+        // Every node must carry a usable position; otherwise the insert would crash
+        for (const n of nodeList) {
+            if (!n || typeof n !== 'object' || typeof n.position?.x !== 'number' || typeof n.position?.y !== 'number') {
+                return NextResponse.json({ error: 'Each node must include a numeric position {x, y}' }, { status: 400 });
+            }
+        }
+        for (const e of edgeList) {
+            if (!e || typeof e !== 'object' || typeof e.source !== 'string' || typeof e.target !== 'string') {
+                return NextResponse.json({ error: 'Each edge must include string source and target' }, { status: 400 });
+            }
+        }
 
         // 3. Use Admin Client for database operations to ensure reliability
         const adminDb = createAdminClient();
@@ -33,6 +69,17 @@ export async function POST(request: NextRequest) {
             currentWfId = wf.id;
         } else {
             console.log('💾 [API_SAVE] Updating existing workflow:', currentWfId);
+            // Verify ownership first: the update must match exactly one row owned by this user.
+            // Otherwise a non-owner could wipe the victim's graph below.
+            const { data: owned, error: ownErr } = await adminDb
+                .from('workflows')
+                .select('id')
+                .eq('id', currentWfId)
+                .eq('user_id', user.id)
+                .single();
+            if (ownErr || !owned) {
+                return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
+            }
             const { error: updErr } = await adminDb
                 .from('workflows')
                 .update({ name: workflowName })
@@ -50,8 +97,8 @@ export async function POST(request: NextRequest) {
             .eq('workflow_id', currentWfId);
         if (delNodesErr) throw delNodesErr;
 
-        if (nodes && nodes.length > 0) {
-            const nodesToInsert = nodes.map((n: any) => {
+        if (nodeList.length > 0) {
+            const nodesToInsert = nodeList.map((n: any) => {
                 const realType = n.data?.type;
                 const rfType = n.type;
                 const config = n.data?.config || {};
@@ -82,8 +129,8 @@ export async function POST(request: NextRequest) {
             .eq('workflow_id', currentWfId);
         if (delEdgesErr) throw delEdgesErr;
 
-        if (edges && edges.length > 0) {
-            const edgesToInsert = edges.map((e: any) => {
+        if (edgeList.length > 0) {
+            const edgesToInsert = edgeList.map((e: any) => {
                 // If it's a temp ID from React Flow, we should really ensure it's a UUID
                 // But generally e.id is fine if it matches schema.
                 return {

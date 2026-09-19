@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { InstanceRunner } from "@/lib/workflow/instance-runner";
-const parser = require('cron-parser');
+import { CronExpressionParser } from 'cron-parser';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+    // Guard against public abuse: when CRON_SECRET is configured (production),
+    // the caller must present it or the run is rejected.
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+        const auth = request.headers.get('authorization');
+        const provided = request.nextUrl.searchParams.get('secret');
+        if (auth !== `Bearer ${cronSecret}` && provided !== cronSecret) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+    }
     console.log("📍 [CRON MANAGER] Starting per-instance cron check");
     const supabase = createAdminClient();
 
@@ -37,7 +47,14 @@ export async function GET(request: NextRequest) {
             const workflow = (instance.listing as any)?.workflow;
             if (!workflow) continue;
 
-            const nodes = typeof workflow.nodes === 'string' ? JSON.parse(workflow.nodes) : workflow.nodes;
+            let nodes: any[] = [];
+            try {
+                nodes = typeof workflow.nodes === 'string' ? JSON.parse(workflow.nodes) : (workflow.nodes || []);
+            } catch {
+                console.error(`Invalid stored nodes for instance ${instance.id}; skipping`);
+                continue;
+            }
+            if (!Array.isArray(nodes)) continue;
             const overrides = instance.config_overrides || {};
 
             // Find cron trigger nodes
@@ -55,7 +72,7 @@ export async function GET(request: NextRequest) {
 
                 try {
                     // Check if it's due
-                    const interval = parser.parseExpression(cronExp, {
+                    const interval = CronExpressionParser.parse(cronExp, {
                         currentDate: now,
                         tz: 'UTC'
                     });
@@ -78,7 +95,7 @@ export async function GET(request: NextRequest) {
                         });
                         break;
                     }
-                } catch (parseErr) {
+                } catch {
                     console.error(`Invalid cron expression for instance ${instance.id}: ${cronExp}`);
                 }
             }

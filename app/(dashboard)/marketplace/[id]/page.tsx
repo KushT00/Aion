@@ -32,6 +32,7 @@ import {
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/use-auth';
+import { useWallet } from '@/hooks/use-wallet';
 import { ContactCreatorModal } from '../components/ContactCreatorModal';
 
 // Human-readable names for integration IDs
@@ -60,9 +61,17 @@ export default function MarketplaceDetailPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [pricingTab, setPricingTab] = useState<'byok' | 'managed'>('byok');
+    const [durationDays, setDurationDays] = useState<number>(30);
+    const [quote, setQuote] = useState<{ internal_cost: number; margin: number; customer_price: number; credits_required: number } | null>(null);
+    const [quoteLoading, setQuoteLoading] = useState(false);
+    const [quoteError, setQuoteError] = useState<string | null>(null);
+    const [quoteNonce, setQuoteNonce] = useState(0);
+    const [needsCredits, setNeedsCredits] = useState(false);
     const [isPurchasing, setIsPurchasing] = useState(false);
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+    const [entitlement, setEntitlement] = useState<{ status: string; expires_at: string } | null>(null);
     const { profile } = useAuth();
+    const { balance: walletBalance } = useWallet();
 
     useEffect(() => {
         let isMounted = true;
@@ -94,15 +103,57 @@ export default function MarketplaceDetailPage() {
         return () => { isMounted = false; controller.abort(); };
     }, [params.id]);
 
-    const formatPrice = (price: any) => {
-        const num = Number(price);
-        if (isNaN(num)) return '$0';
-        if (num === 0) return 'Free';
-        return `$${(num / 100).toFixed(0)}`;
-    };
+    // Active entitlement check (server truth — gates Deploy vs Owned).
+    useEffect(() => {
+        if (!params.id) return;
+        let cancelled = false;
+        fetch(`/api/marketplace/entitlements?listingId=${params.id}`, { cache: 'no-store' })
+            .then((res) => res.json().catch(() => ({})))
+            .then((data) => {
+                if (!cancelled && data?.entitlement) setEntitlement(data.entitlement);
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [params.id]);
+
+    // Server-authoritative quote (Part 4 engine). The old client-side
+    // doubling logic is gone — prices NEVER come from browser math.
+    useEffect(() => {
+        if (!listing?.id) return;
+        let cancelled = false;
+        const controller = new AbortController();
+        setQuoteLoading(true);
+        setQuoteError(null);
+        setNeedsCredits(false);
+        fetch(
+            `/api/billing/quote?listingId=${listing.id}&customerType=${pricingTab}&durationDays=${durationDays}`,
+            { signal: controller.signal, cache: 'no-store' },
+        )
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (cancelled) return;
+                if (res.ok && data.quote) {
+                    setQuote(data.quote);
+                } else {
+                    setQuote(null);
+                    setQuoteError(data.message || 'Could not load pricing.');
+                }
+            })
+            .catch((err) => {
+                if (err.name !== 'AbortError' && !cancelled) {
+                    setQuote(null);
+                    setQuoteError('Could not load pricing.');
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setQuoteLoading(false);
+            });
+        return () => { cancelled = true; controller.abort(); };
+    }, [listing?.id, pricingTab, durationDays, quoteNonce]);
 
     const handlePurchase = async () => {
         setIsPurchasing(true);
+        setNeedsCredits(false);
         try {
             const res = await fetch('/api/marketplace/purchase', {
                 method: 'POST',
@@ -110,24 +161,38 @@ export default function MarketplaceDetailPage() {
                 body: JSON.stringify({
                     listingId: listing.id,
                     pricingTier: pricingTab,
+                    durationDays,
+                    maxPrice: quote?.customer_price,
                 }),
             });
 
             const data = await res.json();
 
             if (res.status === 409) {
+                if (data.error === 'price_changed') {
+                    toast.error('The price changed — refreshed. Review and try again.');
+                    setQuoteNonce((n) => n + 1);
+                    return;
+                }
                 toast.success('You already own this! Redirecting...');
                 router.push('/my-automations');
                 return;
             }
 
-            if (!res.ok) {
-                toast.error(data.error || 'Purchase failed');
+            if (res.status === 402) {
+                setNeedsCredits(true);
+                toast.error('Insufficient AION Credits. Add Credits to continue.');
                 return;
             }
 
-            toast.success('🎉 Purchase complete! Starting AI setup...');
+            if (!res.ok) {
+                toast.error(data.message || data.error || 'Purchase failed');
+                return;
+            }
+
+            toast.success(`🎉 Purchase complete!${data.creditsCharged ? ` ${data.creditsCharged} credits charged.` : ''} Starting AI setup...`);
             setHasPurchased(true);
+            if (data.expiresAt) setEntitlement({ status: 'active', expires_at: data.expiresAt });
 
             // Redirect to the AI setup wizard
             const targetUrl = data.instanceId
@@ -180,8 +245,9 @@ export default function MarketplaceDetailPage() {
         );
     }
 
-    const byokPrice = listing.price;
-    const managedPrice = listing.price === 0 ? 0 : listing.price * 2;
+    const fmtCredits = (n: number) =>
+        n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const DURATIONS = [1, 7, 30, 90];
 
     return (
         <div className="min-h-screen bg-[var(--bg)]">
@@ -411,8 +477,39 @@ export default function MarketplaceDetailPage() {
                                 </button>
                             </div>
 
-                            {/* Tab Content */}
+                            {/* Tab Content — all prices from the server quote engine */}
                             <div className="p-8 space-y-6">
+                                {/* Duration selector (values supported by automation_pricing) */}
+                                <div className="space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[var(--muted-fg)]">Duration</p>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {DURATIONS.map((d) => (
+                                            <button
+                                                key={d}
+                                                onClick={() => setDurationDays(d)}
+                                                className={cn(
+                                                    'h-10 rounded-xl border-2 text-sm font-black transition-all',
+                                                    durationDays === d
+                                                        ? 'border-primary-500 bg-primary-500/10 text-primary-500 dark:text-primary-300'
+                                                        : 'border-[var(--border)] hover:border-primary-500/40 text-[var(--muted-fg)]',
+                                                )}
+                                            >
+                                                {d}d
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {quoteLoading ? (
+                                    <div className="flex items-center gap-2 text-sm text-[var(--muted-fg)]">
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Loading server price…
+                                    </div>
+                                ) : quoteError || !quote ? (
+                                    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-[var(--muted-fg)]">
+                                        {quoteError || 'Pricing unavailable.'}
+                                    </div>
+                                ) : (
+                                    <>
                                 {/* BYOK Tab */}
                                 {pricingTab === 'byok' && (
                                     <>
@@ -420,11 +517,11 @@ export default function MarketplaceDetailPage() {
                                             <Badge className="bg-primary-500/10 text-primary-400 border-primary-500/20 font-black uppercase tracking-widest text-[8px]">
                                                 Bring Your Own Keys
                                             </Badge>
-                                            <p className={cn("text-4xl font-black", byokPrice === 0 ? "text-emerald-400" : "")}>
-                                                {formatPrice(byokPrice)}
+                                            <p className={cn("text-4xl font-black", quote.customer_price === 0 ? "text-emerald-400" : "")}>
+                                                {quote.customer_price === 0 ? 'Free' : `${fmtCredits(quote.customer_price)} Credits`}
                                             </p>
                                             <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tighter">
-                                                {byokPrice === 0 ? 'FREE FOREVER' : 'FIXED PRICE / MONTH'}
+                                                {quote.customer_price === 0 ? 'FREE FOREVER' : `FOR ${durationDays} DAY${durationDays > 1 ? 'S' : ''} · NO RESOURCE CHARGES`}
                                             </p>
                                         </div>
                                         <div className="space-y-3 text-xs text-[var(--muted-fg)]">
@@ -459,11 +556,18 @@ export default function MarketplaceDetailPage() {
                                                 Fully Managed
                                             </Badge>
                                             <p className="text-4xl font-black text-emerald-400">
-                                                {managedPrice === 0 ? 'Free' : formatPrice(managedPrice)}
+                                                {quote.customer_price === 0 ? 'Free' : `${fmtCredits(quote.customer_price)} Credits`}
                                             </p>
                                             <p className="text-[10px] font-bold text-[var(--muted-fg)] uppercase tracking-tighter">
-                                                {managedPrice === 0 ? 'FREE FOREVER' : 'USAGE-BASED / MONTH'}
+                                                {quote.customer_price === 0 ? 'FREE FOREVER' : `FOR ${durationDays} DAY${durationDays > 1 ? 'S' : ''} · COST + MARGIN`}
                                             </p>
+                                            {quote.customer_price > 0 && (
+                                                <div className="rounded-xl bg-[var(--muted)]/60 border border-[var(--border)] px-3 py-2 text-[11px] font-mono text-[var(--muted-fg)] space-y-0.5">
+                                                    <div className="flex justify-between"><span>Internal cost</span><span>${fmtCredits(quote.internal_cost)}</span></div>
+                                                    <div className="flex justify-between"><span>AION margin</span><span>${fmtCredits(quote.margin)}</span></div>
+                                                    <div className="flex justify-between font-bold text-[var(--fg)]"><span>You pay</span><span>{fmtCredits(quote.customer_price)} cr</span></div>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="space-y-3 text-xs text-[var(--muted-fg)]">
                                             <div className="flex items-start gap-3">
@@ -488,6 +592,22 @@ export default function MarketplaceDetailPage() {
                                         </p>
                                     </>
                                 )}
+                                    </>
+                                )}
+
+                                {/* Insufficient credits → top up, then retry */}
+                                {needsCredits && (
+                                    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                                        <p className="text-xs font-bold text-amber-500 flex items-center gap-2">
+                                            <Wallet className="w-4 h-4" /> Insufficient AION Credits. Add Credits to continue.
+                                        </p>
+                                        <Link href="/billing/add-credits">
+                                            <Button className="w-full h-11 rounded-xl font-black uppercase tracking-widest text-xs">
+                                                Add Credits <ArrowRight className="w-3.5 h-3.5 ml-2" />
+                                            </Button>
+                                        </Link>
+                                    </div>
+                                )}
 
                                 {/* Requirements Summary near Deploy Button */}
                                 {requiredIntegrations.length > 0 && (
@@ -508,18 +628,38 @@ export default function MarketplaceDetailPage() {
                                     </div>
                                 )}
 
+                                {/* Purchase summary (spec §1) — price from server quote */}
+                                {quote && !quoteError && (
+                                    <div className="rounded-2xl bg-[var(--muted)]/60 border border-[var(--border)] p-4 space-y-2 text-sm">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--muted-fg)]">Order Summary</p>
+                                        <div className="flex justify-between gap-2"><span className="text-[var(--muted-fg)]">Automation</span><span className="font-bold text-right truncate max-w-[60%]">{listing.title}</span></div>
+                                        <div className="flex justify-between"><span className="text-[var(--muted-fg)]">Customer type</span><span className="font-bold">{pricingTab === 'byok' ? 'BYOK' : 'AION Managed'}</span></div>
+                                        <div className="flex justify-between"><span className="text-[var(--muted-fg)]">Duration</span><span className="font-bold">{durationDays} days</span></div>
+                                        <div className="flex justify-between"><span className="text-[var(--muted-fg)]">Price</span><span className="font-black">{fmtCredits(quote.customer_price)} Credits</span></div>
+                                        <div className="flex justify-between border-t border-[var(--border)] pt-2"><span className="text-[var(--muted-fg)]">Current credits</span><span className="font-bold">{walletBalance === null ? '···' : fmtCredits(walletBalance)}</span></div>
+                                        <div className="flex justify-between"><span className="text-[var(--muted-fg)]">Credits after purchase</span><span className={cn("font-black", walletBalance !== null && walletBalance - quote.customer_price < 0 ? "text-red-400" : "text-emerald-400")}>{walletBalance === null ? '···' : fmtCredits(walletBalance - quote.customer_price)}</span></div>
+                                    </div>
+                                )}
+
                                 {/* Action Buttons */}
                                 <div className="space-y-4 pt-4 border-t border-[var(--border)]">
-                                    {hasPurchased ? (
-                                        <Link href="/my-automations">
-                                            <Button className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest italic group shadow-xl shadow-emerald-500/30">
-                                                <CheckCircle2 className="w-5 h-5 mr-2" /> Purchased — View Dashboard
-                                            </Button>
-                                        </Link>
+                                    {(hasPurchased || entitlement) ? (
+                                        <div className="space-y-3">
+                                            <Link href="/my-automations">
+                                                <Button className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest italic group shadow-xl shadow-emerald-500/30">
+                                                    <CheckCircle2 className="w-5 h-5 mr-2" /> Purchased — View Dashboard
+                                                </Button>
+                                            </Link>
+                                            {entitlement && (
+                                                <p className="text-[11px] text-center text-[var(--muted-fg)]">
+                                                    Active until {new Date(entitlement.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </p>
+                                            )}
+                                        </div>
                                     ) : (
                                         <Button
                                             onClick={handlePurchase}
-                                            disabled={isPurchasing}
+                                            disabled={isPurchasing || quoteLoading || !quote}
                                             className={cn(
                                                 "w-full h-16 rounded-2xl text-white font-black uppercase tracking-widest italic group shadow-xl transition-all",
                                                 pricingTab === 'byok'

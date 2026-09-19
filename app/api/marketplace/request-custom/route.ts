@@ -1,15 +1,37 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit, clientKey } from '@/lib/rate-limit';
 
 const GEMINI_API_KEY = process.env.AION_GEMINI_API_KEY || '';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json();
-        const { name, email, projectDescription, timeline, budget, targetCreatorId } = body;
+        // Basic abuse protection for this public endpoint
+        const rl = rateLimit(clientKey(req), 10, 60_000);
+        if (!rl.ok) {
+            return NextResponse.json({ error: 'Too many requests. Please try again shortly.' }, { status: 429 });
+        }
 
-        if (!name || !email || !projectDescription) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        const body = await req.json().catch(() => null);
+        const { name, email, projectDescription, timeline, budget, targetCreatorId } = body ?? {};
+
+        if (
+            typeof name !== 'string' || name.trim().length === 0 || name.length > 120 ||
+            typeof email !== 'string' || !EMAIL_RE.test(email.trim()) ||
+            typeof projectDescription !== 'string' || projectDescription.trim().length < 20 || projectDescription.length > 5000
+        ) {
+            return NextResponse.json({ error: 'Please provide a valid name, email, and a project description (20+ characters).' }, { status: 400 });
+        }
+
+        if (timeline !== undefined && (typeof timeline !== 'string' || timeline.length > 50)) {
+            return NextResponse.json({ error: 'Invalid timeline' }, { status: 400 });
+        }
+        if (budget !== undefined && (typeof budget !== 'string' || budget.length > 50)) {
+            return NextResponse.json({ error: 'Invalid budget' }, { status: 400 });
+        }
+        if (targetCreatorId !== undefined && targetCreatorId !== null && typeof targetCreatorId !== 'string') {
+            return NextResponse.json({ error: 'Invalid creator' }, { status: 400 });
         }
 
         const supabase = await createClient();
@@ -57,10 +79,14 @@ Respond strictly in JSON format matching this structure:
                     const aiData = await res.json();
                     const textContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (textContent) {
-                        const parsed = JSON.parse(textContent);
-                        summary = parsed.summary || summary;
-                        urgencyScore = parsed.score || urgencyScore;
-                        urgencyTag = parsed.tag || urgencyTag;
+                        try {
+                            const parsed = JSON.parse(textContent);
+                            if (typeof parsed.summary === 'string' && parsed.summary) summary = parsed.summary.slice(0, 300);
+                            if (typeof parsed.score === 'number' && parsed.score >= 1 && parsed.score <= 10) urgencyScore = parsed.score;
+                            if (parsed.tag === 'Hot' || parsed.tag === 'Slow' || parsed.tag === 'Slowest') urgencyTag = parsed.tag;
+                        } catch {
+                            console.error('[GEMINI LEAD SCORING] Invalid AI JSON, using defaults');
+                        }
                     }
                 } else {
                     console.error('[GEMINI LEAD SCORING ERROR]', await res.text());
@@ -70,7 +96,7 @@ Respond strictly in JSON format matching this structure:
                 if (timeline === 'urgent') { urgencyScore = 9; urgencyTag = 'Hot'; }
                 else if (timeline === '1_week') { urgencyScore = 7; urgencyTag = 'Slow'; }
                 else { urgencyScore = 3; urgencyTag = 'Slowest'; }
-                summary = `Wants an automation: ${projectDescription.substring(0, 100)}...`;
+                summary = `Wants an automation: ${projectDescription.slice(0, 100)}...`;
             }
         } catch (aiErr) {
             console.error('[AI SCORING FALLBACK]', aiErr);
@@ -81,14 +107,14 @@ Respond strictly in JSON format matching this structure:
         // If the consumer didn't select a specific creator, we fallback to NULL so it can go to a marketplace pool.
         const assignedCreatorId = targetCreatorId || null;
 
-        // Insert Lead
+        // Insert Lead — a real failure is returned so the UI can show a retry state
         const { data: newLead, error: insertErr } = await supabase
             .from('creator_custom_leads')
             .insert({
                 consumer_id: user?.id || null,
                 creator_id: assignedCreatorId,
-                consumer_name: name,
-                consumer_email: email,
+                consumer_name: name.trim(),
+                consumer_email: email.trim(),
                 project_description: projectDescription,
                 ai_summary: summary,
                 urgency_score: urgencyScore,
@@ -98,12 +124,13 @@ Respond strictly in JSON format matching this structure:
             .select('id')
             .single();
 
-        // Ignore the "table does not exist" error for the sake of the UX if the user hasn't run the migration yet.
-        // We will fake a success to not block them but log it.
         if (insertErr) {
-            console.error('[SUPABASE LEAD INSERT ERROR]', insertErr);
-            // If the table is missing, just return success so the UI works and we mock it in the UI
-        } else if (assignedCreatorId && newLead) {
+            // Missing table (migration not run yet): don't strand the user, but be honest in logs
+            console.error('[SUPABASE LEAD INSERT ERROR]', insertErr.message || insertErr);
+            return NextResponse.json({ error: 'Could not save your request. Please try again.' }, { status: 500 });
+        }
+
+        if (assignedCreatorId && newLead) {
             // Send notification to the creator
             await supabase.from('notifications').insert({
                 user_id: assignedCreatorId,

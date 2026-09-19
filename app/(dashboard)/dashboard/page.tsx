@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,14 +87,15 @@ export default function ConsumerDashboard() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [recommendations, setRecommendations] = useState<MarketplaceRecommendation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [fetchError, setFetchError] = useState(false);
 
     const firstName = profile?.full_name?.split(' ')[0] || 'Partner';
 
-    const greeting = useMemo(() => {
+    // Client-only greeting (avoids SSR/client timezone mismatch flash)
+    const [greeting, setGreeting] = useState('Welcome');
+    useEffect(() => {
         const hour = new Date().getHours();
-        if (hour < 12) return 'Good morning';
-        if (hour < 18) return 'Good afternoon';
-        return 'Good evening';
+        setGreeting(hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
     }, []);
 
     // Fetch real data
@@ -102,6 +103,10 @@ export default function ConsumerDashboard() {
         let cancelled = false;
 
         async function fetchDashboard() {
+            if (!cancelled) {
+                setIsLoading(true);
+                setFetchError(false);
+            }
             try {
                 // Fetch instances + stats
                 const instRes = await fetch('/api/consumer/instances');
@@ -111,6 +116,8 @@ export default function ConsumerDashboard() {
                         setInstances(data.instances || []);
                         setStats(data.stats || null);
                     }
+                } else if (!cancelled) {
+                    setFetchError(true);
                 }
 
                 // Fetch marketplace recommendations (top rated listings)
@@ -123,6 +130,7 @@ export default function ConsumerDashboard() {
                 }
             } catch (err) {
                 console.error('[Dashboard] Fetch error:', err);
+                if (!cancelled) setFetchError(true);
             } finally {
                 if (!cancelled) setIsLoading(false);
             }
@@ -152,10 +160,39 @@ export default function ConsumerDashboard() {
 
     if (isLoading) {
         return (
-            <div className="p-6 lg:p-10 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-                    <p className="text-sm font-bold text-[var(--muted-fg)] uppercase tracking-widest">Loading your command center...</p>
+            <div className="p-6 lg:p-10 max-w-7xl mx-auto space-y-8 animate-pulse" role="status" aria-label="Loading dashboard">
+                {/* Hero skeleton */}
+                <div className="h-48 rounded-[2.5rem] bg-[var(--card)] border border-[var(--border)]" />
+                {/* Stats skeleton */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-28 rounded-2xl bg-[var(--card)] border border-[var(--border)]" />
+                    ))}
+                </div>
+                {/* Cards skeleton */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {[...Array(3)].map((_, i) => (
+                        <div key={i} className="h-40 rounded-2xl bg-[var(--card)] border border-[var(--border)]" />
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    if (fetchError && instances.length === 0 && !stats) {
+        return (
+            <div className="p-6 lg:p-10 max-w-7xl mx-auto">
+                <div className="flex flex-col items-center justify-center gap-3 py-24 text-center rounded-[2.5rem] border border-[var(--border)] bg-[var(--card)]">
+                    <p className="text-lg font-bold">Couldn&apos;t load your dashboard</p>
+                    <p className="text-sm text-[var(--muted-fg)] max-w-sm">
+                        Check your connection and try again. Your automations are safe.
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-2 inline-flex items-center h-10 px-5 text-sm rounded-lg font-medium bg-gradient-to-r from-primary-600 to-primary-500 text-white"
+                    >
+                        Retry
+                    </button>
                 </div>
             </div>
         );

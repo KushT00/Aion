@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { CheckCircle2, AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { cn } from '@/lib/utils';
 
 export default function PublicFormPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex min-h-screen items-center justify-center" role="status" aria-label="Loading form">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+                </div>
+            }
+        >
+            <PublicFormContent />
+        </Suspense>
+    );
+}
+
+function PublicFormContent() {
     const params = useParams();
     const searchParams = useSearchParams();
     const id = params.id as string;
@@ -188,36 +203,43 @@ export default function PublicFormPage() {
                     <CardContent className="pt-8 pb-10 px-8">
                         <form onSubmit={handleSubmit} className="space-y-8">
                             <div className="grid gap-6">
-                                {config.fields.map((field: any, idx: number) => (
+                                {config.fields.map((field: any, idx: number) => {
+                                    const fieldKey = field.name || field.label || `field_${idx}`;
+                                    const fieldLabel = String(field.name || field.label || `Field ${idx + 1}`);
+                                    const safeType = ['text', 'email', 'number', 'tel', 'url', 'textarea'].includes(field.type)
+                                        ? field.type
+                                        : 'text';
+                                    return (
                                     <div key={idx} className="space-y-2.5">
                                         <label className="text-sm font-semibold text-[var(--fg)] ml-1 block">
-                                            {field.name || field.label}
+                                            {fieldLabel}
                                             {field.required && <span className="text-red-500 ml-1">*</span>}
                                         </label>
 
-                                        {field.type === 'textarea' ? (
+                                        {safeType === 'textarea' ? (
                                             <textarea
                                                 required={field.required}
-                                                placeholder={field.placeholder || `Enter your ${field.name.toLowerCase()}...`}
+                                                placeholder={field.placeholder || `Enter your ${fieldLabel.toLowerCase()}...`}
                                                 className="min-h-[120px] w-full bg-[var(--bg)]/50 border-[var(--border)] rounded-xl focus:ring-2 focus:ring-violet-500 outline-none transition-all text-base px-4 py-3"
-                                                value={formData[field.name || field.label] || ''}
-                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, [field.name || field.label]: e.target.value })}
+                                                value={formData[fieldKey] || ''}
+                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, [fieldKey]: e.target.value })}
                                             />
                                         ) : (
                                             <Input
-                                                type={field.type || 'text'}
+                                                type={safeType}
                                                 required={field.required}
-                                                placeholder={field.placeholder || `Enter your ${field.name.toLowerCase()}...`}
+                                                placeholder={field.placeholder || `Enter your ${fieldLabel.toLowerCase()}...`}
                                                 className="h-12 bg-[var(--bg)]/50 border-[var(--border)] focus:ring-2 focus:ring-violet-500 transition-all text-base px-4 rounded-xl shadow-sm"
-                                                value={formData[field.name || field.label] || ''}
-                                                onChange={(e) => setFormData({ ...formData, [field.name || field.label]: e.target.value })}
+                                                value={formData[fieldKey] || ''}
+                                                onChange={(e) => setFormData({ ...formData, [fieldKey]: e.target.value })}
                                             />
                                         )}
                                         {field.helpText && (
                                             <p className="text-xs text-[var(--muted-fg)] ml-1 opacity-70">{field.helpText}</p>
                                         )}
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
 
                             <div className="pt-6">
@@ -251,7 +273,4 @@ export default function PublicFormPage() {
     );
 }
 
-// Utility for conditional class merging (if not already globally available)
-function cn(...classes: any[]) {
-    return classes.filter(Boolean).join(' ');
-}
+// cn is imported from '@/lib/utils'

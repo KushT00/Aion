@@ -63,9 +63,9 @@ export function ContactCreatorModal({ isOpen, onClose, listing }: ContactCreator
 
             if (res.ok) {
                 const data = await res.json();
-                toast.success("Message Sent! Redirecing to your inbox...");
+                toast.success("Message Sent! Redirecting to your inbox...");
                 onClose();
-                router.push(`/inbox?id=${data.conversation.id}`);
+                router.push(`/inbox?conv=${data.conversation.id}`);
             } else {
                 const error = await res.json();
                 toast.error(error.error || "Please try again later.");

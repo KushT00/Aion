@@ -76,8 +76,14 @@ export default function RequestCustomAutomationPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.name || !formData.email || !formData.projectDescription) {
+        if (!formData.name?.trim() || !formData.email?.trim() || !formData.projectDescription?.trim()) {
             return toast.error('Please fill in all required fields.');
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+            return toast.error('Please enter a valid email address.');
+        }
+        if (formData.projectDescription.trim().length < 20) {
+            return toast.error('Please describe your project in a bit more detail (20+ characters).');
         }
 
         setIsSubmitting(true);

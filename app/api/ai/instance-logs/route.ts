@@ -15,6 +15,21 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing instanceId' }, { status: 400 });
         }
 
+        // Verify the caller owns this instance before exposing its logs
+        const { data: instance, error: instErr } = await supabase
+            .from('consumer_instances')
+            .select('id, buyer_id')
+            .eq('id', instanceId)
+            .single();
+
+        if (instErr || !instance) {
+            return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+        }
+
+        if (instance.buyer_id !== user.id) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         // Fetch logs for this instance
         const { data: logs, error: logErr } = await supabase
             .from('consumer_run_logs')

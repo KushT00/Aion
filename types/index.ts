@@ -143,6 +143,192 @@ export interface Purchase {
   created_at: string;
 }
 
+// ─── AION Credits Wallet (Billing Part 2) ────────────────────
+// 1 USD = 1 AION Credit. Positive ledger amount = credit, negative = spend.
+
+export type CreditTransactionType =
+  | 'payment_credit'
+  | 'automation_purchase'
+  | 'automation_usage'
+  | 'managed_resource_charge'
+  | 'creator_earning'
+  | 'refund'
+  | 'adjustment';
+
+export interface Wallet {
+  id: string;
+  user_id: string;
+  credit_balance: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  transaction_type: CreditTransactionType;
+  reference_id: string | null;
+  description: string | null;
+  balance_before: number;
+  balance_after: number;
+  created_at: string;
+}
+
+// ─── AION Payments (Billing Part 3) ─────────────────────────
+// Dummy gateway now; real provider (Stripe/Razorpay) plugs into
+// lib/payments/gateway.ts later. $1 = 1 AION Credit.
+
+export type CustomerType = 'byok' | 'managed';
+
+export type PaymentStatus =
+  | 'pending'
+  | 'processing'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'refunded';
+
+export type PaymentProviderName = 'dummy' | 'stripe' | 'razorpay';
+
+export interface Payment {
+  id: string;
+  user_id: string;
+  customer_type: CustomerType;
+  amount_usd: number;
+  credits_amount: number;
+  provider: PaymentProviderName;
+  provider_payment_id: string | null;
+  status: PaymentStatus;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── AION Billing Engine (Part 4: BYOK + Managed) ───────────
+// All prices come from automation_pricing. Frontend never calculates.
+
+export type BillingModel = 'flat' | 'duration' | 'usage';
+export type MarginType = 'percent' | 'fixed';
+
+export interface AutomationPricing {
+  id: string;
+  listing_id: string;
+  billing_model: BillingModel;
+  byok_prices: Record<string, number>;
+  managed_base_internal: Record<string, number>;
+  resource_rates: Record<string, number>;
+  margin_type: MarginType;
+  margin_value: number;
+  supported_durations: number[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseQuote {
+  listing_id: string;
+  customer_type: CustomerType;
+  duration_days: number;
+  internal_cost: number;
+  margin: number;
+  customer_price: number;
+  credits_required: number;
+}
+
+export type UsageMetric =
+  | 'execution'
+  | 'runtime_second'
+  | 'input_token_1k'
+  | 'output_token_1k'
+  | 'api_request'
+  | 'storage_gb_mo'
+  | 'compute_second';
+
+export interface ResourceUsage {
+  id: string;
+  user_id: string;
+  instance_id: string | null;
+  listing_id: string | null;
+  metric: UsageMetric;
+  quantity: number;
+  unit_cost_usd: number;
+  cost_usd: number;
+  cycle_id: string | null;
+  metadata: Record<string, unknown>;
+  recorded_at: string;
+}
+
+export type BillingCycleStatus = 'pending' | 'processing' | 'succeeded' | 'failed';
+
+export interface BillingCycle {
+  id: string;
+  user_id: string;
+  instance_id: string | null;
+  period_start: string;
+  period_end: string;
+  usage: Record<string, number>;
+  internal_cost: number;
+  margin: number;
+  customer_charge: number;
+  credits_charged: number;
+  status: BillingCycleStatus;
+  created_at: string;
+}
+
+// ─── Marketplace billing (Part 5: purchase + entitlements + earnings) ──
+
+export type EntitlementStatus = 'active' | 'expired' | 'cancelled' | 'suspended';
+
+export interface AutomationEntitlement {
+  id: string;
+  user_id: string;
+  automation_id: string;
+  purchase_id: string;
+  customer_type: CustomerType;
+  duration_days: number;
+  started_at: string;
+  expires_at: string;
+  status: EntitlementStatus;
+  credits_paid: number;
+  created_at: string;
+}
+
+export type MarketplaceTransactionStatus = 'pending' | 'completed' | 'refunded' | 'failed';
+
+export interface MarketplaceTransaction {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  automation_id: string;
+  purchase_id: string;
+  gross_amount: number;
+  platform_fee: number;
+  creator_amount: number;
+  status: MarketplaceTransactionStatus;
+  created_at: string;
+}
+
+export type CreatorEarningStatus = 'pending' | 'available' | 'reversed';
+
+export interface CreatorEarning {
+  id: string;
+  seller_id: string;
+  transaction_id: string;
+  amount: number;
+  status: CreatorEarningStatus;
+  available_at: string;
+  released_at: string | null;
+  created_at: string;
+}
+
+export interface CreatorEarningsSummary {
+  total_earnings: number;
+  pending_earnings: number;
+  available_earnings: number;
+  sales_count: number;
+}
+
 // ─── UI State ───────────────────────────────────────────────
 
 export type Theme = 'light' | 'dark' | 'system';

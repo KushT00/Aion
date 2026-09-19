@@ -105,13 +105,20 @@ export default function MarketplacePage() {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    // Debounced search: avoids a request per keystroke (was 2-3 fetches per key)
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+        return () => clearTimeout(t);
+    }, [searchQuery]);
 
     const fetchListings = useCallback(async (signal?: AbortSignal) => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
             if (selectedCategory !== 'All') params.set('category', selectedCategory);
-            if (searchQuery.trim()) params.set('search', searchQuery.trim());
+            if (debouncedSearch) params.set('search', debouncedSearch);
             params.set('sort', sort);
             params.set('page', page.toString());
             params.set('limit', '12');
@@ -131,7 +138,7 @@ export default function MarketplacePage() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedCategory, searchQuery, sort, page]);
+    }, [selectedCategory, debouncedSearch, sort, page]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -141,12 +148,13 @@ export default function MarketplacePage() {
 
     useEffect(() => {
         setPage(1);
-    }, [selectedCategory, searchQuery, sort]);
+    }, [selectedCategory, debouncedSearch, sort]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
+        // Flush the pending debounce immediately on submit
+        setDebouncedSearch(searchQuery.trim());
         setPage(1);
-        fetchListings();
     };
 
     const formatPrice = (price: number) => {

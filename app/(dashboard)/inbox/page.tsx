@@ -69,7 +69,7 @@ export default function InboxPage() {
 
     // Get current user
     useEffect(() => {
-        supabase.auth.getUser().then(({ data }) => {
+        supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
             if (data.user) setCurrentUserId(data.user.id);
         });
 
@@ -112,8 +112,11 @@ export default function InboxPage() {
             }
         };
         fetchMessages();
-        const poll = setInterval(fetchMessages, 3000);
-        return () => clearInterval(poll);
+        // Live updates come from the Supabase Realtime subscription below.
+        // Refetch when the tab regains focus to catch anything missed while away.
+        const onFocus = () => fetchMessages();
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
     }, [selectedConv]);
 
     // Supabase Realtime: listen for new messages

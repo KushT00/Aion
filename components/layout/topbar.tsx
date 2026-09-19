@@ -1,6 +1,7 @@
 import { Menu, Search, Hammer, LogOut } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { NotificationBell } from '@/components/ui/notification-bell';
+import { WalletBalance } from '@/components/wallet/wallet-balance';
 import { cn } from '@/lib/utils';
 import { getInitials } from '@/lib/utils';
 import { useViewMode } from '@/components/view-mode-context';
@@ -54,6 +55,9 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             </div>
 
             <div className="flex items-center gap-4">
+                {/* AION Credits balance (Billing Part 2) */}
+                <WalletBalance />
+
                 {/* Mode Switcher Shortcut */}
                 {isCreatorMode ? (
                     <Link href="/dashboard">
